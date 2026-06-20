@@ -36,14 +36,12 @@ import devRoutes from "./app/modules/dev/dev.controller.js";
 import { errorHandler } from "./app/middlewares/errorHandler.middleware.js";
 
 const app = express();
-const PORT     = process.env.PORT     || 5000;
+const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || "development";
-const isDev    = NODE_ENV === "development";
+const isDev = NODE_ENV === "development";
 const skipRateLimit = process.env.DISABLE_RATE_LIMIT === "true";
 
 // Trust 1 hop proxy (API Gateway) để rate limit dùng IP thật từ X-Forwarded-For
-// QUAN TRỌNG: Chỉ set "1" nếu có đúng 1 trusted proxy đứng trước BE
-// https://expressjs.com/en/guide/behind-proxies.html
 app.set("trust proxy", 1);
 
 if (process.env.NODE_ENV !== "test") {
@@ -56,19 +54,15 @@ app.use(morgan(isDev ? "dev" : "combined"));
 // ── [2] Security Headers ──────────────────────────────────────────────────────
 app.use(helmet());
 
-// Hỗ trợ multiple origins (comma-separated), ví dụ: "http://localhost:5173,http://localhost:5174"
 const allowedOrigins = (process.env.CORS_ORIGIN || "").split(",").map(o => o.trim()).filter(Boolean);
 app.use(cors({ origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins, credentials: true }));
 
 // ── [4] Body Parser ───────────────────────────────────────────────────────────
-// NOTE: Upload route dùng multer riêng, không qua body parser này.
-// Giới hạn 2mb đủ cho tất cả API thông thường (JSON payload, base64 thumbnail nhỏ).
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
 // ── [5] NoSQL Injection Protection ───────────────────────────────────────────
-// express-mongo-sanitize@2.2.0 không tương thích Express 5 (req.query là getter-only).
-// Chỉ sanitize body + params, bỏ qua query.
+
 app.use((req, _res, next) => {
   (["body", "params"] as const).forEach((key) => {
     if (req[key]) req[key] = mongoSanitize.sanitize(req[key]);
@@ -103,21 +97,21 @@ app.get("/", (_req, res) => {
   res.json({ success: true, message: "Backend is running", env: NODE_ENV });
 });
 
-app.use("/api/health",     healthRouter);
-app.use("/api/auth",       authLimiter, authRoutes);  // authLimiter ghi đè globalLimiter cho auth
-app.use("/api/users",      userRoutes);
-app.use("/api/products",   productRoutes);
+app.use("/api/health", healthRouter);
+app.use("/api/auth", authLimiter, authRoutes);  // authLimiter ghi đè globalLimiter cho auth
+app.use("/api/users", userRoutes);
+app.use("/api/products", productRoutes);
 app.use("/api/categories", categoryRoutes);
-app.use("/api/orders",     orderRoutes);
-app.use("/api/brands",     brandRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/brands", brandRoutes);
 app.use("/api/attributes", attributeRoutes);
-app.use("/api/inventory",  inventoryRoutes);
-app.use("/api/reports",    reportRoutes);
+app.use("/api/inventory", inventoryRoutes);
+app.use("/api/reports", reportRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
-app.use("/api/settings",   settingRoutes);
-app.use("/api/upload",     uploadRoutes);
-app.use("/api/vouchers",   voucherRoutes);
-app.use("/api/reviews",    reviewRoutes);
+app.use("/api/settings", settingRoutes);
+app.use("/api/upload", uploadRoutes);
+app.use("/api/vouchers", voucherRoutes);
+app.use("/api/reviews", reviewRoutes);
 if (isDev) {
   app.use("/api/dev", devRoutes);
 }
@@ -157,7 +151,7 @@ if (process.env.NODE_ENV !== "test") {
   };
 
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
-  process.on("SIGINT",  () => gracefulShutdown("SIGINT"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 }
 
 export { app };
