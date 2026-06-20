@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+.DS_Store
+dist
+.env
+.git
+.github
+tests
+vitest.config.ts

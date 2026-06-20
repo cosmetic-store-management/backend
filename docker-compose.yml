@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # CỤM 1: BACKEND API
+  # ==========================================
+  cosmetic-backend:
+    container_name: cosmetic-backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    
+    # 💡 GỢI Ý: Nếu sau này bạn có Redis, hãy xóa dấu thăng (#) ở 2 dòng dưới để Backend tự động đợi Redis khởi động trước
+    # depends_on:
+    #   - redis-cache
+
+  # ==========================================
+  # CỤM 2: REDIS CACHE (Tạm thời tắt - Bỏ dấu # để bật)
+  # ==========================================
+  # redis-cache:
+  #   container_name: redis-cache
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   restart: unless-stopped
