@@ -25,20 +25,17 @@ jobs:
         run: npm install -g pnpm
           
       - name: 🧱 Cài đặt thư viện
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
         
       - name: 🔎 Kiểm tra lỗi (Build Test)
-        # Bước này chỉ build nháp trên server của Github. Nếu code sai cú pháp, nó sẽ báo đỏ và dừng lại ngay.
         run: pnpm run build
-        
-      # (Sau này nếu bạn viết Unit Test, bạn có thể thêm dòng: run: pnpm test ở đây)
 
   # ==========================================
   # GIAI ĐOẠN 2: CD (Continuous Deployment)
   # ==========================================
   cd-deploy:
     name: 🚀 Giao hàng lên VPS (CD)
-    needs: ci-build # ĐIỀU KIỆN TIÊN QUYẾT: Bắt buộc Job CI phải xanh (Thành công) thì Job CD mới được phép chạy
+    needs: ci-build # ĐIỀU KIỆN TIÊN QUYẾT: CI phải xanh
     runs-on: ubuntu-latest
     
     steps:
@@ -50,17 +47,8 @@ jobs:
           password: ${{ secrets.VPS_PASSWORD }}
           port: 22
           script: |
-            # 1. Di chuyển vào thư mục code trên VPS
             cd ~/backend
-            
-            # 2. Kéo code "Đã an toàn" từ nhánh main về
             git pull origin main
-            
-            # 3. Cài đặt các thư viện mới (nếu có)
             pnpm install
-            
-            # 4. Build mã nguồn thật trên VPS
             pnpm run build
-            
-            # 5. Khởi động lại PM2
             pm2 restart cosmetic-backend
