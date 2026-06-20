@@ -3,43 +3,36 @@ name: Deploy Node.js Backend to VPS
 on:
   push:
     branches:
-      - main # Chạy luồng này mỗi khi có code mới đẩy lên nhánh main
+      - main
 
 jobs:
-  # ==========================================
-  # GIAI ĐOẠN 1: CI (Continuous Integration)
-  # ==========================================
   ci-build:
-    name: 🏗️ Kiểm tra Code (CI)
+    name: CI Build
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Lấy mã nguồn từ GitHub
+      - name: Checkout source code
         uses: actions/checkout@v4
       
-      - name: 🟢 Cài đặt Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           
-      - name: 📦 Cài đặt pnpm
+      - name: Install pnpm
         run: npm install -g pnpm
           
-      - name: 🧱 Cài đặt thư viện
+      - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
         
-      - name: 🔎 Kiểm tra lỗi (Build Test)
+      - name: Build project
         run: pnpm run build
 
-  # ==========================================
-  # GIAI ĐOẠN 2: CD (Continuous Deployment)
-  # ==========================================
   cd-deploy:
-    name: 🚀 Giao hàng lên VPS (CD)
-    needs: ci-build # ĐIỀU KIỆN TIÊN QUYẾT: CI phải xanh
+    name: CD Deploy
+    needs: ci-build
     runs-on: ubuntu-latest
-    
     steps:
-      - name: 🔐 Kết nối SSH và chạy lệnh Deploy
+      - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
