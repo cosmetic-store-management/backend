@@ -42,6 +42,4 @@ jobs:
           script: |
             cd ~/backend
             git pull origin main
-            pnpm install
-            pnpm run build
-            pm2 restart cosmetic-backend
+            docker-compose up -d --build
