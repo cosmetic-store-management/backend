@@ -1,0 +1,35 @@
+name: Deploy Node.js Backend to VPS
+
+on:
+  push:
+    branches:
+      - main # Chạy action này mỗi khi có code mới đẩy lên nhánh main
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚀 Kết nối SSH và chạy lệnh Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: 22
+          script: |
+            # 1. Di chuyển vào thư mục code trên VPS
+            cd ~/backend
+            
+            # 2. Kéo code mới nhất từ nhánh main trên Github về VPS
+            git pull origin main
+            
+            # 3. Cài đặt các thư viện mới (nếu có)
+            pnpm install
+            
+            # 4. Build mã nguồn TypeScript ra thư mục dist
+            pnpm run build
+            
+            # 5. Khởi động lại PM2 để cập nhật code đang chạy ngầm
+            pm2 restart cosmetic-backend
