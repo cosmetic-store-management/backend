@@ -13,6 +13,8 @@ services:
       - "5000:5000"
     env_file:
       - .env
+    environment:
+      - PORT=5000
     restart: unless-stopped
     
     # 💡 GỢI Ý: Nếu sau này bạn có Redis, hãy xóa dấu thăng (#) ở 2 dòng dưới để Backend tự động đợi Redis khởi động trước
