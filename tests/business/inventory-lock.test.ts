@@ -25,7 +25,7 @@ describe("Concurrency Business Rules: Inventory Lock", () => {
       images: [],
       categoryId: new mongoose.Types.ObjectId(),
       brandId: new mongoose.Types.ObjectId(),
-    });
+    } as any);
     testProductId = product._id.toString();
 
     const variant = await Variant.create({
@@ -34,7 +34,7 @@ describe("Concurrency Business Rules: Inventory Lock", () => {
       sku: "TEST-RACE-RED",
       price: 100,
       stock: 2, // Chỉ có 2 sản phẩm
-    });
+    } as any);
     testVariantId = variant._id.toString();
 
     await Setting.create({

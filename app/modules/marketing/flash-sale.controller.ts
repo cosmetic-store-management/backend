@@ -49,7 +49,7 @@ router.post(
 router.get(
   "/:id",
   catchAsync(async (req, res) => {
-    const result = await flashSaleService.getFlashSaleById(req.params.id);
+    const result = await flashSaleService.getFlashSaleById(req.params.id as string);
     return response.success(res, { result });
   })
 );
@@ -58,7 +58,7 @@ router.put(
   "/:id",
   validate(createFlashSaleSchema),
   catchAsync(async (req, res) => {
-    const result = await flashSaleService.updateFlashSale(req.params.id, req.body);
+    const result = await flashSaleService.updateFlashSale(req.params.id as string, req.body);
     return response.success(res, { message: "Cập nhật Flash Sale thành công", result });
   })
 );
@@ -66,7 +66,7 @@ router.put(
 router.delete(
   "/:id",
   catchAsync(async (req, res) => {
-    const result = await flashSaleService.deleteFlashSale(req.params.id);
+    const result = await flashSaleService.deleteFlashSale(req.params.id as string);
     return response.success(res, result);
   })
 );

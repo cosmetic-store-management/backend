@@ -129,7 +129,7 @@ describe("authService.register", () => {
 
     expect(fakeUser.refreshTokens.length).toBe(5);
     expect(fakeUser.refreshTokens[4]).toBe("mock_token");
-    expect(fakeUser.refreshTokens.includes("1")).toBe(false); // Token cũ nhất bị đẩy ra
+    expect((fakeUser.refreshTokens as any[]).includes("1")).toBe(false); // Token cũ nhất bị đẩy ra
   });
 });
 

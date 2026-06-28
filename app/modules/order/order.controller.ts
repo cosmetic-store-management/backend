@@ -174,7 +174,7 @@ router.patch(
 router.get(
   "/track/:code",
   catchAsync(async (req, res) => {
-    const order = await orderService.trackOrder(req.params.code);
+    const order = await orderService.trackOrder(req.params.code as string);
     return response.success(res, { order });
   }),
 );

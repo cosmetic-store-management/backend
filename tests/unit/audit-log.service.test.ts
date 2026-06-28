@@ -65,13 +65,13 @@ describe("auditLogService.getAuditLogs", () => {
     const result = await auditService.getAuditLogs("Admin", "settings");
     
     expect(auditRepo.findByQuery).toHaveBeenCalled();
-    expect(result.length).toBe(1);
-    expect(result[0].id).toBe("log1");
-    expect(result[0].timestamp).toBe("2026-06-23 15:00:00");
+    expect(result.logs.length).toBe(1);
+    expect(result.logs[0].id).toBe("log1");
+    expect(result.logs[0].timestamp).toBe("2026-06-23 15:00:00");
   });
 
   it("truyền đúng query lọc", async () => {
-    vi.mocked(auditRepo.findByQuery).mockResolvedValue([]);
+    vi.mocked(auditRepo.findByQuery).mockResolvedValue([] as any);
 
     await auditService.getAuditLogs("Test", "catalog", "2026-06-20", "2026-06-21");
 

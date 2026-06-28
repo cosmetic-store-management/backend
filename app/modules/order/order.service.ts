@@ -1,6 +1,6 @@
 import Order, { OrderDocument } from "../../models/order/order.schema.js";
 import * as orderRepo from "./order.repository.js";
-import { mapOrder } from "./dto/order.response.dto.js";
+import { mapOrder, mapPublicOrder } from "./dto/order.response.dto.js";
 
 import * as inventoryRepo from "../inventory/inventory.repository.js";
 import {
@@ -57,8 +57,8 @@ export const restoreStock = async (items: any[], session?: mongoose.ClientSessio
       );
 
       // Create a restorative batch using the average cost of the item from the order
-      const avgCostPrice = item.quantity > 0 && item.costPriceTotal > 0 
-        ? item.costPriceTotal / item.quantity 
+      const avgCostPrice = item.quantity > 0 && item.costPriceTotal > 0
+        ? item.costPriceTotal / item.quantity
         : 0;
 
       await inventoryRepo.createBatch(
@@ -121,8 +121,6 @@ export const getOrdersForAdmin = async ({
     ];
   }
 
-  // Ẩn các đơn hàng bỏ dở (abandoned checkout) khỏi danh sách chung để không làm rác dữ liệu
-  // Đơn hàng bỏ dở là đơn bị cron tự động hủy do quá hạn
   if (!orderStatus && !search) {
     query.note = { $ne: "Hệ thống tự động hủy do quá hạn thanh toán" };
   }
@@ -178,7 +176,7 @@ export const trackOrder = async (orderCode: string) => {
   if (!order) throw notFound("Không tìm thấy đơn hàng");
 
   const items = (order as any).items || [];
-  return mapOrder(order, items);
+  return mapPublicOrder(order, items);
 };
 
 // ── Source: order-management.service.ts ──────────────────────────────
@@ -209,12 +207,12 @@ export const updateOrderStatus = async (
     throw badRequest("Không thể chuyển trạng thái đơn hàng như yêu cầu");
   }
   const previousStatus = order.orderStatus;
-  
+
   if (data.orderStatus) {
     if (data.orderStatus === "completed" && previousStatus !== "completed") {
       order.completedAt = new Date();
     }
-    
+
     order.orderStatus = data.orderStatus;
   }
 
@@ -254,7 +252,7 @@ export const updateOrderStatus = async (
     if (!updatedOrder) {
       throw badRequest("Đơn hàng đã được xử lý bởi một tiến trình khác. Vui lòng thử lại.");
     }
-    
+
     order = updatedOrder as any;
 
     const items = (order as any).items || [];
@@ -461,7 +459,7 @@ export const requestReturnOrder = async (
 export const approveReturnOrder = async (orderId: string, _requestUser: UserDocument) => {
   const order = await orderRepo.findOrderById(orderId);
   if (!order) throw notFound("Không tìm thấy đơn hàng");
-  
+
   if (order.orderStatus !== "return_pending") {
     throw badRequest("Đơn hàng không ở trạng thái yêu cầu trả hàng");
   }
@@ -471,9 +469,9 @@ export const approveReturnOrder = async (orderId: string, _requestUser: UserDocu
   if (order.paymentStatus === "paid") {
     order.paymentStatus = "refund_pending";
   }
-  
+
   await order.save();
-  
+
   // Gửi email
   if (order.userId) {
     const emailUser = await User.findById(order.userId).select("email");
@@ -492,7 +490,7 @@ export const rejectReturnOrder = async (orderId: string, _requestUser: UserDocum
 
   const order = await orderRepo.findOrderById(orderId);
   if (!order) throw notFound("Không tìm thấy đơn hàng");
-  
+
   if (order.orderStatus !== "return_pending") {
     throw badRequest("Đơn hàng không ở trạng thái yêu cầu trả hàng");
   }
@@ -541,7 +539,7 @@ export const cancelOrder = async (
     if (!updatedOrder) {
       throw badRequest("Đơn hàng đã được xử lý hoặc không còn ở trạng thái chờ.");
     }
-    
+
     order = updatedOrder as any;
 
     const items = (order as any).items || [];
@@ -614,7 +612,7 @@ export const cancelPendingOrder = async (
     if (!updatedOrder) {
       throw badRequest("Đơn hàng đã được xử lý hoặc không còn ở trạng thái chờ.");
     }
-    
+
     order = updatedOrder as any;
 
     const items = (order as any).items || [];
@@ -734,7 +732,7 @@ export const refundOrderAdmin = async (
 
   const session = await mongoose.startSession();
   session.startTransaction();
-  
+
   try {
     const updateObj: any = { paymentStatus: "refunded" };
     // Nếu đơn hàng chưa ở trạng thái returned hoặc cancelled thì đổi sang returned

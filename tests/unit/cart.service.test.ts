@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as cartService from "../../app/modules/cart/cart.service.js";
 import * as cartRepository from "../../app/modules/cart/cart.repository.js";
-import Product from "../../app/models/product/product.schema.js";
 import Variant from "../../app/models/product/variant.schema.js";
 
 // Mock repositories and models
 vi.mock("../../app/modules/cart/cart.repository.js");
-vi.mock("../../app/models/product/product.schema.js");
 vi.mock("../../app/models/product/variant.schema.js");
 
 describe("Cart Service Unit Tests", () => {
@@ -66,7 +64,7 @@ describe("Cart Service Unit Tests", () => {
 
       const result = await cartService.syncCart("user1", localData);
       expect(cartRepository.save).toHaveBeenCalled();
-      expect(result.items.length).toBe(2);
+      expect(result!.items.length).toBe(2);
     });
   });
 });

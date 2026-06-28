@@ -199,9 +199,10 @@ router.post(
   catchAsync(async (req, res) => {
     const { products } = req.body;
     if (!products || !Array.isArray(products)) {
-      return response.error(res, { message: "Dữ liệu không hợp lệ" }, 400);
+      res.status(400).json({ message: "Dữ liệu không hợp lệ" });
+      return;
     }
-    const result = await productService.batchImportProducts(products, req.shopId);
+    const result = await productService.batchImportProducts(products);
     await logAction(
       req.user!._id.toString(),
       req.user!.name,

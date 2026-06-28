@@ -32,7 +32,7 @@ import settingRoutes from "./app/modules/setting/setting.controller.js";
 import uploadRoutes from "./app/modules/upload/upload.controller.js";
 import voucherRoutes from "./app/modules/voucher/voucher.controller.js";
 import reviewRoutes from "./app/modules/review/review.controller.js";
-import devRoutes from "./app/modules/dev/dev.controller.js";
+
 import cartRoutes from "./app/modules/cart/cart.controller.js";
 import flashSaleRoutes from "./app/modules/marketing/flash-sale.controller.js";
 import checkoutRoutes from "./app/modules/order/checkout/checkout.controller.js";
@@ -99,7 +99,8 @@ app.post(
   stripeWebhook,
 );
 
-// ── [4] Body Parser ───────────────────────────────────────────────────────────
+// ── [4] Global Rate Limiter & Body Parser ──────────────────────────────────────
+app.use(globalLimiter); // Áp dụng cho tất cả routes trước khi parse body
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
@@ -113,7 +114,6 @@ app.use((req, _res, next) => {
 });
 
 // ── [7] Routes ────────────────────────────────────────────────────────────────
-app.use(globalLimiter); // Áp dụng cho tất cả routes
 
 app.get("/", (_req, res) => {
   res.json({ success: true, message: "Backend is running", env: NODE_ENV });
@@ -137,9 +137,7 @@ app.use("/api/vouchers", voucherRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/flash-sales", flashSaleRoutes);
 app.use("/api/cart", cartRoutes);
-if (isDev) {
-  app.use("/api/dev", devRoutes);
-}
+
 app.use("/api/checkout", checkoutRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/shipping", shippingRoutes);
@@ -160,7 +158,6 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 import { startOrderCron } from "./app/modules/order/order.cron.js";
-import { initBackupCron } from "./app/modules/backup/backup.cron.js";
 import "./app/modules/cart/cart.cron.js";
 
 if (process.env.NODE_ENV !== "test") {
@@ -170,7 +167,6 @@ if (process.env.NODE_ENV !== "test") {
 
   // Start cron jobs
   startOrderCron();
-  initBackupCron();
 
   // ── [11] Graceful Shutdown ────────────────────────────────────────────────────
   const gracefulShutdown = (signal: string): void => {

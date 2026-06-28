@@ -292,7 +292,7 @@ describe("orderService.requestReturnOrder", () => {
     );
 
     expect(result.orderStatus).toBe("return_pending");
-    expect(fakeOrder.returnReason).toBe("Hàng bị lỗi");
+    expect((fakeOrder as any).returnReason).toBe("Hàng bị lỗi");
     expect(fakeOrder.save).toHaveBeenCalledOnce();
   });
 

@@ -9,7 +9,7 @@ import type {
   UpdateVoucherInput,
 } from "./dto/voucher.request.dto.js";
 import * as voucherRepo from "./voucher.repository.js";
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 
 // ── Admin CRUD ────────────────────────────────────────────────────────────────
 

@@ -48,6 +48,7 @@ describe("reviewService.createReview", () => {
     rating: 5,
     comment: "Sản phẩm tốt",
     images: [],
+    videos: [],
   };
 
   it("tạo review thành công khi user đã mua và chưa review", async () => {

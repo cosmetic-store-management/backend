@@ -19,8 +19,8 @@ export const GoodsReceiptItemSchema = z.object({
   quantity: z.number().int().positive("Số lượng phải lớn hơn 0"),
   importPrice: z.number().positive("Giá nhập phải lớn hơn 0"),
   batchCode: z.string().min(1, "Mã lô là bắt buộc"),
-  manufactureDate: z.coerce.date({ required_error: "Ngày sản xuất là bắt buộc" }),
-  expiryDate: z.coerce.date({ required_error: "Hạn sử dụng là bắt buộc" }),
+  manufactureDate: z.coerce.date({ message: "Ngày sản xuất là bắt buộc" }),
+  expiryDate: z.coerce.date({ message: "Hạn sử dụng là bắt buộc" }),
 });
 
 export const CreateGoodsReceiptSchema = z.object({

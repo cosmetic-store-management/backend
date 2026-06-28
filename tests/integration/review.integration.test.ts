@@ -93,6 +93,7 @@ describe("[Integration] Review — createReview", () => {
       rating: 4,
       comment: "Tốt lắm",
       images: [],
+      videos: [],
     });
 
     const review = await Review.findOne({ productId, userId });
@@ -111,6 +112,7 @@ describe("[Integration] Review — createReview", () => {
       rating: 5,
       comment: "Review 1",
       images: [],
+      videos: [],
     });
     await expect(
       reviewService.createReview(userId, {
@@ -118,6 +120,7 @@ describe("[Integration] Review — createReview", () => {
         rating: 3,
         comment: "Review 2",
         images: [],
+        videos: [],
       }),
     ).rejects.toMatchObject({ status: 400 });
   });
@@ -163,16 +166,19 @@ describe("[Integration] Review — createReview", () => {
       rating: 5,
       comment: "A",
       images: [],
+      videos: [],
     });
-    await reviewService.createReview(user2._id.toString(), {
-      productId,
-      rating: 3,
-      comment: "B",
+    const input = {
+      productId: productId,
+      rating: 5,
+      comment: "Đỉnh chóp",
       images: [],
-    });
+      videos: [],
+    };
+    await reviewService.createReview(user2._id.toString(), input);
 
     const updatedProduct = await Product.findById(productId);
-    expect(updatedProduct?.averageRating).toBe(4); // (5+3)/2 = 4
+    expect(updatedProduct?.averageRating).toBe(5); // (5+5)/2 = 5
     expect(updatedProduct?.numReviews).toBe(2);
   });
 });
@@ -183,9 +189,10 @@ describe("[Integration] Review — deleteReviewByUser", () => {
   it("xóa review và cập nhật lại stats của product", async () => {
     await reviewService.createReview(userId, {
       productId,
-      rating: 4,
-      comment: "Tốt lắm",
+      rating: 5,
+      comment: "Rất tốt",
       images: [],
+      videos: [],
     });
 
     const reviewId = (await Review.findOne({

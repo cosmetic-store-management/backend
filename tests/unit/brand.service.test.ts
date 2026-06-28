@@ -32,10 +32,10 @@ describe("Brand Service", () => {
 
   describe("getAdminBrands", () => {
     it("trả về danh sách thương hiệu có phân trang và số lượng SP", async () => {
-      vi.mocked(brandRepo.findAll).mockResolvedValue([makeFakeBrand() as any]);
+      vi.mocked(brandRepo.findAll).mockResolvedValue({ brands: [makeFakeBrand() as any] } as any);
       vi.mocked(brandRepo.countAll).mockResolvedValue(1);
 
-      const result = await brandService.getAdminBrands({ page: 1, limit: 10 });
+      const result = await brandService.getAdminBrands({ limit: 10 } as any);
       expect(result.brands).toHaveLength(1);
       // Aggregate mock returns 10 for brand_id
       expect(result.brands[0].productCount).toBe(10);
@@ -48,7 +48,7 @@ describe("Brand Service", () => {
       vi.mocked(brandRepo.findBySlug).mockResolvedValue(null);
       vi.mocked(brandRepo.create).mockResolvedValue(makeFakeBrand() as any);
 
-      const result = await brandService.createBrand({ name: "L'Oreal" });
+      const result = await brandService.createBrand({ name: "L'Oreal", description: "", imageUrl: "", country: "", isActive: true } as any);
       expect(result.name).toBe("L'Oreal");
       expect(result.slug).toBe("loreal");
     });
@@ -56,7 +56,7 @@ describe("Brand Service", () => {
     it("throw conflict khi slug đã tồn tại", async () => {
       vi.mocked(brandRepo.findBySlug).mockResolvedValue(makeFakeBrand() as any);
 
-      await expect(brandService.createBrand({ name: "L'Oreal" })).rejects.toMatchObject({
+      await expect(brandService.createBrand({ name: "L'Oreal", description: "", imageUrl: "", country: "", isActive: true } as any)).rejects.toMatchObject({
         status: 409,
       });
     });
@@ -69,7 +69,7 @@ describe("Brand Service", () => {
       vi.mocked(brandRepo.findOneBy).mockResolvedValue(null); // slug mới không trùng
       vi.mocked(brandRepo.save).mockResolvedValue(brand as any);
 
-      const result = await brandService.updateBrand(validObjectId, { name: "Mới" });
+      await brandService.updateBrand(validObjectId, { name: "Mới" });
       expect(brand.name).toBe("Mới");
       expect(brand.slug).toBe("moi");
     });

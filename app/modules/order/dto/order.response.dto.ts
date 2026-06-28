@@ -75,3 +75,28 @@ export const mapOrder = (
   paymentStatus: order.paymentStatus,
   ...(order.transactionId ? { transactionId: order.transactionId } : {}),
 });
+
+export const mapPublicOrder = (
+  order: OrderDocument,
+  items: any[] = [],
+): Partial<OrderResponse> => {
+  const fullOrder = mapOrder(order, items);
+  // Remove sensitive PII
+  const {
+    receiverName,
+    phone,
+    street,
+    userId,
+    creatorId,
+    transactionId,
+    ...publicData
+  } = fullOrder;
+  
+  // Optionally mask the phone number (e.g. 098****123)
+  const maskedPhone = phone ? phone.slice(0, 3) + "****" + phone.slice(-3) : "";
+
+  return {
+    ...publicData,
+    phone: maskedPhone,
+  };
+};

@@ -378,8 +378,8 @@ export const refundPayment = async (orderId: string, session?: mongoose.ClientSe
   }
 
   try {
-    if (transaction.method === "stripe") {
-      const paymentIntentId = transaction.details?.paymentIntentId;
+    if ((transaction as any).paymentMethod === "stripe") {
+      const paymentIntentId = (transaction as any).details?.paymentIntentId;
       if (paymentIntentId) {
         // Stripe Refund API
         const refund = await getStripe().refunds.create({
@@ -391,7 +391,7 @@ export const refundPayment = async (orderId: string, session?: mongoose.ClientSe
         await (PaymentTransaction as any).create([{
           orderId: order._id,
           amount: refund.amount,
-          method: "stripe",
+          paymentMethod: "stripe",
           status: "success",
           type: "refund",
           transactionId: refund.id,
@@ -409,7 +409,7 @@ export const refundPayment = async (orderId: string, session?: mongoose.ClientSe
       await (PaymentTransaction as any).create([{
         orderId: order._id,
         amount: transaction.amount,
-        method: transaction.method,
+        paymentMethod: (transaction as any).paymentMethod,
         status: "pending", // Đợi Admin xử lý thủ công
         type: "refund",
         transactionId: `REFUND_${Date.now()}`,

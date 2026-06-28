@@ -53,7 +53,7 @@ import { abandonPendingOrder } from "../order.service.js";
 
 router.patch("/:code/cancel", catchAsync(async (req: Request, res: Response) => {
   const { code } = req.params;
-  const result = await abandonPendingOrder(code);
+  const result = await abandonPendingOrder(code as string);
   res.json({ success: true, data: result, message: "Hủy mã QR thành công" });
 }));
 

@@ -55,7 +55,7 @@ export const getDashboardStats = async (
   endDate?: string,
   creatorId?: string,
 ) => {
-  const dateFilter = buildDateFilter(startDate, endDate, creatorId);
+  const dateFilter = buildDateFilter(startDate, endDate);
   const { prevStart, prevEnd } = getPreviousPeriod(startDate, endDate);
 
   // --- Kỳ hiện tại ---
@@ -412,7 +412,7 @@ export const generatePdfReport = async (
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
   const page = await browser.newPage();
-  await page.setContent(htmlContent, { waitUntil: "networkidle0" });
+  await page.setContent(htmlContent, { waitUntil: "networkidle0" as any });
   
   const pdfBuffer = await page.pdf({
     format: "A4",

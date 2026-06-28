@@ -74,7 +74,7 @@ router.get(
   authenticate,
   requirePermission("products.view"),
   catchAsync(async (req, res) => {
-    const batches = await inventoryService.getVariantBatches(req.params.variantId);
+    const batches = await inventoryService.getVariantBatches(req.params.variantId as string);
     return response.success(res, { batches });
   }),
 );
@@ -85,7 +85,7 @@ router.put(
   authenticate,
   requirePermission("products.manage"),
   catchAsync(async (req, res) => {
-    const batch = await inventoryService.updateBatch(req.params.id, req.body);
+    const batch = await inventoryService.updateBatch(req.params.id as string, req.body);
     await logAction(
       req.user!._id.toString(),
       req.user!.name,
