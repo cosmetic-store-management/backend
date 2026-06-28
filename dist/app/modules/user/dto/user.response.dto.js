@@ -13,7 +13,7 @@ export const mapUser = (user) => ({
     isActive: user.isActive,
     points: user.points || 0,
     internalNotes: user.internalNotes,
-    hasPassword: !!user.password,
+    hasOnlineAccount: !!user.password || (user.providers && user.providers.length > 0),
     dob: user.dob,
     gender: user.gender,
     favorites: user.favorites,

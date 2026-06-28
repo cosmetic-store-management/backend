@@ -1,7 +1,8 @@
-import User from "../../models/user.schema.js";
-export const findAll = () => User.find().select("-password").sort({ createdAt: -1 }).lean();
-export const findStaffs = async (page = 1, limit = 20, search, status, role) => {
-    const query = { role: { $in: ["owner", "manager", "staff"] } };
+import User from "../../models/user/user.schema.js";
+import Otp from "../../models/user/otp.schema.js";
+export const findAll = () => User.find({ isDeleted: { $ne: true } }).select("-password").sort({ createdAt: -1 }).lean();
+export const findStaffs = async (cursor = null, limit = 20, search, status, role) => {
+    const query = { role: { $in: ["owner", "manager", "staff"] }, isDeleted: { $ne: true } };
     if (search) {
         query.$or = [
             { name: { $regex: search, $options: "i" } },
@@ -15,18 +16,37 @@ export const findStaffs = async (page = 1, limit = 20, search, status, role) => 
     if (role) {
         query.role = role;
     }
-    const skip = (page - 1) * limit;
+    if (cursor) {
+        query._id = { $lt: cursor };
+    }
     const [users, total] = await Promise.all([
-        User.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        User.find(query)
+            .select("-password")
+            .sort({ _id: -1 })
+            .limit(limit + 1)
+            .lean(),
+        // Vẫn đếm total để FE hiển thị "Tổng số: X" nếu cần (tuy nhiên countDocuments chạy khá nặng với DB siêu lớn)
         User.countDocuments(query),
     ]);
-    return { users, total, page, limit, totalPages: Math.ceil(total / limit) };
+    const hasNextPage = users.length > limit;
+    const items = hasNextPage ? users.slice(0, limit) : users;
+    const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+    return { users: items, total, limit, nextCursor, hasNextPage };
 };
 export const findById = (id) => User.findById(id).select("-password");
-export const findByEmail = (email) => User.findOne({ email });
-export const findByPhone = (phone) => User.findOne({ phone });
+export const findByEmail = (email) => User.findOne({ email, isDeleted: { $ne: true } });
+export const findByPhone = (phone) => User.findOne({ phone, isDeleted: { $ne: true } });
 export const create = (data) => User.create(data);
 export const save = (user) => user.save();
 export const deleteById = (id) => User.findByIdAndDelete(id);
-export const updateById = (id, data) => User.findByIdAndUpdate(id, data, { returnDocument: "after" }).select("-password").lean();
-export const findCustomers = () => User.find({ role: "customer" }).select("-password").sort({ createdAt: -1 }).lean();
+export const updateById = (id, data) => User.findByIdAndUpdate(id, data, { returnDocument: "after" })
+    .select("-password")
+    .lean();
+export const findCustomers = () => User.find({ role: "customer", isDeleted: { $ne: true } })
+    .select("-password")
+    .sort({ createdAt: -1 })
+    .lean();
+export const findOtpByPhone = (phone) => Otp.findOne({ phone });
+export const upsertOtp = (phone, otpCode, expiresAt) => Otp.findOneAndUpdate({ phone }, { otpCode, expiresAt, isVerified: false }, { upsert: true, returnDocument: "after" });
+export const markOtpVerified = (phone) => Otp.findOneAndUpdate({ phone }, { isVerified: true }, { returnDocument: "after" });
+export const deleteOtp = (phone) => Otp.findOneAndDelete({ phone });

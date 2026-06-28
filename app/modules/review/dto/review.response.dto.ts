@@ -1,26 +1,26 @@
-import type { ReviewDocument } from "../../../models/review.schema.js";
 
 // ── Public Review Response ────────────────────────────────────────────────────
 
 export interface ReviewResponse {
-  id:                 string;
-  userId:             string | null;
-  userName:           string;
-  userAvatar:         string | null;
-  rating:             number;
-  comment:            string;
-  images:             string[];
-  adminReply:         string;
+  id: string;
+  userId: string | null;
+  userName: string;
+  userAvatar: string | null;
+  rating: number;
+  comment: string;
+  images: string[];
+  adminReply: string;
   isVerifiedPurchase: boolean;
-  createdAt:          Date;
+  createdAt: Date;
 }
 
 // ── Admin Review Response (bổ sung product info) ─────────────────────────────
 
 export interface AdminReviewResponse extends ReviewResponse {
-  productId:   string | null;
+  productId: string | null;
   productName: string;
   productSlug: string;
+  productImage: string | null;
 }
 
 // ── Mappers ───────────────────────────────────────────────────────────────────
@@ -30,16 +30,16 @@ export interface AdminReviewResponse extends ReviewResponse {
  * Input là kết quả populate("userId", "name avatarUrl").
  */
 export const mapReview = (r: any): ReviewResponse => ({
-  id:                 r._id.toString(),
-  userId:             r.userId?._id?.toString() ?? r.userId?.toString() ?? null,
-  userName:           r.userId?.name ?? "Người dùng Ẩn danh",
-  userAvatar:         r.userId?.avatarUrl ?? null,
-  rating:             r.rating,
-  comment:            r.comment,
-  images:             r.images ?? [],
-  adminReply:         r.adminReply ?? "",
+  id: r._id.toString(),
+  userId: r.userId?._id?.toString() ?? r.userId?.toString() ?? null,
+  userName: r.userId?.name ?? "Người dùng Ẩn danh",
+  userAvatar: r.userId?.avatarUrl ?? null,
+  rating: r.rating,
+  comment: r.comment,
+  images: r.images ?? [],
+  adminReply: r.adminReply ?? "",
   isVerifiedPurchase: r.isVerifiedPurchase,
-  createdAt:          r.createdAt,
+  createdAt: r.createdAt,
 });
 
 /**
@@ -48,7 +48,8 @@ export const mapReview = (r: any): ReviewResponse => ({
  */
 export const mapAdminReview = (r: any): AdminReviewResponse => ({
   ...mapReview(r),
-  productId:   r.productId?._id?.toString() ?? null,
+  productId: r.productId?._id?.toString() ?? null,
   productName: r.productId?.name ?? "Sản phẩm không xác định",
   productSlug: r.productId?.slug ?? "",
+  productImage: r.productId?.imageUrl ?? null,
 });

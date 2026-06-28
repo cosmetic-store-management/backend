@@ -2,45 +2,67 @@
  * inventory.integration.test.ts — Integration tests cho Inventory Service + Repository
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { connectTestDB, disconnectTestDB, clearCollections } from "./helpers/db-helper.js";
+import { connectTestDB, disconnectTestDB, clearCollections, } from "./helpers/db-helper.js";
 import * as inventoryService from "../../app/modules/inventory/inventory.service.js";
 import mongoose from "mongoose";
-import Supplier from "../../app/models/supplier.schema.js";
-import Variant from "../../app/models/variant.schema.js";
-import Product from "../../app/models/product.schema.js";
-import Category from "../../app/models/category.schema.js";
-import User from "../../app/models/user.schema.js";
-import InventoryTransaction from "../../app/models/inventory-transaction.schema.js";
+import Supplier from "../../app/models/inventory/supplier.schema.js";
+import Variant from "../../app/models/product/variant.schema.js";
+import Product from "../../app/models/product/product.schema.js";
+import Category from "../../app/models/product/category.schema.js";
+import User from "../../app/models/user/user.schema.js";
+import InventoryTransaction from "../../app/models/inventory/inventory-transaction.schema.js";
 let variantId;
 let supplierId;
-let operatorId;
 let operator;
-beforeAll(async () => { await connectTestDB(); });
-afterAll(async () => { await disconnectTestDB(); });
+beforeAll(async () => {
+    await connectTestDB();
+});
+afterAll(async () => {
+    await disconnectTestDB();
+});
 beforeEach(async () => {
     await clearCollections();
-    const category = await Category.create({ name: "Skincare", slug: "skincare", isActive: true });
+    const category = await Category.create({
+        name: "Skincare",
+        slug: "skincare",
+        isActive: true,
+    });
     const product = await Product.create({
-        name: "Kem dưỡng", slug: "kem-duong",
+        name: "Kem dưỡng",
+        slug: "kem-duong",
         categoryId: category._id,
         brandId: new mongoose.Types.ObjectId(),
         isActive: true,
         imageUrl: "x.jpg",
     });
     const variant = await Variant.create({
-        productId: product._id, name: "50ml", sku: "SKU1", price: 100_000, stock: 30, minStock: 10,
+        productId: product._id,
+        name: "50ml",
+        sku: "SKU1",
+        price: 100_000,
+        stock: 30,
+        minStock: 10,
     });
     variantId = variant._id.toString();
-    const supplier = await Supplier.create({ name: "Nhà cung cấp A", phone: "0901234567" });
+    const supplier = await Supplier.create({
+        name: "Nhà cung cấp A",
+        phone: "0901234567",
+    });
     supplierId = supplier._id.toString();
-    const user = await User.create({ name: "Staff", phone: "0999999999", role: "staff" });
-    operatorId = user._id.toString();
+    const user = await User.create({
+        name: "Staff",
+        phone: "0999999999",
+        role: "staff",
+    });
     operator = user;
 });
 // ── createSupplier ────────────────────────────────────────────────────────────
 describe("[Integration] Inventory — createSupplier", () => {
     it("tạo nhà cung cấp mới và lưu vào DB", async () => {
-        const result = await inventoryService.createSupplier({ name: "NCC Mới", phone: "0912345678" });
+        const result = await inventoryService.createSupplier({
+            name: "NCC Mới",
+            phone: "0912345678",
+        });
         expect(result.name).toBe("NCC Mới");
         const inDB = await Supplier.findOne({ name: "NCC Mới" });
         expect(inDB).not.toBeNull();
@@ -71,7 +93,10 @@ describe("[Integration] Inventory — createGoodsReceipt", () => {
 // ── adjustStock ───────────────────────────────────────────────────────────────
 describe("[Integration] Inventory — adjustStock", () => {
     it("kiểm kho cập nhật stock đúng và ghi transaction adjustment", async () => {
-        await inventoryService.adjustStock(operator, { variantId, actualStock: 25 });
+        await inventoryService.adjustStock(operator, {
+            variantId,
+            actualStock: 25,
+        });
         const updatedVariant = await Variant.findById(variantId);
         expect(updatedVariant?.stock).toBe(25);
         // Transaction adjustment phải có qty = -5 (25 - 30)
@@ -79,7 +104,10 @@ describe("[Integration] Inventory — adjustStock", () => {
         expect(tx?.qty).toBe(-5);
     });
     it("không tạo transaction khi stock không thay đổi", async () => {
-        await inventoryService.adjustStock(operator, { variantId, actualStock: 30 }); // không đổi
+        await inventoryService.adjustStock(operator, {
+            variantId,
+            actualStock: 30,
+        }); // không đổi
         const txCount = await InventoryTransaction.countDocuments();
         expect(txCount).toBe(0);
     });

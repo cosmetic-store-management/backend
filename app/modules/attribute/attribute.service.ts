@@ -1,7 +1,10 @@
 import * as attrRepo from "./attribute.repository.js";
 import { mapAttribute } from "./dto/attribute.response.dto.js";
 import { notFound, conflict } from "../../shared/errors/httpErrors.js";
-import type { CreateAttributeInput, UpdateAttributeInput } from "./dto/attribute.request.dto.js";
+import type {
+  CreateAttributeInput,
+  UpdateAttributeInput,
+} from "./dto/attribute.request.dto.js";
 
 export const getAllAttributes = async () => {
   const attrs = await attrRepo.findAll({}, 0, 100);
@@ -21,11 +24,14 @@ export const createAttribute = async (data: CreateAttributeInput) => {
   return mapAttribute(newAttr);
 };
 
-export const updateAttribute = async (id: string, data: UpdateAttributeInput) => {
+export const updateAttribute = async (
+  id: string,
+  data: UpdateAttributeInput,
+) => {
   const attr = await attrRepo.findById(id);
   if (!attr) throw notFound("Không tìm thấy thuộc tính");
 
-  if (data.name   !== undefined) attr.name   = data.name;
+  if (data.name !== undefined) attr.name = data.name;
   if (data.values !== undefined) attr.values = data.values;
 
   await attrRepo.save(attr);

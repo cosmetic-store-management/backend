@@ -33,7 +33,7 @@ export const mapProduct = (product) => {
     // Secondary categories populated
     const secCategories = [];
     const secCategoryIds = [];
-    for (const c of (p.categoryIds ?? [])) {
+    for (const c of p.categoryIds ?? []) {
         const mapped = mapCategoryRef(c);
         if (mapped) {
             secCategories.push(mapped);
@@ -47,16 +47,22 @@ export const mapProduct = (product) => {
         id: product._id.toString(),
         name: product.name,
         slug: product.slug,
-        brandId: p.brandId ? (typeof p.brandId === "object" && "_id" in p.brandId
-            ? p.brandId._id.toString()
-            : p.brandId.toString()) : "",
+        brandId: p.brandId
+            ? typeof p.brandId === "object" && "_id" in p.brandId
+                ? p.brandId._id.toString()
+                : p.brandId.toString()
+            : "",
         brand: brandObj,
         brandName: brandObj?.name ?? product.brand ?? "",
         description: product.description,
         imageUrl: product.imageUrl,
         imageUrls: product.imageUrls || [],
         isActive: product.isActive,
-        categoryId: categoryObj ? categoryObj.id : (p.categoryId ? p.categoryId.toString() : ""),
+        categoryId: categoryObj
+            ? categoryObj.id
+            : p.categoryId
+                ? p.categoryId.toString()
+                : "",
         category: categoryObj,
         categoryIds: secCategoryIds,
         categories: secCategories,

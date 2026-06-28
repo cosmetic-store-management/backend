@@ -1,17 +1,17 @@
-import type { UserDocument } from "../../../models/user.schema.js";
+import type { UserDocument } from "../../../models/user/user.schema.js";
 
 export interface UserResponse {
   id: string;
   name: string;
   email?: string;
-  phone: string;
+  phone?: string;
   addresses: any[];
   role: string;
   permissions?: string[];
   isActive: boolean;
   points: number;
   internalNotes?: string;
-  hasPassword?: boolean;
+  hasOnlineAccount?: boolean;
   dob?: Date;
   gender?: "male" | "female" | "other";
   favorites?: any[];
@@ -24,19 +24,19 @@ export interface UserResponse {
  * Dùng chung bởi auth.service và user.service.
  */
 export const mapUser = (user: UserDocument): UserResponse => ({
-  id:      user._id.toString(),
-  name:    user.name,
-  email:   user.email,
-  phone:   user.phone,
+  id: user._id.toString(),
+  name: user.name,
+  email: user.email,
+  phone: user.phone,
   addresses: user.addresses || [],
-  role:    user.role,
+  role: user.role,
   permissions: user.permissions || [],
   isActive: user.isActive,
-  points:  user.points || 0,
+  points: user.points || 0,
   internalNotes: user.internalNotes,
-  hasPassword: !!user.password,
-  dob:     user.dob,
-  gender:  user.gender,
+  hasOnlineAccount: !!user.password || (user.providers && user.providers.length > 0),
+  dob: user.dob,
+  gender: user.gender,
   favorites: user.favorites,
   recentlyViewed: user.recentlyViewed,
   avatar: user.avatar,

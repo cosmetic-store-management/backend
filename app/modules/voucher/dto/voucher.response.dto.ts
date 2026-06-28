@@ -1,4 +1,4 @@
-import type { VoucherDocument } from "../../../models/voucher.schema.js";
+import type { VoucherDocument } from "../../../models/system/voucher.schema.js";
 
 export interface VoucherResponse {
   id: string;

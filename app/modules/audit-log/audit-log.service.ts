@@ -5,12 +5,24 @@ import * as auditRepo from "./audit-log.repository.js";
 export const logAction = async (
   userId: string | undefined,
   userName: string,
-  action: "create" | "update" | "delete" | "login" | "logout" | "import" | "checkout" | "export",
-  domain: "identity" | "catalog" | "inventory" | "sales" | "settings" | "system",
+  action:
+    | "create"
+    | "update"
+    | "delete"
+    | "login"
+    | "logout"
+    | "import"
+    | "checkout"
+    | "export",
+  domain:
+    | "identity"
+    | "catalog"
+    | "inventory"
+    | "sales"
+    | "settings"
+    | "system",
   description: string,
   ipAddress: string,
-  userAgent?: string,
-  targetId?: string
 ) => {
   try {
     await auditRepo.createLog({
@@ -32,7 +44,9 @@ export const getAuditLogs = async (
   search?: string,
   domain?: string,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  cursor?: string,
+  limit = 20,
 ) => {
   const query: Record<string, any> = {};
 
@@ -52,21 +66,29 @@ export const getAuditLogs = async (
 
   if (search) {
     query.$or = [
-      { userName:    { $regex: search.trim(), $options: "i" } },
+      { userName: { $regex: search.trim(), $options: "i" } },
       { description: { $regex: search.trim(), $options: "i" } },
     ];
   }
 
-  const logs = await auditRepo.findByQuery(query, 100);
-  return logs.map((log: any) => ({
-    id:          log._id.toString(),
-    userName:    log.userName,
-    action:      log.action,
-    domain:      log.domain,
+  const result = await auditRepo.findByQuery(query, cursor || null, limit);
+  const formattedLogs = result.logs.map((log: any) => ({
+    id: log._id.toString(),
+    userName: log.userName,
+    action: log.action,
+    domain: log.domain,
     description: log.description,
-    ipAddress:   log.ipAddress,
-    timestamp:   log.createdAt
+    ipAddress: log.ipAddress,
+    timestamp: log.createdAt
       ? new Date(log.createdAt).toISOString().replace("T", " ").substring(0, 19)
       : "",
   }));
+  return {
+    logs: formattedLogs,
+    pagination: {
+      nextCursor: result.nextCursor,
+      hasNextPage: result.hasNextPage,
+      limit,
+    }
+  };
 };

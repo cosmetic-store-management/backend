@@ -1,3 +1,4 @@
+// ── Public Review Response ────────────────────────────────────────────────────
 // ── Mappers ───────────────────────────────────────────────────────────────────
 /**
  * mapReview — Dùng cho public endpoint (danh sách review theo productId).
@@ -24,4 +25,5 @@ export const mapAdminReview = (r) => ({
     productId: r.productId?._id?.toString() ?? null,
     productName: r.productId?.name ?? "Sản phẩm không xác định",
     productSlug: r.productId?.slug ?? "",
+    productImage: r.productId?.imageUrl ?? null,
 });

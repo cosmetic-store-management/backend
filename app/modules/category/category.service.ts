@@ -1,13 +1,23 @@
 import * as categoryRepo from "./category.repository.js";
 import { mapCategory } from "./dto/category.response.dto.js";
-import { badRequest, notFound, conflict } from "../../shared/errors/httpErrors.js";
-import type { CreateCategoryInput, UpdateCategoryInput } from "./dto/category.request.dto.js";
+import {
+  badRequest,
+  notFound,
+  conflict,
+} from "../../shared/errors/httpErrors.js";
+import type {
+  CreateCategoryInput,
+  UpdateCategoryInput,
+} from "./dto/category.request.dto.js";
 import mongoose from "mongoose";
 
 const slugify = (text: string): string =>
-  text.toString().normalize("NFD")
+  text
+    .toString()
+    .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().trim()
+    .toLowerCase()
+    .trim()
     .replace(/đ/g, "d")
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
@@ -26,11 +36,25 @@ const parseParentId = async (parentId: string | null | undefined) => {
 
 // ── PUBLIC ────────────────────────────────────────────────────────────────────
 
+// ── Cache for Public Categories ───────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const globalCache = (global as any).__catCache || { data: null, expiresAt: 0 };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(global as any).__catCache = globalCache;
+
 export const getPublicCategories = async () => {
+  const now = Date.now();
+  if (globalCache.data && globalCache.expiresAt > now) {
+    return globalCache.data;
+  }
+
   // Fetch all active categories to build the tree, regardless of product count
-  const categories = await categoryRepo.findAll({ isActive: true }, 0, 1000);
-  const countsMap = await categoryRepo.countProductsByCategoryIds(categories.map(c => c._id as any));
-  
+  const result = await categoryRepo.findAll({ isActive: true }, null, 1000);
+  const categories = result.categories;
+  const countsMap = await categoryRepo.countProductsByCategoryIds(
+    categories.map((c) => c._id as any),
+  );
+
   const mapped = categories.map((cat) => {
     (cat as any).productCount = countsMap.get(cat._id.toString()) || 0;
     return mapCategory(cat);
@@ -38,10 +62,10 @@ export const getPublicCategories = async () => {
 
   // Build tree
   const categoryMap = new Map<string, any>();
-  mapped.forEach(c => categoryMap.set(c.id, { ...c, children: [] }));
+  mapped.forEach((c) => categoryMap.set(c.id, { ...c, children: [] }));
 
   const tree: any[] = [];
-  categoryMap.forEach(c => {
+  categoryMap.forEach((c) => {
     if (c.parentId && categoryMap.has(c.parentId)) {
       categoryMap.get(c.parentId).children.push(c);
     } else {
@@ -58,7 +82,7 @@ export const getPublicCategories = async () => {
     node.productCount = total;
     return total;
   };
-  tree.forEach(root => accumulateCounts(root));
+  tree.forEach((root) => accumulateCounts(root));
 
   return tree;
 };
@@ -71,12 +95,20 @@ export const getPublicCategoryDetail = async (slug: string) => {
 
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 
-interface AdminCategoryQuery { search?: string; status?: string; page?: number; limit?: number; }
+interface AdminCategoryQuery {
+  search?: string;
+  status?: string;
+  cursor?: string;
+  limit?: number;
+}
 
-export const getAdminCategories = async ({ search, status, page = 1, limit = 20 }: AdminCategoryQuery) => {
-  const parsedPage  = Math.max(Number(page) || 1, 1);
+export const getAdminCategories = async ({
+  search,
+  status,
+  cursor,
+  limit = 20,
+}: AdminCategoryQuery) => {
   const parsedLimit = Math.max(Number(limit) || 20, 1);
-  const skip = (parsedPage - 1) * parsedLimit;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const query: Record<string, any> = {};
@@ -84,19 +116,27 @@ export const getAdminCategories = async ({ search, status, page = 1, limit = 20 
   if (status === "active") query.isActive = true;
   else if (status === "inactive") query.isActive = false;
 
-  const [categories, total] = await Promise.all([
-    categoryRepo.findAll(query, skip, parsedLimit),
+  const [result, total] = await Promise.all([
+    categoryRepo.findAll(query, cursor || null, parsedLimit),
     categoryRepo.countAll(query),
   ]);
+  const categories = result.categories;
 
-  const countsMap = await categoryRepo.countProductsByCategoryIds(categories.map(c => c._id as any));
+  const countsMap = await categoryRepo.countProductsByCategoryIds(
+    categories.map((c) => c._id as any),
+  );
 
   return {
     categories: categories.map((cat) => {
       (cat as any).productCount = countsMap.get(cat._id.toString()) || 0;
       return mapCategory(cat);
     }),
-    pagination: { page: parsedPage, limit: parsedLimit, total, totalPages: Math.ceil(total / parsedLimit) },
+    pagination: {
+      limit: parsedLimit,
+      total,
+      nextCursor: result.nextCursor,
+      hasNextPage: result.hasNextPage,
+    },
   };
 };
 
@@ -121,22 +161,29 @@ export const updateCategory = async (id: string, data: UpdateCategoryInput) => {
 
   if (data.name !== undefined) {
     const nextSlug = slugify(data.name);
-    const existing = await categoryRepo.findOneBy({ slug: nextSlug, _id: { $ne: category._id } });
+    const existing = await categoryRepo.findOneBy({
+      slug: nextSlug,
+      _id: { $ne: category._id },
+    });
     if (existing) throw conflict("Slug danh mục đã tồn tại");
     category.name = data.name;
     category.slug = nextSlug;
   }
 
   if (data.description !== undefined) category.description = data.description;
-  if (data.imageUrl    !== undefined) category.imageUrl    = data.imageUrl;
-  if (data.iconUrl     !== undefined) category.iconUrl     = data.iconUrl;
-  if (data.bannerUrl   !== undefined) category.bannerUrl   = data.bannerUrl;
-  if (data.parentId    !== undefined) category.parentId    = await parseParentId(data.parentId);
-  if (data.isActive    !== undefined) category.isActive    = data.isActive;
-  if (data.sortOrder   !== undefined) category.sortOrder   = data.sortOrder;
+  if (data.imageUrl !== undefined) category.imageUrl = data.imageUrl;
+  if (data.iconUrl !== undefined) category.iconUrl = data.iconUrl;
+  if (data.bannerUrl !== undefined) category.bannerUrl = data.bannerUrl;
+  if (data.parentId !== undefined)
+    category.parentId = await parseParentId(data.parentId);
+  if (data.isActive !== undefined) category.isActive = data.isActive;
+  if (data.sortOrder !== undefined) category.sortOrder = data.sortOrder;
 
   // Prevent self-referencing parentId
-  if (category.parentId && category.parentId.toString() === category._id.toString()) {
+  if (
+    category.parentId &&
+    category.parentId.toString() === category._id.toString()
+  ) {
     throw badRequest("Danh mục không thể là cha của chính nó");
   }
 

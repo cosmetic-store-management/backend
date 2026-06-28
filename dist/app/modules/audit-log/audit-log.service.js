@@ -1,6 +1,6 @@
 import * as auditRepo from "./audit-log.repository.js";
 // ── Write ─────────────────────────────────────────────────────────────────────
-export const logAction = async (userId, userName, action, domain, description, ipAddress, userAgent, targetId) => {
+export const logAction = async (userId, userName, action, domain, description, ipAddress) => {
     try {
         await auditRepo.createLog({
             userId,
@@ -16,7 +16,7 @@ export const logAction = async (userId, userName, action, domain, description, i
     }
 };
 // ── Read ──────────────────────────────────────────────────────────────────────
-export const getAuditLogs = async (search, domain, startDate, endDate) => {
+export const getAuditLogs = async (search, domain, startDate, endDate, cursor, limit = 20) => {
     const query = {};
     if (domain && domain !== "all") {
         query.domain = domain;
@@ -37,8 +37,8 @@ export const getAuditLogs = async (search, domain, startDate, endDate) => {
             { description: { $regex: search.trim(), $options: "i" } },
         ];
     }
-    const logs = await auditRepo.findByQuery(query, 100);
-    return logs.map((log) => ({
+    const result = await auditRepo.findByQuery(query, cursor || null, limit);
+    const formattedLogs = result.logs.map((log) => ({
         id: log._id.toString(),
         userName: log.userName,
         action: log.action,
@@ -49,4 +49,12 @@ export const getAuditLogs = async (search, domain, startDate, endDate) => {
             ? new Date(log.createdAt).toISOString().replace("T", " ").substring(0, 19)
             : "",
     }));
+    return {
+        logs: formattedLogs,
+        pagination: {
+            nextCursor: result.nextCursor,
+            hasNextPage: result.hasNextPage,
+            limit,
+        }
+    };
 };

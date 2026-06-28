@@ -1,9 +1,12 @@
 import * as brandRepo from "./brand.repository.js";
 import { mapBrand } from "./dto/brand.response.dto.js";
 import { notFound, conflict } from "../../shared/errors/httpErrors.js";
-const slugify = (text) => text.toString().normalize("NFD")
+const slugify = (text) => text
+    .toString()
+    .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().trim()
+    .toLowerCase()
+    .trim()
     .replace(/đ/g, "d")
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
@@ -12,28 +15,31 @@ const slugify = (text) => text.toString().normalize("NFD")
 const getBrandProductCounts = async (brandIds) => {
     if (!brandIds.length)
         return {};
-    const { default: Product } = await import("../../models/product.schema.js");
+    const { default: Product } = await import("../../models/product/product.schema.js");
     const { Types } = await import("mongoose");
     const results = await Product.aggregate([
-        { $match: { brandId: { $in: brandIds.map(id => new Types.ObjectId(id)) } } },
+        {
+            $match: {
+                brandId: { $in: brandIds.map((id) => new Types.ObjectId(id)) },
+            },
+        },
         { $group: { _id: "$brandId", count: { $sum: 1 } } },
     ]);
     return Object.fromEntries(results.map((r) => [r._id.toString(), r.count]));
 };
 // ── PUBLIC ────────────────────────────────────────────────────────────────────
 export const getPublicBrands = async () => {
-    const brands = await brandRepo.findAll({ isActive: true }, 0, 500);
+    const result = await brandRepo.findAll({ isActive: true }, null, 500);
+    const brands = result.brands;
     const brandIds = brands.map((b) => b._id.toString());
     const countMap = await getBrandProductCounts(brandIds);
     return brands
-        .map(b => mapBrand(b, countMap[b._id.toString()] ?? 0))
-        .filter(b => b.productCount > 0)
+        .map((b) => mapBrand(b, countMap[b._id.toString()] ?? 0))
+        .filter((b) => b.productCount > 0)
         .sort((a, b) => b.productCount - a.productCount);
 };
-export const getAdminBrands = async ({ search, status, page = 1, limit = 50 }) => {
-    const parsedPage = Math.max(Number(page) || 1, 1);
+export const getAdminBrands = async ({ search, status, cursor, limit = 50, }) => {
     const parsedLimit = Math.max(Number(limit) || 50, 1);
-    const skip = (parsedPage - 1) * parsedLimit;
     const query = {};
     if (search)
         query.name = { $regex: search.trim(), $options: "i" };
@@ -41,16 +47,22 @@ export const getAdminBrands = async ({ search, status, page = 1, limit = 50 }) =
         query.isActive = true;
     else if (status === "inactive")
         query.isActive = false;
-    const [brands, total] = await Promise.all([
-        brandRepo.findAll(query, skip, parsedLimit),
+    const [result, total] = await Promise.all([
+        brandRepo.findAll(query, cursor || null, parsedLimit),
         brandRepo.countAll(query),
     ]);
+    const brands = result.brands;
     // Batch-fetch product counts (single aggregate — industry standard)
     const brandIds = brands.map((b) => b._id.toString());
     const countMap = await getBrandProductCounts(brandIds);
     return {
-        brands: brands.map(b => mapBrand(b, countMap[b._id.toString()] ?? 0)),
-        pagination: { page: parsedPage, limit: parsedLimit, total, totalPages: Math.ceil(total / parsedLimit) },
+        brands: brands.map((b) => mapBrand(b, countMap[b._id.toString()] ?? 0)),
+        pagination: {
+            limit: parsedLimit,
+            total,
+            nextCursor: result.nextCursor,
+            hasNextPage: result.hasNextPage,
+        },
     };
 };
 export const getBrandDetail = async (id) => {
@@ -74,7 +86,10 @@ export const updateBrand = async (id, data) => {
         throw notFound("Không tìm thấy thương hiệu");
     if (data.name !== undefined) {
         const nextSlug = slugify(data.name);
-        const existing = await brandRepo.findOneBy({ slug: nextSlug, _id: { $ne: brand._id } });
+        const existing = await brandRepo.findOneBy({
+            slug: nextSlug,
+            _id: { $ne: brand._id },
+        });
         if (existing)
             throw conflict("Tên/Slug thương hiệu đã tồn tại");
         brand.name = data.name;
@@ -105,7 +120,7 @@ export const deleteBrand = async (id) => {
     const brand = await brandRepo.findById(id);
     if (!brand)
         throw notFound("Không tìm thấy thương hiệu");
-    const { default: Product } = await import("../../models/product.schema.js");
+    const { default: Product } = await import("../../models/product/product.schema.js");
     const productCount = await Product.countDocuments({ brandId: id });
     if (productCount > 0)
         throw conflict(`Không thể xoá thương hiệu đang có ${productCount} sản phẩm. Vui lòng xoá hoặc chuyển sản phẩm sang thương hiệu khác trước.`);

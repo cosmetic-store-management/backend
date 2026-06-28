@@ -1,4 +1,4 @@
-import type { AttributeDocument } from "../../../models/attribute.schema.js";
+import type { AttributeDocument } from "../../../models/product/attribute.schema.js";
 
 export interface AttributeResponse {
   id: string;
@@ -8,8 +8,8 @@ export interface AttributeResponse {
 }
 
 export const mapAttribute = (attr: AttributeDocument): AttributeResponse => ({
-  id:     attr._id.toString(),
-  name:   attr.name,
-  code:   attr.code,
+  id: attr._id.toString(),
+  name: attr.name,
+  code: attr.code,
   values: attr.values,
 });

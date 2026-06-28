@@ -1,22 +1,34 @@
 import { z } from "zod";
 export const UpdateProfileSchema = z.object({
     name: z.string().min(1).trim().optional(),
-    phone: z.string().regex(/^[0-9]{9,11}$/).trim().optional(),
+    email: z.string().email().optional().or(z.literal("")),
+    phone: z
+        .string()
+        .regex(/^[0-9]{9,11}$/)
+        .trim()
+        .optional(),
     dob: z.string().datetime().or(z.date()).optional(),
     gender: z.enum(["male", "female", "other"]).optional(),
 });
-import { PERMISSIONS } from "../../../models/user.schema.js";
+import { PERMISSIONS } from "../../../models/user/user.schema.js";
 export const UpdateRoleSchema = z.object({
     role: z.enum(["manager", "staff"]).optional(),
-    permissions: z.array(z.enum([PERMISSIONS[0], ...PERMISSIONS.slice(1)])).optional(),
+    permissions: z
+        .array(z.enum([PERMISSIONS[0], ...PERMISSIONS.slice(1)]))
+        .optional(),
 });
 export const CreateStaffSchema = z.object({
     name: z.string().min(1).trim(),
     email: z.string().email().optional().or(z.literal("")),
-    phone: z.string().regex(/^[0-9]{9,11}$/).trim(),
+    phone: z
+        .string()
+        .regex(/^[0-9]{9,11}$/)
+        .trim(),
     password: z.string().min(6).optional(),
     role: z.enum(["manager", "staff"]),
-    permissions: z.array(z.enum([PERMISSIONS[0], ...PERMISSIONS.slice(1)])).optional(),
+    permissions: z
+        .array(z.enum([PERMISSIONS[0], ...PERMISSIONS.slice(1)]))
+        .optional(),
 });
 export const UpdateStatusSchema = z.object({
     isActive: z.boolean(),

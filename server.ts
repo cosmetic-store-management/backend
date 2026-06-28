@@ -1,9 +1,8 @@
-import dotenv from "dotenv";
+import "dotenv/config";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: join(__dirname, "app/config/.env") });
 
 // ── [0] Validate env ──────────────────────────────────────────────────────────
 import { validateEnv } from "./app/config/env.js";
@@ -12,12 +11,13 @@ validateEnv();
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 import mongoSanitize from "express-mongo-sanitize";
 import morgan from "morgan";
+import { globalLimiter } from "./app/middlewares/rateLimit.middleware.js";
 
 import connectDB from "./app/config/db.js";
 import healthRouter from "./app/config/health.js";
+import { setupSwagger } from "./app/config/swagger.js";
 import authRoutes from "./app/modules/auth/auth.controller.js";
 import userRoutes from "./app/modules/user/user.controller.js";
 import productRoutes from "./app/modules/product/product.controller.js";
@@ -33,13 +33,21 @@ import uploadRoutes from "./app/modules/upload/upload.controller.js";
 import voucherRoutes from "./app/modules/voucher/voucher.controller.js";
 import reviewRoutes from "./app/modules/review/review.controller.js";
 import devRoutes from "./app/modules/dev/dev.controller.js";
+import cartRoutes from "./app/modules/cart/cart.controller.js";
+import flashSaleRoutes from "./app/modules/marketing/flash-sale.controller.js";
+import checkoutRoutes from "./app/modules/order/checkout/checkout.controller.js";
+import paymentRoutes from "./app/modules/order/payment/payment.controller.js";
+import shippingRoutes from "./app/modules/order/shipping/shipping.controller.js";
+import transactionRoutes from "./app/modules/order/transaction/transaction.controller.js";
 import { errorHandler } from "./app/middlewares/errorHandler.middleware.js";
+import passport from "./app/shared/config/passport.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || "development";
 const isDev = NODE_ENV === "development";
-const skipRateLimit = process.env.DISABLE_RATE_LIMIT === "true";
+
+app.use(passport.initialize());
 
 // Trust 1 hop proxy (API Gateway) để rate limit dùng IP thật từ X-Forwarded-For
 app.set("trust proxy", 1);
@@ -49,17 +57,51 @@ if (process.env.NODE_ENV !== "test") {
 }
 
 // ── [1] Logging ───────────────────────────────────────────────────────────────
-app.use(morgan(isDev ? "dev" : "combined"));
+if (isDev) {
+  app.use(morgan("dev"));
+} else {
+  // Production: structured JSON for log aggregators (Datadog, CloudWatch, etc.)
+  app.use(
+    morgan((tokens, req, res) => {
+      return JSON.stringify({
+        ts: tokens.date(req, res, "iso"),
+        method: tokens.method(req, res),
+        url: tokens.url(req, res),
+        status: Number(tokens.status(req, res)),
+        ms: Number(tokens["response-time"](req, res)),
+        bytes: Number(tokens.res(req, res, "content-length") ?? 0),
+        ip: tokens["remote-addr"](req, res),
+      });
+    }),
+  );
+}
 
 // ── [2] Security Headers ──────────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
-const allowedOrigins = (process.env.CORS_ORIGIN || "").split(",").map(o => o.trim()).filter(Boolean);
-app.use(cors({ origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins, credentials: true }));
+const allowedOrigins = (process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
+    credentials: true,
+  }),
+);
+
+import { stripeWebhook } from "./app/modules/order/payment/payment.controller.js";
+
+// ── [3] Stripe Webhook (bắt buộc dùng raw body) ──────────────────────────────
+app.post(
+  "/api/payments/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook,
+);
 
 // ── [4] Body Parser ───────────────────────────────────────────────────────────
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true, limit: "2mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // ── [5] NoSQL Injection Protection ───────────────────────────────────────────
 
@@ -70,35 +112,16 @@ app.use((req, _res, next) => {
   next();
 });
 
-// Global — chỉ giới hạn trong production
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: "Quá nhiều yêu cầu, vui lòng thử lại sau" },
-  skip: () => skipRateLimit,
-});
-
-// Auth routes — brute-force protection
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: "Quá nhiều yêu cầu từ IP này, vui lòng thử lại sau 15 phút" },
-  skip: () => skipRateLimit,
-});
-
 // ── [7] Routes ────────────────────────────────────────────────────────────────
-app.use(globalLimiter);  // áp dụng cho tất cả routes
+app.use(globalLimiter); // Áp dụng cho tất cả routes
 
 app.get("/", (_req, res) => {
   res.json({ success: true, message: "Backend is running", env: NODE_ENV });
 });
 
+setupSwagger(app);
 app.use("/api/health", healthRouter);
-app.use("/api/auth", authLimiter, authRoutes);  // authLimiter ghi đè globalLimiter cho auth
+app.use("/api/auth", authRoutes); // authLimiter đã được chuyển vào auth.controller.ts
 app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/categories", categoryRoutes);
@@ -112,26 +135,42 @@ app.use("/api/settings", settingRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/vouchers", voucherRoutes);
 app.use("/api/reviews", reviewRoutes);
+app.use("/api/flash-sales", flashSaleRoutes);
+app.use("/api/cart", cartRoutes);
 if (isDev) {
   app.use("/api/dev", devRoutes);
 }
-
-// Static file serving for uploads
+app.use("/api/checkout", checkoutRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/shipping", shippingRoutes);
+app.use("/api/transactions", transactionRoutes);
 app.use("/api/uploads", express.static(join(__dirname, "uploads")));
-
 
 // ── [8] 404 Handler ───────────────────────────────────────────────────────────
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: `Route ${req.method} ${req.originalUrl} không tồn tại` });
+  res
+    .status(404)
+    .json({
+      success: false,
+      message: `Route ${req.method} ${req.originalUrl} không tồn tại`,
+    });
 });
 
 // ── [9] Global Error Handler ──────────────────────────────────────────────────
 app.use(errorHandler);
 
+import { startOrderCron } from "./app/modules/order/order.cron.js";
+import { initBackupCron } from "./app/modules/backup/backup.cron.js";
+import "./app/modules/cart/cart.cron.js";
+
 if (process.env.NODE_ENV !== "test") {
   const server = app.listen(PORT, () => {
     console.log(`🚀 Server running at http://localhost:${PORT} [${NODE_ENV}]`);
   });
+
+  // Start cron jobs
+  startOrderCron();
+  initBackupCron();
 
   // ── [11] Graceful Shutdown ────────────────────────────────────────────────────
   const gracefulShutdown = (signal: string): void => {
@@ -147,7 +186,10 @@ if (process.env.NODE_ENV !== "test") {
       }
       process.exit(0);
     });
-    setTimeout(() => { console.error("Forced shutdown after 10s"); process.exit(1); }, 10000);
+    setTimeout(() => {
+      console.error("Forced shutdown after 10s");
+      process.exit(1);
+    }, 10000);
   };
 
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));

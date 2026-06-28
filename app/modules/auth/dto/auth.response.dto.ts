@@ -5,8 +5,8 @@ import type { UserResponse } from "../../user/dto/user.response.dto.js";
  * (register, login, refresh token).
  */
 export interface AuthResponse {
-  user:         UserResponse;
-  accessToken:  string;
+  user: UserResponse;
+  accessToken: string;
   refreshToken: string;
 }
 
@@ -14,6 +14,6 @@ export interface AuthResponse {
  * TokenResponse — Shape của response khi chỉ cần cặp token mới (refresh).
  */
 export interface TokenResponse {
-  accessToken:  string;
+  accessToken: string;
   refreshToken: string;
 }

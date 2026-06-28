@@ -2,34 +2,53 @@
  * product.integration.test.ts — Integration tests cho Product Service + Repository
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { connectTestDB, disconnectTestDB, clearCollections } from "./helpers/db-helper.js";
+import {
+  connectTestDB,
+  disconnectTestDB,
+  clearCollections,
+} from "./helpers/db-helper.js";
 import * as productService from "../../app/modules/product/product.service.js";
-import Product from "../../app/models/product.schema.js";
-import Category from "../../app/models/category.schema.js";
-import Brand from "../../app/models/brand.schema.js";
-import Variant from "../../app/models/variant.schema.js";
+import Product from "../../app/models/product/product.schema.js";
+import Category from "../../app/models/product/category.schema.js";
+import Brand from "../../app/models/product/brand.schema.js";
+import Variant from "../../app/models/product/variant.schema.js";
 
 let categoryId: string;
-let brandId:    string;
+let brandId: string;
 
-beforeAll(async () => { await connectTestDB(); });
-afterAll(async () => { await disconnectTestDB(); });
+beforeAll(async () => {
+  await connectTestDB();
+});
+afterAll(async () => {
+  await disconnectTestDB();
+});
 
 beforeEach(async () => {
   await clearCollections();
 
-  const cat   = await Category.create({ name: "Skincare", slug: "skincare", isActive: true });
-  const brand = await Brand.create({ name: "La Roche-Posay", slug: "la-roche-posay", isActive: true, imageUrl: "x.jpg", country: "France", description: "" });
+  const cat = await Category.create({
+    name: "Skincare",
+    slug: "skincare",
+    isActive: true,
+  });
+  const brand = await Brand.create({
+    name: "La Roche-Posay",
+    slug: "la-roche-posay",
+    isActive: true,
+    imageUrl: "x.jpg",
+    country: "France",
+    description: "",
+  });
   categoryId = cat._id.toString();
-  brandId    = brand._id.toString();
+  brandId = brand._id.toString();
 });
 
 const makeProductInput = (overrides: Record<string, any> = {}) => ({
-  name:       "Kem Dưỡng Ẩm",
+  name: "Kem Dưỡng Ẩm",
   categoryId,
   brandId,
-  imageUrl:   "https://example.com/img.jpg",
-  variants:   [{ name: "50ml", sku: "SKU-001", price: 150_000, stock: 50 }],
+  imageUrl: "https://example.com/img.jpg",
+  variants: [{ name: "50ml", sku: "SKU-001", price: 150_000, stock: 50 }],
   ...overrides,
 });
 
@@ -37,7 +56,9 @@ const makeProductInput = (overrides: Record<string, any> = {}) => ({
 
 describe("[Integration] Product — createProduct", () => {
   it("tạo product với slug đúng từ tên tiếng Việt", async () => {
-    const result = await productService.createProduct(makeProductInput({ name: "Kem Dưỡng Ẩm" }) as any);
+    const result = await productService.createProduct(
+      makeProductInput({ name: "Kem Dưỡng Ẩm" }) as any,
+    );
 
     expect(result.slug).toBe("kem-duong-am");
     const inDB = await Product.findOne({ slug: "kem-duong-am" });
@@ -54,14 +75,19 @@ describe("[Integration] Product — createProduct", () => {
 
   it("throw conflict khi slug trùng trong cùng category", async () => {
     await productService.createProduct(makeProductInput() as any);
-    await expect(productService.createProduct(makeProductInput() as any))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      productService.createProduct(makeProductInput() as any),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it("throw badRequest khi categoryId không tồn tại", async () => {
-    await expect(productService.createProduct(makeProductInput({
-      categoryId: "000000000000000000000000",
-    }) as any)).rejects.toMatchObject({ status: 400 });
+    await expect(
+      productService.createProduct(
+        makeProductInput({
+          categoryId: "000000000000000000000000",
+        }) as any,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });
 
@@ -70,18 +96,29 @@ describe("[Integration] Product — createProduct", () => {
 describe("[Integration] Product — getAdminProducts", () => {
   beforeEach(async () => {
     // SKU phải unique — mỗi product dùng SKU riêng
-    await productService.createProduct(makeProductInput({
-      name: "Serum A",
-      variants: [{ name: "30ml", sku: "SKU-SERUM-A", price: 200_000, stock: 30 }],
-    }) as any);
-    await productService.createProduct(makeProductInput({
-      name: "Toner B",
-      variants: [{ name: "150ml", sku: "SKU-TONER-B", price: 180_000, stock: 40 }],
-    }) as any);
+    await productService.createProduct(
+      makeProductInput({
+        name: "Serum A",
+        variants: [
+          { name: "30ml", sku: "SKU-SERUM-A", price: 200_000, stock: 30 },
+        ],
+      }) as any,
+    );
+    await productService.createProduct(
+      makeProductInput({
+        name: "Toner B",
+        variants: [
+          { name: "150ml", sku: "SKU-TONER-B", price: 180_000, stock: 40 },
+        ],
+      }) as any,
+    );
   });
 
   it("trả về danh sách đúng số lượng", async () => {
-    const result = await productService.getAdminProducts({ page: 1, limit: 10 });
+    const result = await productService.getAdminProducts({
+      page: 1,
+      limit: 10,
+    });
     expect(result.products.length).toBe(2);
     expect(result.pagination.total).toBe(2);
   });
@@ -97,7 +134,9 @@ describe("[Integration] Product — getAdminProducts", () => {
 
 describe("[Integration] Product — deleteProduct", () => {
   it("xóa product và toàn bộ variants", async () => {
-    const created = await productService.createProduct(makeProductInput() as any);
+    const created = await productService.createProduct(
+      makeProductInput() as any,
+    );
     const productId = created.id as string;
 
     await productService.deleteProduct(productId);
@@ -114,9 +153,13 @@ describe("[Integration] Product — deleteProduct", () => {
 
 describe("[Integration] Product — updateProduct", () => {
   it("cập nhật tên và slug thay đổi tương ứng", async () => {
-    const created = await productService.createProduct(makeProductInput({ name: "Kem Gốc" }) as any);
+    const created = await productService.createProduct(
+      makeProductInput({ name: "Kem Gốc" }) as any,
+    );
 
-    const updated = await productService.updateProduct(created.id as string, { name: "Kem Mới" });
+    const updated = await productService.updateProduct(created.id as string, {
+      name: "Kem Mới",
+    });
 
     expect(updated.name).toBe("Kem Mới");
     expect(updated.slug).toBe("kem-moi");
@@ -126,18 +169,32 @@ describe("[Integration] Product — updateProduct", () => {
   });
 
   it("throw conflict khi tên mới trùng slug với product khác trong cùng category", async () => {
-    await productService.createProduct(makeProductInput({ name: "Serum X", variants: [{ name: "30ml", sku: "SKU-SX", price: 100_000, stock: 10 }] }) as any);
-    const p2 = await productService.createProduct(makeProductInput({ name: "Toner Y", variants: [{ name: "150ml", sku: "SKU-TY", price: 90_000, stock: 20 }] }) as any);
+    await productService.createProduct(
+      makeProductInput({
+        name: "Serum X",
+        variants: [{ name: "30ml", sku: "SKU-SX", price: 100_000, stock: 10 }],
+      }) as any,
+    );
+    const p2 = await productService.createProduct(
+      makeProductInput({
+        name: "Toner Y",
+        variants: [{ name: "150ml", sku: "SKU-TY", price: 90_000, stock: 20 }],
+      }) as any,
+    );
 
     // Đổi tên Toner Y → Serum X (slug trùng)
-    await expect(productService.updateProduct(p2.id as string, { name: "Serum X" }))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      productService.updateProduct(p2.id as string, { name: "Serum X" }),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it("throw notFound khi id không tồn tại", async () => {
-    const fakeId = new (await import("mongoose")).default.Types.ObjectId().toString();
-    await expect(productService.updateProduct(fakeId, { name: "X" }))
-      .rejects.toMatchObject({ status: 404 });
+    const fakeId = new (
+      await import("mongoose")
+    ).default.Types.ObjectId().toString();
+    await expect(
+      productService.updateProduct(fakeId, { name: "X" }),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });
 
@@ -145,7 +202,9 @@ describe("[Integration] Product — updateProduct", () => {
 
 describe("[Integration] Product — updateProductStatus", () => {
   it("ẩn product thành công (isActive = false)", async () => {
-    const created = await productService.createProduct(makeProductInput() as any);
+    const created = await productService.createProduct(
+      makeProductInput() as any,
+    );
 
     await productService.updateProductStatus(created.id as string, false);
 
@@ -154,7 +213,9 @@ describe("[Integration] Product — updateProductStatus", () => {
   });
 
   it("hiện product lại (isActive = true)", async () => {
-    const created = await productService.createProduct(makeProductInput() as any);
+    const created = await productService.createProduct(
+      makeProductInput() as any,
+    );
     await productService.updateProductStatus(created.id as string, false);
     await productService.updateProductStatus(created.id as string, true);
 
@@ -162,4 +223,3 @@ describe("[Integration] Product — updateProductStatus", () => {
     expect(inDB?.isActive).toBe(true);
   });
 });
-

@@ -8,15 +8,22 @@ const router = Router();
 
 // ── ADMIN & STAFF ONLY ────────────────────────────────────────────────────────
 
-router.get("/", authenticate, isOwner, catchAsync(async (req, res) => {
-  const { search, domain, startDate, endDate } = req.query;
-  const logs = await auditService.getAuditLogs(
-    search as string, 
-    domain as string, 
-    startDate as string, 
-    endDate as string
-  );
-  return response.success(res, { logs });
-}));
+router.get(
+  "/",
+  authenticate,
+  isOwner,
+  catchAsync(async (req, res) => {
+    const { search, domain, startDate, endDate, cursor, limit = "20" } = req.query;
+    const result = await auditService.getAuditLogs(
+      search as string,
+      domain as string,
+      startDate as string,
+      endDate as string,
+      cursor as string | undefined,
+      Number(limit)
+    );
+    return response.success(res, result);
+  }),
+);
 
 export default router;

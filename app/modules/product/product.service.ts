@@ -1,15 +1,28 @@
 import mongoose from "mongoose";
 import * as productRepo from "./product.repository.js";
-import Variant from "../../models/variant.schema.js";
+import Variant from "../../models/product/variant.schema.js";
+import Brand from "../../models/product/brand.schema.js";
+import Category from "../../models/product/category.schema.js";
+import Product from "../../models/product/product.schema.js";
 import { mapProduct } from "./dto/product.response.dto.js";
-import { badRequest, notFound, conflict } from "../../shared/errors/httpErrors.js";
+import {
+  badRequest,
+  notFound,
+  conflict,
+} from "../../shared/errors/httpErrors.js";
 import { sanitizeRichText } from "../../shared/helpers/sanitize.js";
-import type { CreateProductInput, UpdateProductInput } from "./dto/product.request.dto.js";
+import type {
+  CreateProductInput,
+  UpdateProductInput,
+} from "./dto/product.request.dto.js";
 
 const slugify = (text: string): string =>
-  text.toString().normalize("NFD")
+  text
+    .toString()
+    .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().trim()
+    .toLowerCase()
+    .trim()
     .replace(/đ/g, "d")
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
@@ -19,19 +32,30 @@ const slugify = (text: string): string =>
 
 interface PublicProductQuery {
   category?: string;
-  brandId?:  string;   // filter by brandId (source of truth)
-  search?:   string;
-  onSale?:   string;
-  page?:     number;
-  limit?:    number;
+  brandId?: string; // filter by brandId (source of truth)
+  search?: string;
+  onSale?: string;
+  page?: number;
+  limit?: number;
   minPrice?: number;
   maxPrice?: number;
-  brands?:   string;   // legacy brand-name filter (kept for backward compat)
-  sort?:     string;   // 'newest' | 'top_sales' | 'popular' | 'price_asc' | 'price_desc'
+  brands?: string; // legacy brand-name filter (kept for backward compat)
+  sort?: string; // 'newest' | 'top_sales' | 'popular' | 'price_asc' | 'price_desc'
 }
 
-export const getPublicProducts = async ({ category, brandId, search, onSale, page = 1, limit = 12, minPrice, maxPrice, brands, sort }: PublicProductQuery) => {
-  const parsedPage  = Math.max(Number(page) || 1, 1);
+export const getPublicProducts = async ({
+  category,
+  brandId,
+  search,
+  onSale,
+  page = 1,
+  limit = 12,
+  minPrice,
+  maxPrice,
+  brands,
+  sort,
+}: PublicProductQuery) => {
+  const parsedPage = Math.max(Number(page) || 1, 1);
   const parsedLimit = Math.max(Number(limit) || 12, 1);
   const skip = (parsedPage - 1) * parsedLimit;
 
@@ -41,16 +65,48 @@ export const getPublicProducts = async ({ category, brandId, search, onSale, pag
   if (search) query.name = { $regex: search.trim(), $options: "i" };
 
   if (onSale === "true") {
-    const saleVariants = await Variant.find({ discountPrice: { $gt: 0 } }, { productId: 1 }).lean();
-    const saleProductIds = [...new Set(saleVariants.map((v: any) => v.productId.toString()))];
+    const saleVariants = await Variant.find(
+      { discountPrice: { $gt: 0 } },
+      { productId: 1 },
+    ).lean();
+    const saleProductIds = [
+      ...new Set(saleVariants.map((v: any) => v.productId.toString())),
+    ];
     query._id = { $in: saleProductIds };
   }
 
   if (minPrice !== undefined || maxPrice !== undefined) {
-    const variantQuery: any = {};
-    if (minPrice !== undefined) variantQuery.$gte = Number(minPrice);
-    if (maxPrice !== undefined) variantQuery.$lte = Number(maxPrice);
-    const variantsInRange = await Variant.find({ price: variantQuery }, { productId: 1 });
+    const minP = minPrice !== undefined ? Number(minPrice) : 0;
+    const maxP =
+      maxPrice !== undefined ? Number(maxPrice) : Number.MAX_SAFE_INTEGER;
+
+    // Find variants where effective price (discountPrice > 0 ? discountPrice : price) is within range
+    const variantsInRange = await Variant.aggregate([
+      {
+        $addFields: {
+          effectivePrice: {
+            $cond: [
+              {
+                $and: [
+                  { $gt: ["$discountPrice", 0] },
+                  { $ne: ["$discountPrice", null] },
+                ],
+              },
+              "$discountPrice",
+              "$price",
+            ],
+          },
+        },
+      },
+      {
+        $match: {
+          effectivePrice: { $gte: minP, $lte: maxP },
+        },
+      },
+      {
+        $project: { productId: 1 },
+      },
+    ]);
     const productIds = variantsInRange.map((v) => v.productId);
     query._id = { $in: productIds };
   }
@@ -58,15 +114,29 @@ export const getPublicProducts = async ({ category, brandId, search, onSale, pag
   const queryWithoutCategories = { ...query };
 
   if (category) {
-    const categorySlugs = category.split(',').map(s => s.trim()).filter(Boolean);
+    const categorySlugs = category
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     const categoryIds = [];
     for (const slug of categorySlugs) {
       const ids = await productRepo.findCategoryIdsWithDescendants(slug);
       categoryIds.push(...ids);
     }
-    if (categoryIds.length === 0) return { products: [], pagination: { page: parsedPage, limit: parsedLimit, total: 0, totalPages: 0 }, availableBrands: [], availableCategoryIds: [] };
+    if (categoryIds.length === 0)
+      return {
+        products: [],
+        pagination: {
+          page: parsedPage,
+          limit: parsedLimit,
+          total: 0,
+          totalPages: 0,
+        },
+        availableBrands: [],
+        availableCategoryIds: [],
+      };
     query.$or = [
-      { categoryId:  { $in: categoryIds } },
+      { categoryId: { $in: categoryIds } },
       { categoryIds: { $in: categoryIds } },
     ];
     delete query.categoryId;
@@ -75,59 +145,138 @@ export const getPublicProducts = async ({ category, brandId, search, onSale, pag
   const queryWithoutBrands = { ...query };
 
   if (brandId) {
-    const brandIds = brandId.split(',').map(b => b.trim()).filter(Boolean);
+    const brandIds = brandId
+      .split(",")
+      .map((b) => b.trim())
+      .filter(Boolean);
     if (brandIds.length > 0) {
-      query.brandId = { $in: brandIds.map(id => new mongoose.Types.ObjectId(id)) };
+      query.brandId = {
+        $in: brandIds.map((id) => new mongoose.Types.ObjectId(id)),
+      };
     }
   } else if (brands) {
-    const brandArr = brands.split(',').map(b => b.trim()).filter(Boolean);
+    const brandArr = brands
+      .split(",")
+      .map((b) => b.trim())
+      .filter(Boolean);
     if (brandArr.length > 0) {
-      query.brand = { $in: brandArr.map(b => new RegExp('^' + b + '$', 'i')) };
+      query.brand = {
+        $in: brandArr.map((b) => new RegExp("^" + b + "$", "i")),
+      };
     }
   }
 
   // ── Sort logic ──────────────────────────────────────────────────────────────
-  const isPrice = sort === 'price_asc' || sort === 'price_desc';
+  const isPrice = sort === "price_asc" || sort === "price_desc";
 
   // Map sort string → MongoDB sort object for simple field sorts
   const sortMap: Record<string, Record<string, any>> = {
-    newest:    { createdAt: -1 },
+    newest: { createdAt: -1 },
     top_sales: { soldCount: -1, createdAt: -1 },
-    popular:   { soldCount: -1, numReviews: -1, createdAt: -1 },
+    popular: { soldCount: -1, numReviews: -1, createdAt: -1 },
   };
-  const mongoSort = sortMap[sort ?? 'newest'] ?? { createdAt: -1 };
+  const mongoSort = sortMap[sort ?? "newest"] ?? { createdAt: -1 };
 
   try {
-    // Parallel metadata queries (brands + categories in products)
-    const [availableBrands, availableCategoryIds] = await Promise.all([
-      productRepo.findBrandsInProducts(queryWithoutBrands).catch((e: any) => { console.error('[findBrands]', e.message); return []; }),
-      productRepo.findCategoriesInProducts(queryWithoutCategories).catch((e: any) => { console.error('[findCats]', e.message); return []; }),
-    ]);
+  // ── Cache for Metadata Aggregations ──────────────────────────────────────────
+  // Key: query hash, Value: { brands, categories, expiresAt }
+  const metadataCacheKey = JSON.stringify(queryWithoutBrands) + "|" + JSON.stringify(queryWithoutCategories);
+  const now = Date.now();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const filterCache = (global as any).__filterCache || new Map();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (global as any).__filterCache = filterCache;
+
+  let availableBrands: any[] = [];
+  let availableCategoryIds: string[] = [];
+
+  const cachedMeta = filterCache.get(metadataCacheKey);
+  if (cachedMeta && cachedMeta.expiresAt > now) {
+    availableBrands = cachedMeta.brands;
+    availableCategoryIds = cachedMeta.categories;
+  } else {
+    try {
+      // Parallel metadata queries (brands + categories in products)
+      const [fetchedBrands, fetchedCats] = await Promise.all([
+        productRepo.findBrandsInProducts(queryWithoutBrands).catch((e: any) => {
+          console.error("[findBrands]", e.message);
+          return [];
+        }),
+        productRepo
+          .findCategoriesInProducts(queryWithoutCategories)
+          .catch((e: any) => {
+            console.error("[findCats]", e.message);
+            return [];
+          }),
+      ]);
+      availableBrands = fetchedBrands;
+      availableCategoryIds = fetchedCats;
+      // Cache for 60 seconds
+      filterCache.set(metadataCacheKey, {
+        brands: availableBrands,
+        categories: availableCategoryIds,
+        expiresAt: now + 60000,
+      });
+
+      // Simple cache cleanup
+      if (filterCache.size > 1000) filterCache.clear();
+    } catch (e: any) {
+      console.error("Metadata fetch error:", e.message);
+    }
+  }
 
     // ── Price sort: aggregate variant min prices ───────────────────────────
     if (isPrice) {
-      const priceOrder = sort === 'price_asc' ? 1 : -1;
+      const priceOrder = sort === "price_asc" ? 1 : -1;
 
       // Get ALL matching product IDs
-      const matchingDocs = await mongoose.model('Product').find(query).select('_id').lean();
-      const matchingIds  = matchingDocs.map((d: any) => d._id);
+      const matchingDocs = await mongoose
+        .model("Product")
+        .find(query)
+        .select("_id")
+        .lean();
+      const matchingIds = matchingDocs.map((d: any) => d._id);
 
-      // Sort by min variant price
       const priceSorted = await Variant.aggregate([
         { $match: { productId: { $in: matchingIds } } },
-        { $group: { _id: '$productId', minPrice: { $min: '$price' } } },
-        { $sort:  { minPrice: priceOrder } },
+        {
+          $addFields: {
+            effectivePrice: {
+              $cond: [
+                {
+                  $and: [
+                    { $gt: ["$discountPrice", 0] },
+                    { $ne: ["$discountPrice", null] },
+                  ],
+                },
+                "$discountPrice",
+                "$price",
+              ],
+            },
+          },
+        },
+        {
+          $group: { _id: "$productId", minPrice: { $min: "$effectivePrice" } },
+        },
+        { $sort: { minPrice: priceOrder } },
       ]);
 
-      const total     = priceSorted.length;
-      const pagedIds  = priceSorted.slice(skip, skip + parsedLimit).map((r: any) => r._id);
-      const products  = await productRepo.findPublicByIds(pagedIds);
+      const total = priceSorted.length;
+      const pagedIds = priceSorted
+        .slice(skip, skip + parsedLimit)
+        .map((r: any) => r._id);
+      const products = await productRepo.findPublicByIds(pagedIds);
 
       return {
         products: products.map(mapProduct),
         availableBrands,
         availableCategoryIds,
-        pagination: { page: parsedPage, limit: parsedLimit, total, totalPages: Math.ceil(total / parsedLimit) },
+        pagination: {
+          page: parsedPage,
+          limit: parsedLimit,
+          total,
+          totalPages: Math.ceil(total / parsedLimit),
+        },
       };
     }
 
@@ -141,10 +290,19 @@ export const getPublicProducts = async ({ category, brandId, search, onSale, pag
       products: products.map(mapProduct),
       availableBrands,
       availableCategoryIds,
-      pagination: { page: parsedPage, limit: parsedLimit, total, totalPages: Math.ceil(total / parsedLimit) },
+      pagination: {
+        page: parsedPage,
+        limit: parsedLimit,
+        total,
+        totalPages: Math.ceil(total / parsedLimit),
+      },
     };
   } catch (error: any) {
-    console.error("[getPublicProducts] Fatal error:", error?.message, error?.stack?.slice(0, 300));
+    console.error(
+      "[getPublicProducts] Fatal error:",
+      error?.message,
+      error?.stack?.slice(0, 300),
+    );
     throw error;
   }
 };
@@ -160,22 +318,29 @@ export const getPublicProductDetail = async (slugOrId: string) => {
   }
   if (!product) throw notFound("Không tìm thấy sản phẩm");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if ((product.categoryId as any)?.isActive === false) throw notFound("Không tìm thấy sản phẩm do danh mục đã ngừng hoạt động");
+  if ((product.categoryId as any)?.isActive === false)
+    throw notFound("Không tìm thấy sản phẩm do danh mục đã ngừng hoạt động");
   return mapProduct(product);
 };
 
-export const getRecommendedProducts = async (productId: string, limit: number = 10) => {
-  if (!mongoose.Types.ObjectId.isValid(productId)) throw badRequest("ID sản phẩm không hợp lệ");
+export const getRecommendedProducts = async (
+  productId: string,
+  limit: number = 10,
+) => {
+  if (!mongoose.Types.ObjectId.isValid(productId))
+    throw badRequest("ID sản phẩm không hợp lệ");
   const pId = new mongoose.Types.ObjectId(productId);
 
   const product = await productRepo.findById(productId);
   if (!product) throw notFound("Không tìm thấy sản phẩm");
 
-  const { default: Order } = await import("../../models/order.schema.js");
+  const { default: Order } = await import("../../models/order/order.schema.js");
 
   // 1. Collaborative Filtering: "Customers who bought this also bought"
-  const orders = await Order.find({ "items.productId": pId }).select("items.productId").lean();
-  
+  const orders = await Order.find({ "items.productId": pId })
+    .select("items.productId")
+    .lean();
+
   const frequencyMap: Record<string, number> = {};
   for (const order of orders) {
     for (const item of order.items) {
@@ -193,9 +358,13 @@ export const getRecommendedProducts = async (productId: string, limit: number = 
     .slice(0, limit);
 
   const recommendedProducts: any[] = [];
-  
+
   if (sortedIds.length > 0) {
-    const collabProducts = await productRepo.findPublic({ _id: { $in: sortedIds }, isActive: true }, 0, limit);
+    const collabProducts = await productRepo.findPublic(
+      { _id: { $in: sortedIds }, isActive: true },
+      0,
+      limit,
+    );
     // Keep sorting order
     const collabMap = new Map(collabProducts.map((p) => [p._id.toString(), p]));
     for (const id of sortedIds) {
@@ -212,18 +381,18 @@ export const getRecommendedProducts = async (productId: string, limit: number = 
     existingIds.push(pId); // exclude current product
 
     const fallbackProducts = await productRepo.findPublic(
-      { 
-        categoryId: product.categoryId, 
+      {
+        categoryId: product.categoryId,
         _id: { $nin: existingIds },
-        isActive: true
-      }, 
-      0, 
-      remainingSlots
+        isActive: true,
+      },
+      0,
+      remainingSlots,
     );
-    
+
     // Sort fallback by reviews/rating in memory to show the best related products
     fallbackProducts.sort((a, b) => (b.numReviews || 0) - (a.numReviews || 0));
-    
+
     recommendedProducts.push(...fallbackProducts);
   }
 
@@ -232,16 +401,34 @@ export const getRecommendedProducts = async (productId: string, limit: number = 
 
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 
-interface AdminProductQuery { search?: string; category?: string; brandId?: string; status?: string; page?: number; limit?: number; shopId?: string | null; }
+interface AdminProductQuery {
+  search?: string;
+  category?: string;
+  brandId?: string;
+  status?: string;
+  minStock?: number;
+  maxStock?: number;
+  cursor?: string;
+  limit?: number;
+  shopId?: string | null;
+}
 
-export const getAdminProducts = async ({ search, category, brandId, status, page = 1, limit = 20, shopId }: AdminProductQuery) => {
-  const parsedPage  = Math.max(Number(page) || 1, 1);
+export const getAdminProducts = async ({
+  search,
+  category,
+  brandId,
+  status,
+  minStock,
+  maxStock,
+  cursor,
+  limit = 20,
+  shopId,
+}: AdminProductQuery) => {
   const parsedLimit = Math.max(Number(limit) || 20, 1);
-  const skip = (parsedPage - 1) * parsedLimit;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const query: Record<string, any> = {};
-  
+
   if (shopId !== undefined) {
     query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
   }
@@ -250,31 +437,65 @@ export const getAdminProducts = async ({ search, category, brandId, status, page
   if (status === "active") query.isActive = true;
   else if (status === "inactive") query.isActive = false;
 
+  if (minStock !== undefined || maxStock !== undefined) {
+    const stockQuery: any = {};
+    if (minStock !== undefined) stockQuery.$gte = Number(minStock);
+    if (maxStock !== undefined) stockQuery.$lte = Number(maxStock);
+    
+    const matchingVariants = await mongoose.model("Variant").find({ stock: stockQuery }).select("productId").lean();
+    const productIds = matchingVariants.map((v: any) => v.productId);
+    
+    if (query._id) {
+      // If _id is already filtered (unlikely in this query, but safe)
+      query._id = { ...query._id, $in: productIds };
+    } else {
+      query._id = { $in: productIds };
+    }
+  }
+
   if (brandId) {
     query.brandId = new mongoose.Types.ObjectId(brandId);
   }
 
   if (category) {
-    const categoryIds = await productRepo.findCategoryIdsWithDescendants(category);
-    if (categoryIds.length === 0) return { products: [], pagination: { page: parsedPage, limit: parsedLimit, total: 0, totalPages: 0 } };
+    const categoryIds =
+      await productRepo.findCategoryIdsWithDescendants(category);
+    if (categoryIds.length === 0)
+      return {
+        products: [],
+        pagination: {
+          limit: parsedLimit,
+          total: 0,
+          nextCursor: null,
+          hasNextPage: false,
+        },
+      };
     query.$or = [
-      { categoryId:  { $in: categoryIds } },
+      { categoryId: { $in: categoryIds } },
       { categoryIds: { $in: categoryIds } },
     ];
   }
 
-  const [products, total] = await Promise.all([
-    productRepo.findAdmin(query, skip, parsedLimit),
+  const [result, total] = await Promise.all([
+    productRepo.findAdmin(query, cursor || null, parsedLimit),
     productRepo.countAll(query),
   ]);
 
   return {
-    products: products.map(mapProduct),
-    pagination: { page: parsedPage, limit: parsedLimit, total, totalPages: Math.ceil(total / parsedLimit) },
+    products: result.products.map(mapProduct),
+    pagination: {
+      limit: parsedLimit,
+      total,
+      nextCursor: result.nextCursor,
+      hasNextPage: result.hasNextPage,
+    },
   };
 };
 
-export const getAdminProductDetail = async (id: string, shopId?: string | null) => {
+export const getAdminProductDetail = async (
+  id: string,
+  shopId?: string | null,
+) => {
   const query: any = { _id: id };
   if (shopId !== undefined) {
     query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
@@ -288,28 +509,33 @@ export const createProduct = async (data: CreateProductInput) => {
   const category = await productRepo.findCategoryById(data.categoryId);
   if (!category) throw badRequest("Danh mục không tồn tại");
 
-  const { default: Brand } = await import("../../models/brand.schema.js");
+  const { default: Brand } =
+    await import("../../models/product/brand.schema.js");
   const brandDoc = await Brand.findById(data.brandId);
   if (!brandDoc) throw badRequest("Thương hiệu không tồn tại");
 
   // Validate secondary categories if provided
   if (data.categoryIds && data.categoryIds.length > 0) {
     const validCategories = await Promise.all(
-      data.categoryIds.map(id => productRepo.findCategoryById(id))
+      data.categoryIds.map((id) => productRepo.findCategoryById(id)),
     );
-    if (validCategories.some(c => !c)) throw badRequest("Một hoặc nhiều danh mục phụ không tồn tại");
+    if (validCategories.some((c) => !c))
+      throw badRequest("Một hoặc nhiều danh mục phụ không tồn tại");
   }
 
   const slug = slugify(data.name);
-  const existing = await productRepo.findOneBy({ slug, categoryId: data.categoryId });
+  const existing = await productRepo.findOneBy({
+    slug,
+    categoryId: data.categoryId,
+  });
   if (existing) throw conflict("Slug sản phẩm đã tồn tại trong danh mục này");
 
   const newProduct = await productRepo.create({
     ...data,
     slug,
-    description: sanitizeRichText(data.description ?? ""),  // XSS protection
+    description: sanitizeRichText(data.description ?? ""), // XSS protection
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    categoryId:  data.categoryId as any,
+    categoryId: data.categoryId as any,
     categoryIds: (data.categoryIds ?? []) as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     brandId: data.brandId as any,
@@ -319,7 +545,9 @@ export const createProduct = async (data: CreateProductInput) => {
     const variantsToCreate = data.variants.map((v, idx) => ({
       ...v,
       productId: newProduct._id,
-      sku: v.sku?.trim() || `SKU-${slugify(brandDoc.name).slice(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${idx}`,
+      sku:
+        v.sku?.trim() ||
+        `SKU-${slugify(brandDoc.name).slice(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${idx}`,
     }));
     await Variant.insertMany(variantsToCreate);
   }
@@ -329,10 +557,9 @@ export const createProduct = async (data: CreateProductInput) => {
 };
 
 export const updateProduct = async (id: string, data: UpdateProductInput) => {
-  const query: any = { _id: id };
-  
-  const product = await productRepo.findOneBy(query);
-  if (!product) throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền cập nhật");
+  const product = await productRepo.findDocumentById(id);
+  if (!product)
+    throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền cập nhật");
 
   let nextCategoryId = product.categoryId;
 
@@ -348,9 +575,10 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
   if (data.categoryIds !== undefined) {
     if (data.categoryIds.length > 0) {
       const validCategories = await Promise.all(
-        data.categoryIds.map(cid => productRepo.findCategoryById(cid))
+        data.categoryIds.map((cid) => productRepo.findCategoryById(cid)),
       );
-      if (validCategories.some(c => !c)) throw badRequest("Một hoặc nhiều danh mục phụ không tồn tại");
+      if (validCategories.some((c) => !c))
+        throw badRequest("Một hoặc nhiều danh mục phụ không tồn tại");
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (product as any).categoryIds = data.categoryIds as any;
@@ -358,50 +586,81 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
 
   if (data.name !== undefined) {
     const nextSlug = slugify(data.name);
-    const existing = await productRepo.findOneBy({ slug: nextSlug, categoryId: nextCategoryId, _id: { $ne: product._id } });
+    const existing = await productRepo.findOneBy({
+      slug: nextSlug,
+      categoryId: nextCategoryId,
+      _id: { $ne: product._id },
+    });
     if (existing) throw conflict("Slug sản phẩm đã tồn tại trong danh mục này");
     product.name = data.name;
     product.slug = nextSlug;
   }
 
   if (data.brandId !== undefined) {
-    const { default: Brand } = await import("../../models/brand.schema.js");
+    const { default: Brand } =
+      await import("../../models/product/brand.schema.js");
     const brandDoc = await Brand.findById(data.brandId);
     if (!brandDoc) throw badRequest("Thương hiệu không tồn tại");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     product.brandId = data.brandId as any;
   }
 
-  if (data.description  !== undefined) product.description = sanitizeRichText(data.description);  // XSS protection
-  if (data.imageUrl     !== undefined) product.imageUrl    = data.imageUrl;
-  if (data.imageUrls    !== undefined) product.imageUrls   = data.imageUrls as any;
-  if (data.isActive     !== undefined) product.isActive    = data.isActive;
+  if (data.description !== undefined)
+    product.description = sanitizeRichText(data.description); // XSS protection
+  if (data.imageUrl !== undefined) product.imageUrl = data.imageUrl;
+  if (data.imageUrls !== undefined) product.imageUrls = data.imageUrls as any;
+  if (data.isActive !== undefined) product.isActive = data.isActive;
 
   await productRepo.save(product);
 
   if (data.variants && data.variants.length > 0) {
-    await Variant.deleteMany({ productId: product._id });
-    const { default: Brand } = await import("../../models/brand.schema.js");
+    const { default: Brand } =
+      await import("../../models/product/brand.schema.js");
     const brandDoc = await Brand.findById(product.brandId);
-    const variantsToCreate = data.variants.map((v, idx) => ({
-      ...v,
+
+    const variantIdsToKeep = data.variants
+      .filter((v: any) => v.id)
+      .map((v: any) => v.id);
+    await Variant.deleteMany({
       productId: product._id,
-      sku: v.sku?.trim() || `SKU-${slugify(brandDoc?.name || "SP").slice(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${idx}`,
-    }));
-    await Variant.insertMany(variantsToCreate);
+      _id: { $nin: variantIdsToKeep },
+    });
+
+    for (let idx = 0; idx < data.variants.length; idx++) {
+      const v: any = data.variants[idx];
+      const skuToUse =
+        v.sku?.trim() ||
+        `SKU-${slugify(brandDoc?.name || "SP")
+          .slice(0, 3)
+          .toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${idx}`;
+
+      const variantPayload = { ...v, sku: skuToUse };
+      delete variantPayload.id;
+
+      if (v.id) {
+        await Variant.updateOne({ _id: v.id }, { $set: variantPayload });
+      } else {
+        await Variant.create({ ...variantPayload, productId: product._id });
+      }
+    }
   }
 
   const updated = await productRepo.findById(product._id.toString());
   return mapProduct(updated!);
 };
 
-export const updateProductStatus = async (id: string, isActive: boolean, shopId?: string | null) => {
+export const updateProductStatus = async (
+  id: string,
+  isActive: boolean,
+  shopId?: string | null,
+) => {
   const query: any = { _id: id };
   if (shopId !== undefined) {
     query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
   }
-  const product = await productRepo.findOneBy(query);
-  if (!product) throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền cập nhật");
+  const product = await productRepo.findDocumentBy(query);
+  if (!product)
+    throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền cập nhật");
   product.isActive = isActive;
   await productRepo.save(product);
   const updated = await productRepo.findById(product._id.toString());
@@ -414,10 +673,96 @@ export const deleteProduct = async (id: string, shopId?: string | null) => {
     query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
   }
   const product = await productRepo.findOneBy(query);
-  if (!product) throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền xóa");
-  
+  if (!product)
+    throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền xóa");
+
   await productRepo.findByIdAndDelete(id);
-  
-  const { default: Variant } = await import("../../models/variant.schema.js");
+
+  const { default: Variant } =
+    await import("../../models/product/variant.schema.js");
   await Variant.deleteMany({ productId: id });
+};
+
+export const batchImportProducts = async (productsData: any[]) => {
+  let totalProcessed = 0;
+  
+  const productGroups = new Map<string, any[]>();
+  for (const row of productsData) {
+    const slug = row["Slug"] || slugify(row["Tên sản phẩm"]);
+    if (!slug) continue;
+    if (!productGroups.has(slug)) {
+      productGroups.set(slug, []);
+    }
+    productGroups.get(slug)!.push(row);
+  }
+
+  for (const [slug, rows] of productGroups.entries()) {
+    const firstRow = rows[0];
+    
+    let brandId: mongoose.Types.ObjectId | undefined;
+    if (firstRow["Thương hiệu"]) {
+      let brand = await Brand.findOne({ name: new RegExp(`^${firstRow["Thương hiệu"]}$`, 'i') });
+      if (!brand) {
+        brand = await Brand.create({ name: firstRow["Thương hiệu"], slug: slugify(firstRow["Thương hiệu"]) });
+      }
+      brandId = brand._id;
+    }
+
+    let categoryId: mongoose.Types.ObjectId | undefined;
+    if (firstRow["Danh mục"]) {
+      let cat = await Category.findOne({ name: new RegExp(`^${firstRow["Danh mục"]}$`, 'i') });
+      if (!cat) {
+        cat = await Category.create({ name: firstRow["Danh mục"], slug: slugify(firstRow["Danh mục"]) });
+      }
+      categoryId = cat._id;
+    }
+
+    const productData = {
+      name: firstRow["Tên sản phẩm"],
+      slug: slug,
+      brandId: brandId,
+      categoryId: categoryId,
+      description: firstRow["Mô tả"] || "",
+      isActive: firstRow["Trạng thái (Sản phẩm)"] === "Đang bán",
+    };
+
+    if (!productData.name || !brandId || !categoryId) {
+      continue;
+    }
+
+    let product = await Product.findOne({ slug });
+    if (product) {
+      await Product.findByIdAndUpdate(product._id, productData);
+    } else {
+      product = await Product.create(productData);
+    }
+
+    const existingVariants = await Variant.find({ productId: product._id });
+    const existingVariantsMap = new Map(existingVariants.map(v => [v.sku || v.name, v]));
+
+    for (const row of rows) {
+      const vName = row["Tên biến thể"] || "Mặc định";
+      const vSku = row["SKU"] || "";
+      const vKey = vSku || vName;
+
+      const variantData = {
+        productId: product._id,
+        name: vName,
+        sku: vSku,
+        price: Number(row["Giá bán"]) || 0,
+        discountPrice: row["Giá khuyến mãi"] ? Number(row["Giá khuyến mãi"]) : undefined,
+        stock: Number(row["Tồn kho"]) || 0,
+        isActive: row["Trạng thái (Biến thể)"] !== "Ngừng bán",
+      };
+
+      if (existingVariantsMap.has(vKey)) {
+        await Variant.findByIdAndUpdate(existingVariantsMap.get(vKey)!._id, variantData);
+      } else {
+        await Variant.create(variantData);
+      }
+      totalProcessed++;
+    }
+  }
+
+  return { totalProcessed };
 };

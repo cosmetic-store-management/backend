@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import User from "../models/user.schema.js";
+import User from "../models/user/user.schema.js";
 import { unauthorized, forbidden } from "../shared/errors/httpErrors.js";
 /**
  * authenticate — Xác thực JWT, gắn req.user nếu hợp lệ.
@@ -14,6 +14,8 @@ export const authenticate = async (req, _res, next) => {
         const user = await User.findById(decoded.id).select("-password");
         if (!user)
             throw unauthorized("Người dùng không tồn tại");
+        if (!user.isActive)
+            throw forbidden("Tài khoản của bạn đã bị khóa");
         req.user = user;
         next();
     }
@@ -23,6 +25,27 @@ export const authenticate = async (req, _res, next) => {
         if (error.name === "TokenExpiredError")
             return next(unauthorized("Token đã hết hạn"));
         next(error);
+    }
+};
+/**
+ * optionalAuthenticate — Trích xuất req.user nếu có token hợp lệ, nếu không có hoặc token hết hạn thì bỏ qua và tiếp tục.
+ */
+export const optionalAuthenticate = async (req, _res, next) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (authHeader?.startsWith("Bearer ")) {
+            const token = authHeader.split(" ")[1];
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const user = await User.findById(decoded.id).select("-password");
+            if (user && user.isActive) {
+                req.user = user;
+            }
+        }
+        next();
+    }
+    catch (error) {
+        // Nếu token lỗi hoặc hết hạn, coi như không đăng nhập
+        next();
     }
 };
 /**
@@ -42,7 +65,7 @@ export const authorize = (...roles) => (req, _res, next) => {
 export const requirePermission = (permission) => (req, _res, next) => {
     if (!req.user)
         return next(unauthorized("Bạn chưa đăng nhập"));
-    if (req.user.role === "owner")
+    if (req.user.role === "owner" || req.user.role === "manager")
         return next();
     if (req.user.role === "customer")
         return next(forbidden("Khách hàng không có quyền truy cập hệ thống quản trị"));
@@ -62,7 +85,7 @@ export const optionalAuth = async (req, _res, next) => {
         const token = authHeader.split(" ")[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const user = await User.findById(decoded.id).select("-password");
-        if (user) {
+        if (user && user.isActive) {
             req.user = user;
         }
     }

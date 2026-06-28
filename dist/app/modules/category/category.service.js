@@ -1,10 +1,13 @@
 import * as categoryRepo from "./category.repository.js";
 import { mapCategory } from "./dto/category.response.dto.js";
-import { badRequest, notFound, conflict } from "../../shared/errors/httpErrors.js";
+import { badRequest, notFound, conflict, } from "../../shared/errors/httpErrors.js";
 import mongoose from "mongoose";
-const slugify = (text) => text.toString().normalize("NFD")
+const slugify = (text) => text
+    .toString()
+    .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().trim()
+    .toLowerCase()
+    .trim()
     .replace(/đ/g, "d")
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
@@ -21,19 +24,29 @@ const parseParentId = async (parentId) => {
     return parent._id;
 };
 // ── PUBLIC ────────────────────────────────────────────────────────────────────
+// ── Cache for Public Categories ───────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const globalCache = global.__catCache || { data: null, expiresAt: 0 };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+global.__catCache = globalCache;
 export const getPublicCategories = async () => {
+    const now = Date.now();
+    if (globalCache.data && globalCache.expiresAt > now) {
+        return globalCache.data;
+    }
     // Fetch all active categories to build the tree, regardless of product count
-    const categories = await categoryRepo.findAll({ isActive: true }, 0, 1000);
-    const countsMap = await categoryRepo.countProductsByCategoryIds(categories.map(c => c._id));
+    const result = await categoryRepo.findAll({ isActive: true }, null, 1000);
+    const categories = result.categories;
+    const countsMap = await categoryRepo.countProductsByCategoryIds(categories.map((c) => c._id));
     const mapped = categories.map((cat) => {
         cat.productCount = countsMap.get(cat._id.toString()) || 0;
         return mapCategory(cat);
     });
     // Build tree
     const categoryMap = new Map();
-    mapped.forEach(c => categoryMap.set(c.id, { ...c, children: [] }));
+    mapped.forEach((c) => categoryMap.set(c.id, { ...c, children: [] }));
     const tree = [];
-    categoryMap.forEach(c => {
+    categoryMap.forEach((c) => {
         if (c.parentId && categoryMap.has(c.parentId)) {
             categoryMap.get(c.parentId).children.push(c);
         }
@@ -50,7 +63,7 @@ export const getPublicCategories = async () => {
         node.productCount = total;
         return total;
     };
-    tree.forEach(root => accumulateCounts(root));
+    tree.forEach((root) => accumulateCounts(root));
     return tree;
 };
 export const getPublicCategoryDetail = async (slug) => {
@@ -59,10 +72,8 @@ export const getPublicCategoryDetail = async (slug) => {
         throw notFound("Không tìm thấy danh mục");
     return mapCategory(category);
 };
-export const getAdminCategories = async ({ search, status, page = 1, limit = 20 }) => {
-    const parsedPage = Math.max(Number(page) || 1, 1);
+export const getAdminCategories = async ({ search, status, cursor, limit = 20, }) => {
     const parsedLimit = Math.max(Number(limit) || 20, 1);
-    const skip = (parsedPage - 1) * parsedLimit;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query = {};
     if (search)
@@ -71,17 +82,23 @@ export const getAdminCategories = async ({ search, status, page = 1, limit = 20 
         query.isActive = true;
     else if (status === "inactive")
         query.isActive = false;
-    const [categories, total] = await Promise.all([
-        categoryRepo.findAll(query, skip, parsedLimit),
+    const [result, total] = await Promise.all([
+        categoryRepo.findAll(query, cursor || null, parsedLimit),
         categoryRepo.countAll(query),
     ]);
-    const countsMap = await categoryRepo.countProductsByCategoryIds(categories.map(c => c._id));
+    const categories = result.categories;
+    const countsMap = await categoryRepo.countProductsByCategoryIds(categories.map((c) => c._id));
     return {
         categories: categories.map((cat) => {
             cat.productCount = countsMap.get(cat._id.toString()) || 0;
             return mapCategory(cat);
         }),
-        pagination: { page: parsedPage, limit: parsedLimit, total, totalPages: Math.ceil(total / parsedLimit) },
+        pagination: {
+            limit: parsedLimit,
+            total,
+            nextCursor: result.nextCursor,
+            hasNextPage: result.hasNextPage,
+        },
     };
 };
 export const getAdminCategoryDetail = async (id) => {
@@ -105,7 +122,10 @@ export const updateCategory = async (id, data) => {
         throw notFound("Không tìm thấy danh mục");
     if (data.name !== undefined) {
         const nextSlug = slugify(data.name);
-        const existing = await categoryRepo.findOneBy({ slug: nextSlug, _id: { $ne: category._id } });
+        const existing = await categoryRepo.findOneBy({
+            slug: nextSlug,
+            _id: { $ne: category._id },
+        });
         if (existing)
             throw conflict("Slug danh mục đã tồn tại");
         category.name = data.name;
@@ -126,7 +146,8 @@ export const updateCategory = async (id, data) => {
     if (data.sortOrder !== undefined)
         category.sortOrder = data.sortOrder;
     // Prevent self-referencing parentId
-    if (category.parentId && category.parentId.toString() === category._id.toString()) {
+    if (category.parentId &&
+        category.parentId.toString() === category._id.toString()) {
         throw badRequest("Danh mục không thể là cha của chính nó");
     }
     await categoryRepo.save(category);

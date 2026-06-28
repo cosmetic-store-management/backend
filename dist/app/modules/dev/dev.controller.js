@@ -1,9 +1,9 @@
 import { Router } from "express";
-import Product from "../../models/product.schema.js";
-import Variant from "../../models/variant.schema.js";
-import Category from "../../models/category.schema.js";
+import Product from "../../models/product/product.schema.js";
+import Variant from "../../models/product/variant.schema.js";
+import Category from "../../models/product/category.schema.js";
 const router = Router();
-router.post("/seed-detailed", async (req, res) => {
+router.post("/seed-detailed", async (_req, res) => {
     try {
         let category = await Category.findOne({ slug: "moi" });
         if (!category) {
@@ -31,7 +31,7 @@ router.post("/seed-detailed", async (req, res) => {
             imageUrls: [
                 "https://images.unsplash.com/photo-1586495777744-4413f21062fa?auto=format&fit=crop&q=80",
                 "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&q=80",
-                "https://images.unsplash.com/photo-1571781926291-c477eb31f762?auto=format&fit=crop&q=80"
+                "https://images.unsplash.com/photo-1571781926291-c477eb31f762?auto=format&fit=crop&q=80",
             ],
             categoryId: category._id,
             isActive: true,
@@ -40,9 +40,31 @@ router.post("/seed-detailed", async (req, res) => {
         });
         const savedProduct = await product.save();
         await Variant.create([
-            { name: "22 Pomelo Skin", sku: "ROMAND-22", price: 159000, stock: 50, imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?auto=format&fit=crop&q=80", productId: savedProduct._id },
-            { name: "23 Nucadamia", sku: "ROMAND-23", price: 159000, discountPrice: 149000, stock: 0, imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&q=80", productId: savedProduct._id },
-            { name: "24 Peeling Angdoo", sku: "ROMAND-24", price: 159000, stock: 120, imageUrl: "https://images.unsplash.com/photo-1571781926291-c477eb31f762?auto=format&fit=crop&q=80", productId: savedProduct._id }
+            {
+                name: "22 Pomelo Skin",
+                sku: "ROMAND-22",
+                price: 159000,
+                stock: 50,
+                imageUrl: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?auto=format&fit=crop&q=80",
+                productId: savedProduct._id,
+            },
+            {
+                name: "23 Nucadamia",
+                sku: "ROMAND-23",
+                price: 159000,
+                discountPrice: 149000,
+                stock: 0,
+                imageUrl: "https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&q=80",
+                productId: savedProduct._id,
+            },
+            {
+                name: "24 Peeling Angdoo",
+                sku: "ROMAND-24",
+                price: 159000,
+                stock: 120,
+                imageUrl: "https://images.unsplash.com/photo-1571781926291-c477eb31f762?auto=format&fit=crop&q=80",
+                productId: savedProduct._id,
+            },
         ]);
         const product2 = new Product({
             name: "Gel Tẩy Tế Bào Chết Hóa Học Axis-Y PHA Resurfacing Glow Peel 50ml",
@@ -50,7 +72,9 @@ router.post("/seed-detailed", async (req, res) => {
             brand: "Axis-Y",
             description: "<p>Sản phẩm chỉ có 1 phân loại duy nhất. UI Khách hàng sẽ giấu phần chọn Phân loại đi.</p>",
             imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80",
-            imageUrls: ["https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80"],
+            imageUrls: [
+                "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80",
+            ],
             categoryId: category._id,
             isActive: true,
             averageRating: 4.5,
@@ -63,7 +87,7 @@ router.post("/seed-detailed", async (req, res) => {
             sku: "AXISY-01",
             price: 250000,
             stock: 100,
-            imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80"
+            imageUrl: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80",
         });
         res.json({ message: "Seeded successfully" });
     }

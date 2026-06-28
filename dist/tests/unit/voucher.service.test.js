@@ -5,7 +5,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../../app/modules/voucher/voucher.repository.js");
 vi.mock("../../app/modules/voucher/dto/voucher.response.dto.js", () => ({
-    mapVoucher: (v) => ({ id: v._id?.toString() ?? "vid", code: v.code, discountType: v.discountType }),
+    mapVoucher: (v) => ({
+        id: v._id?.toString() ?? "vid",
+        code: v.code,
+        discountType: v.discountType,
+    }),
 }));
 import * as voucherRepo from "../../app/modules/voucher/voucher.repository.js";
 import * as voucherService from "../../app/modules/voucher/voucher.service.js";
@@ -44,38 +48,41 @@ describe("voucherService.validateVoucher", () => {
         expect(result.discountAmount).toBe(30_000);
     });
     it("trả về discountAmount cố định với voucher fixed", async () => {
-        const voucher = makeFakeVoucher({ discountType: "fixed", discountValue: 50_000, maxDiscount: 0 });
+        const voucher = makeFakeVoucher({
+            discountType: "fixed",
+            discountValue: 50_000,
+            maxDiscount: 0,
+        });
         vi.mocked(voucherRepo.findByCode).mockResolvedValue(voucher);
         const result = await voucherService.validateVoucher("FIXED50", 200_000);
         expect(result.discountAmount).toBe(50_000);
     });
     it("throw notFound khi voucher không tồn tại", async () => {
         vi.mocked(voucherRepo.findByCode).mockResolvedValue(null);
-        await expect(voucherService.validateVoucher("INVALID", 200_000))
-            .rejects.toMatchObject({ status: 404 });
+        await expect(voucherService.validateVoucher("INVALID", 200_000)).rejects.toMatchObject({ status: 404 });
     });
     it("throw badRequest khi voucher bị vô hiệu hóa", async () => {
         vi.mocked(voucherRepo.findByCode).mockResolvedValue(makeFakeVoucher({ isActive: false }));
-        await expect(voucherService.validateVoucher("GIAM10", 200_000))
-            .rejects.toMatchObject({ status: 400 });
+        await expect(voucherService.validateVoucher("GIAM10", 200_000)).rejects.toMatchObject({ status: 400 });
     });
     it("throw badRequest khi voucher hết hạn", async () => {
-        const expired = makeFakeVoucher({ endDate: new Date(Date.now() - 86_400_000) }); // qua hạn
+        const expired = makeFakeVoucher({
+            endDate: new Date(Date.now() - 86_400_000),
+        }); // qua hạn
         vi.mocked(voucherRepo.findByCode).mockResolvedValue(expired);
-        await expect(voucherService.validateVoucher("EXPIRED", 200_000))
-            .rejects.toMatchObject({ status: 400 });
+        await expect(voucherService.validateVoucher("EXPIRED", 200_000)).rejects.toMatchObject({ status: 400 });
     });
     it("throw badRequest khi voucher chưa đến thời gian dùng", async () => {
-        const notYet = makeFakeVoucher({ startDate: new Date(Date.now() + 86_400_000) }); // ngày mai
+        const notYet = makeFakeVoucher({
+            startDate: new Date(Date.now() + 86_400_000),
+        }); // ngày mai
         vi.mocked(voucherRepo.findByCode).mockResolvedValue(notYet);
-        await expect(voucherService.validateVoucher("FUTURE", 200_000))
-            .rejects.toMatchObject({ status: 400 });
+        await expect(voucherService.validateVoucher("FUTURE", 200_000)).rejects.toMatchObject({ status: 400 });
     });
     it("throw badRequest khi hết lượt dùng (usedCount >= usageLimit)", async () => {
         const exhausted = makeFakeVoucher({ usageLimit: 10, usedCount: 10 });
         vi.mocked(voucherRepo.findByCode).mockResolvedValue(exhausted);
-        await expect(voucherService.validateVoucher("USED_UP", 200_000))
-            .rejects.toMatchObject({ status: 400 });
+        await expect(voucherService.validateVoucher("USED_UP", 200_000)).rejects.toMatchObject({ status: 400 });
     });
     it("throw badRequest khi đơn hàng dưới minOrderValue", async () => {
         vi.mocked(voucherRepo.findByCode).mockResolvedValue(makeFakeVoucher({ minOrderValue: 500_000 }));
@@ -86,8 +93,7 @@ describe("voucherService.validateVoucher", () => {
         const userId = "user_abc";
         const voucher = makeFakeVoucher({ usedBy: [{ toString: () => userId }] });
         vi.mocked(voucherRepo.findByCode).mockResolvedValue(voucher);
-        await expect(voucherService.validateVoucher("GIAM10", 200_000, 30_000, userId))
-            .rejects.toMatchObject({ status: 400 });
+        await expect(voucherService.validateVoucher("GIAM10", 200_000, 30_000, userId)).rejects.toMatchObject({ status: 400 });
     });
 });
 // ── createVoucher ─────────────────────────────────────────────────────────────
@@ -110,8 +116,7 @@ describe("voucherService.createVoucher", () => {
     });
     it("throw conflict khi code đã tồn tại", async () => {
         vi.mocked(voucherRepo.findByCodeExact).mockResolvedValue(makeFakeVoucher());
-        await expect(voucherService.createVoucher(validInput))
-            .rejects.toMatchObject({ status: 409 });
+        await expect(voucherService.createVoucher(validInput)).rejects.toMatchObject({ status: 409 });
     });
     it("throw badRequest khi startDate >= endDate", async () => {
         vi.mocked(voucherRepo.findByCodeExact).mockResolvedValue(null);
@@ -120,7 +125,6 @@ describe("voucherService.createVoucher", () => {
             startDate: new Date(Date.now() + 86_400_000).toISOString(), // ngày mai
             endDate: new Date(Date.now() + 3_600_000).toISOString(), // 1h sau (trước startDate)
         };
-        await expect(voucherService.createVoucher(badInput))
-            .rejects.toMatchObject({ status: 400 });
+        await expect(voucherService.createVoucher(badInput)).rejects.toMatchObject({ status: 400 });
     });
 });

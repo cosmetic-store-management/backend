@@ -37,5 +37,4 @@ export const created = (res: Response, payload: Payload = {}): Response =>
   res.status(201).json(shape(payload));
 
 /** 204 No Content */
-export const noContent = (res: Response): Response =>
-  res.status(204).send();
+export const noContent = (res: Response): Response => res.status(204).send();

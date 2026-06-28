@@ -4,7 +4,9 @@ export const CreateAttributeSchema = z.object({
     code: z.string().min(1, "Mã code không được để trống").trim().toLowerCase(),
     values: z.array(z.string()).optional().default([]),
 });
-export const UpdateAttributeSchema = z.object({
+export const UpdateAttributeSchema = z
+    .object({
     name: z.string().min(1).trim().optional(),
     values: z.array(z.string()).optional(),
-}).refine((data) => Object.keys(data).length > 0, "Vui lòng cung cấp ít nhất một thông tin cần cập nhật");
+})
+    .refine((data) => Object.keys(data).length > 0, "Vui lòng cung cấp ít nhất một thông tin cần cập nhật");

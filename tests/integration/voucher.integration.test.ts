@@ -2,27 +2,37 @@
  * voucher.integration.test.ts — Integration tests cho Voucher Service + Repository
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { connectTestDB, disconnectTestDB, clearCollections } from "./helpers/db-helper.js";
+import {
+  connectTestDB,
+  disconnectTestDB,
+  clearCollections,
+} from "./helpers/db-helper.js";
 import mongoose from "mongoose";
 import * as voucherService from "../../app/modules/voucher/voucher.service.js";
-import Voucher from "../../app/models/voucher.schema.js";
+import Voucher from "../../app/models/system/voucher.schema.js";
 
 const FAKE_USER_ID = new mongoose.Types.ObjectId().toString();
 
-beforeAll(async () => { await connectTestDB(); });
-afterAll(async () => { await disconnectTestDB(); });
-beforeEach(async () => { await clearCollections(); });
+beforeAll(async () => {
+  await connectTestDB();
+});
+afterAll(async () => {
+  await disconnectTestDB();
+});
+beforeEach(async () => {
+  await clearCollections();
+});
 
 const makeVoucherData = (overrides: Record<string, any> = {}) => ({
-  code:          "TEST10",
-  discountType:  "percent",
+  code: "TEST10",
+  discountType: "percent",
   discountValue: 10,
-  startDate:     new Date(Date.now() - 86_400_000),
-  endDate:       new Date(Date.now() + 86_400_000),
+  startDate: new Date(Date.now() - 86_400_000),
+  endDate: new Date(Date.now() + 86_400_000),
   minOrderValue: 100_000,
-  usageLimit:    50,
-  maxDiscount:   50_000,
-  isActive:      true,
+  usageLimit: 50,
+  maxDiscount: 50_000,
+  isActive: true,
   ...overrides,
 });
 
@@ -40,8 +50,9 @@ describe("[Integration] Voucher — CRUD", () => {
 
   it("không thể tạo voucher trùng code", async () => {
     await voucherService.createVoucher(makeVoucherData() as any);
-    await expect(voucherService.createVoucher(makeVoucherData() as any))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      voucherService.createVoucher(makeVoucherData() as any),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it("xóa voucher thành công", async () => {
@@ -67,8 +78,9 @@ describe("[Integration] Voucher — validateVoucher với DB thật", () => {
   });
 
   it("throw badRequest khi dưới minOrderValue", async () => {
-    await expect(voucherService.validateVoucher("TEST10", 50_000))
-      .rejects.toMatchObject({ status: 400 });
+    await expect(
+      voucherService.validateVoucher("TEST10", 50_000),
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it("atomicIncrementUsage cộng usedCount trong DB", async () => {
@@ -79,8 +91,12 @@ describe("[Integration] Voucher — validateVoucher với DB thật", () => {
 
   it("hết lượt khi usedCount >= usageLimit", async () => {
     // Set usedCount = usageLimit
-    await Voucher.updateOne({ code: "TEST10" }, { usedCount: 50, usageLimit: 50 });
-    await expect(voucherService.validateVoucher("TEST10", 200_000))
-      .rejects.toMatchObject({ status: 400 });
+    await Voucher.updateOne(
+      { code: "TEST10" },
+      { usedCount: 50, usageLimit: 50 },
+    );
+    await expect(
+      voucherService.validateVoucher("TEST10", 200_000),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });

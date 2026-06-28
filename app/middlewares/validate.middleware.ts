@@ -1,6 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
 import type { ZodSchema } from "zod";
-import { ZodError } from "zod";
 import { badRequest } from "../shared/errors/httpErrors.js";
 
 /**
@@ -13,7 +12,9 @@ export const validate =
   (req: Request, _res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
-      const message = result.error.issues.map((e: { message: string }) => e.message).join("; ");
+      const message = result.error.issues
+        .map((e: { message: string }) => e.message)
+        .join("; ");
       return next(badRequest(message));
     }
     req.body = result.data;

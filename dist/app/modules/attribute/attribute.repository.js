@@ -1,4 +1,4 @@
-import Attribute from "../../models/attribute.schema.js";
+import Attribute from "../../models/product/attribute.schema.js";
 export const findAll = (query, skip, limit) => Attribute.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit);
 export const countAll = (query) => Attribute.countDocuments(query);
 export const findById = (id) => Attribute.findById(id);

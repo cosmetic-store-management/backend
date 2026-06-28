@@ -15,7 +15,7 @@ export const TIERS = [
         label: "Kim cương",
         labelEn: "Diamond",
         minSpent: 10_000_000, // ≥ 10 triệu VNĐ
-        discount: 0.10, // 10%
+        discount: 0.1, // 10%
         color: "from-violet-600 to-indigo-700",
         badgeClass: "bg-violet-100 text-violet-700 border-violet-200",
         textColor: "text-violet-600",
@@ -65,7 +65,7 @@ export const getTierBySpending = (totalSpent) => {
  * Lấy tier tiếp theo (null nếu đã là Diamond).
  */
 export const getNextTier = (currentKey) => {
-    const idx = TIERS.findIndex(t => t.key === currentKey);
+    const idx = TIERS.findIndex((t) => t.key === currentKey);
     if (idx <= 0)
         return null;
     return TIERS[idx - 1];

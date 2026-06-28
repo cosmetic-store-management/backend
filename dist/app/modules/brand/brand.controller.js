@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, isStaff, isManager } from "../../middlewares/auth.middleware.js";
+import { authenticate, requirePermission, } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validate.middleware.js";
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
 import * as response from "../../shared/helpers/response.js";
@@ -21,30 +21,39 @@ router.get("/:id", catchAsync(async (req, res) => {
     return response.success(res, { brand });
 }));
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
-router.get("/admin/list", authenticate, isStaff, catchAsync(async (req, res) => {
+router.get("/admin/list", authenticate, requirePermission("products.view"), catchAsync(async (req, res) => {
     const result = await brandService.getAdminBrands(req.query);
     return response.success(res, result);
 }));
-router.get("/admin/:id", authenticate, isStaff, catchAsync(async (req, res) => {
+router.get("/admin/:id", authenticate, requirePermission("products.view"), catchAsync(async (req, res) => {
     const brand = await brandService.getBrandDetail(req.params.id);
     return response.success(res, { brand });
 }));
-router.post("/admin", authenticate, isManager, validate(CreateBrandSchema), catchAsync(async (req, res) => {
+router.post("/admin", authenticate, requirePermission("products.manage"), validate(CreateBrandSchema), catchAsync(async (req, res) => {
     const brand = await brandService.createBrand(req.body);
     await logAction(req.user._id.toString(), req.user.name, "create", "catalog", `Tạo thương hiệu "${brand.name}"`, req.ip || "127.0.0.1");
-    return response.created(res, { message: "Tạo thương hiệu thành công", brand });
+    return response.created(res, {
+        message: "Tạo thương hiệu thành công",
+        brand,
+    });
 }));
-router.patch("/admin/:id/status", authenticate, isManager, validate(UpdateBrandStatusSchema), catchAsync(async (req, res) => {
+router.patch("/admin/:id/status", authenticate, requirePermission("products.manage"), validate(UpdateBrandStatusSchema), catchAsync(async (req, res) => {
     const brand = await brandService.updateBrandStatus(req.params.id, req.body.isActive);
     await logAction(req.user._id.toString(), req.user.name, "update", "catalog", `Cập nhật trạng thái thương hiệu "${brand.name}" thành ${brand.isActive ? "Kích hoạt" : "Ngừng kích hoạt"}`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Cập nhật trạng thái thương hiệu thành công", brand });
+    return response.success(res, {
+        message: "Cập nhật trạng thái thương hiệu thành công",
+        brand,
+    });
 }));
-router.patch("/admin/:id", authenticate, isManager, validate(UpdateBrandSchema), catchAsync(async (req, res) => {
+router.patch("/admin/:id", authenticate, requirePermission("products.manage"), validate(UpdateBrandSchema), catchAsync(async (req, res) => {
     const brand = await brandService.updateBrand(req.params.id, req.body);
     await logAction(req.user._id.toString(), req.user.name, "update", "catalog", `Cập nhật thông tin thương hiệu "${brand.name}"`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Cập nhật thương hiệu thành công", brand });
+    return response.success(res, {
+        message: "Cập nhật thương hiệu thành công",
+        brand,
+    });
 }));
-router.delete("/admin/:id", authenticate, isManager, catchAsync(async (req, res) => {
+router.delete("/admin/:id", authenticate, requirePermission("products.manage"), catchAsync(async (req, res) => {
     const brand = await brandService.getBrandDetail(req.params.id);
     await brandService.deleteBrand(req.params.id);
     await logAction(req.user._id.toString(), req.user.name, "delete", "catalog", `Xóa thương hiệu "${brand.name}"`, req.ip || "127.0.0.1");

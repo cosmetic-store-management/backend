@@ -1,20 +1,20 @@
 import { Router } from "express";
-import { authenticate, isStaff, isManager, isAuthenticated } from "../../middlewares/auth.middleware.js";
+import { authenticate, isManager, isAuthenticated, requirePermission, } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validate.middleware.js";
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
 import * as response from "../../shared/helpers/response.js";
-import { UpdateProfileSchema, UpdateRoleSchema, UpdateStatusSchema, AddressSchema, CreateStaffSchema } from "./dto/user.request.dto.js";
+import { UpdateProfileSchema, UpdateRoleSchema, UpdateStatusSchema, AddressSchema, CreateStaffSchema, } from "./dto/user.request.dto.js";
 import * as userService from "./user.service.js";
 import { logAction } from "../audit-log/audit-log.service.js";
 const router = Router();
 // GET /api/users — admin/staff list
 router.get("/", authenticate, isManager, catchAsync(async (req, res) => {
-    const page = parseInt(req.query.page) || 1;
+    const cursor = req.query.cursor;
     const limit = parseInt(req.query.limit) || 20;
     const search = req.query.search;
     const status = req.query.status;
     const role = req.query.role;
-    const result = await userService.getStaffUsers(page, limit, search, status, role);
+    const result = await userService.getStaffUsers(cursor || null, limit, search, status, role);
     return response.success(res, result);
 }));
 // GET /api/users/me/tier-info
@@ -26,7 +26,10 @@ router.get("/me/tier-info", authenticate, isAuthenticated, catchAsync(async (req
 router.patch("/me", authenticate, isAuthenticated, validate(UpdateProfileSchema), catchAsync(async (req, res) => {
     const user = await userService.updateCurrentUser(req.user._id.toString(), req.body);
     await logAction(req.user._id.toString(), req.user.name, "update", "identity", `Cập nhật hồ sơ cá nhân`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Cập nhật thông tin thành công", user });
+    return response.success(res, {
+        message: "Cập nhật thông tin thành công",
+        user,
+    });
 }));
 // PATCH /api/users/me/avatar
 router.patch("/me/avatar", authenticate, isAuthenticated, catchAsync(async (req, res) => {
@@ -34,7 +37,10 @@ router.patch("/me/avatar", authenticate, isAuthenticated, catchAsync(async (req,
     if (!avatar)
         throw { status: 400, message: "Thiếu dữ liệu ảnh" };
     const user = await userService.updateAvatar(req.user._id.toString(), avatar);
-    return response.success(res, { message: "Cập nhật ảnh đại diện thành công", user });
+    return response.success(res, {
+        message: "Cập nhật ảnh đại diện thành công",
+        user,
+    });
 }));
 // POST /api/users/me/addresses
 router.post("/me/addresses", authenticate, isAuthenticated, validate(AddressSchema), catchAsync(async (req, res) => {
@@ -46,7 +52,10 @@ router.post("/me/addresses", authenticate, isAuthenticated, validate(AddressSche
 router.put("/me/addresses/:addressId", authenticate, isAuthenticated, validate(AddressSchema), catchAsync(async (req, res) => {
     const user = await userService.updateAddress(req.user._id.toString(), req.params.addressId, req.body);
     await logAction(req.user._id.toString(), req.user.name, "update", "identity", `Cập nhật địa chỉ`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Cập nhật địa chỉ thành công", user });
+    return response.success(res, {
+        message: "Cập nhật địa chỉ thành công",
+        user,
+    });
 }));
 // DELETE /api/users/me/addresses/:addressId
 router.delete("/me/addresses/:addressId", authenticate, isAuthenticated, catchAsync(async (req, res) => {
@@ -62,7 +71,12 @@ router.get("/me/favorites", authenticate, isAuthenticated, catchAsync(async (req
 // POST /api/users/me/favorites/:productId
 router.post("/me/favorites/:productId", authenticate, isAuthenticated, catchAsync(async (req, res) => {
     const result = await userService.toggleFavorite(req.user._id.toString(), req.params.productId);
-    return response.success(res, { message: result.action === "added" ? "Đã thêm vào danh sách yêu thích" : "Đã xóa khỏi danh sách yêu thích", result });
+    return response.success(res, {
+        message: result.action === "added"
+            ? "Đã thêm vào danh sách yêu thích"
+            : "Đã xóa khỏi danh sách yêu thích",
+        result,
+    });
 }));
 // GET /api/users/me/viewed
 router.get("/me/viewed", authenticate, isAuthenticated, catchAsync(async (req, res) => {
@@ -87,7 +101,7 @@ router.delete("/me/viewed/:productId", authenticate, isAuthenticated, catchAsync
     return response.success(res, { message: "Đã xóa sản phẩm khỏi lịch sử" });
 }));
 // GET /api/users/customers — admin only
-router.get("/customers", authenticate, isStaff, catchAsync(async (req, res) => {
+router.get("/customers", authenticate, requirePermission("customers.view"), catchAsync(async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const search = req.query.search;
@@ -103,19 +117,25 @@ router.get("/customers", authenticate, isStaff, catchAsync(async (req, res) => {
     return response.success(res, result);
 }));
 // POST /api/users/customers — admin only
-router.post("/customers", authenticate, isStaff, catchAsync(async (req, res) => {
+router.post("/customers", authenticate, requirePermission("customers.manage"), catchAsync(async (req, res) => {
     const customer = await userService.createManualCustomer(req.body);
     await logAction(req.user._id.toString(), req.user.name, "create", "identity", `Tạo tài khoản khách hàng thành viên "${customer.name}"`, req.ip || "127.0.0.1");
-    return response.created(res, { message: "Tạo khách hàng thành công", customer });
+    return response.created(res, {
+        message: "Tạo khách hàng thành công",
+        customer,
+    });
 }));
 // POST /api/users/staff — manager only (owner bypassed)
 router.post("/staff", authenticate, isManager, validate(CreateStaffSchema), catchAsync(async (req, res) => {
     const staff = await userService.createStaff(req.body, req.user);
     await logAction(req.user._id.toString(), req.user.name, "create", "identity", `Tạo tài khoản nhân viên "${staff.name}"`, req.ip || "127.0.0.1");
-    return response.created(res, { message: "Tạo tài khoản nhân viên thành công", staff });
+    return response.created(res, {
+        message: "Tạo tài khoản nhân viên thành công",
+        staff,
+    });
 }));
 // GET /api/users/:id — admin only
-router.get("/:id", authenticate, isStaff, catchAsync(async (req, res) => {
+router.get("/:id", authenticate, requirePermission("customers.view"), catchAsync(async (req, res) => {
     const user = await userService.getUserById(req.params.id);
     return response.success(res, { user });
 }));
@@ -129,20 +149,29 @@ router.patch("/:id", authenticate, isManager, catchAsync(async (req, res) => {
 router.patch("/:id/role", authenticate, isManager, validate(UpdateRoleSchema), catchAsync(async (req, res) => {
     const user = await userService.updateUserRole(req.params.id, req.body.role, req.body.permissions, req.user);
     await logAction(req.user._id.toString(), req.user.name, "update", "identity", `Cập nhật quyền tài khoản "${user.name}" thành ${req.body.role || "không đổi"}`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Cập nhật quyền thành công", user });
+    return response.success(res, {
+        message: "Cập nhật quyền thành công",
+        user,
+    });
 }));
 // PATCH /api/users/:id/status — manager only
 router.patch("/:id/status", authenticate, isManager, validate(UpdateStatusSchema), catchAsync(async (req, res) => {
     const user = await userService.updateUserStatus(req.params.id, req.body.isActive, req.user);
     const actionText = req.body.isActive ? "Mở khóa" : "Khóa";
     await logAction(req.user._id.toString(), req.user.name, "update", "identity", `${actionText} tài khoản "${user.name}"`, req.ip || "127.0.0.1");
-    return response.success(res, { message: `${actionText} tài khoản thành công`, user });
+    return response.success(res, {
+        message: `${actionText} tài khoản thành công`,
+        user,
+    });
 }));
 // PATCH /api/users/:id/reset-password — manager only
 router.patch("/:id/reset-password", authenticate, isManager, catchAsync(async (req, res) => {
     const user = await userService.resetUserPassword(req.params.id, req.user);
     await logAction(req.user._id.toString(), req.user.name, "update", "identity", `Đặt lại mật khẩu cho tài khoản "${user.name}"`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Đặt lại mật khẩu thành công (Mặc định: GlowUp@123456)", user });
+    return response.success(res, {
+        message: "Đặt lại mật khẩu thành công (Mặc định: GlowUp@123456)",
+        user,
+    });
 }));
 // DELETE /api/users/:id — manager only
 router.delete("/:id", authenticate, isManager, catchAsync(async (req, res) => {
@@ -152,7 +181,7 @@ router.delete("/:id", authenticate, isManager, catchAsync(async (req, res) => {
     return response.success(res, { message: "Xóa tài khoản thành công" });
 }));
 // PATCH /api/users/:id/internal-notes — admin only
-router.patch("/:id/internal-notes", authenticate, isStaff, catchAsync(async (req, res) => {
+router.patch("/:id/internal-notes", authenticate, requirePermission("customers.manage"), catchAsync(async (req, res) => {
     const { internalNotes } = req.body;
     const user = await userService.updateInternalNotes(req.params.id, internalNotes);
     return response.success(res, { user });

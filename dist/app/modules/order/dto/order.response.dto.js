@@ -22,12 +22,14 @@ export const mapOrder = (order, items = []) => ({
     items: items.map(mapOrderItem),
     subtotal: order.subtotal,
     shippingFee: order.shippingFee,
-    ...(order.voucherCode ? { voucherCode: order.voucherCode, discountAmount: order.discountAmount } : {}),
+    ...(order.voucherCode
+        ? { voucherCode: order.voucherCode, discountAmount: order.discountAmount }
+        : {}),
     totalAmount: order.totalAmount,
     ...(order.note ? { note: order.note } : {}),
     userId: order.userId?.toString() ?? null,
     channel: order.channel,
     creatorId: order.creatorId?.toString() ?? null,
     paymentStatus: order.paymentStatus,
-    ...(order.trackingCode ? { trackingCode: order.trackingCode } : {}),
+    ...(order.transactionId ? { transactionId: order.transactionId } : {}),
 });

@@ -1,9 +1,12 @@
-import { badRequest, notFound, conflict } from "../../shared/errors/httpErrors.js";
+import { badRequest, notFound, conflict, } from "../../shared/errors/httpErrors.js";
 import { mapVoucher } from "./dto/voucher.response.dto.js";
 import * as voucherRepo from "./voucher.repository.js";
+import { Types } from "mongoose";
 // ── Admin CRUD ────────────────────────────────────────────────────────────────
 export const getAllVouchers = async (includeInactive = false) => {
-    const query = includeInactive ? {} : { isActive: true, endDate: { $gte: new Date() } };
+    const query = includeInactive
+        ? {}
+        : { isActive: true, endDate: { $gte: new Date() } };
     const vouchers = await voucherRepo.findAll(query);
     return vouchers.map(mapVoucher);
 };
@@ -12,6 +15,14 @@ export const getVoucherById = async (id) => {
     if (!voucher)
         throw notFound("Không tìm thấy voucher");
     return mapVoucher(voucher);
+};
+export const updateVoucherUsedUsers = async (voucherId, usedUsers) => {
+    const voucher = await voucherRepo.findById(voucherId);
+    if (!voucher)
+        throw notFound("Voucher không tồn tại");
+    // Dùng atomic update qua repository thay vì gán trực tiếp vào document
+    const objectIds = usedUsers.map((id) => new Types.ObjectId(id));
+    return await voucherRepo.setUsedBy(voucherId, objectIds);
 };
 export const createVoucher = async (data) => {
     const existing = await voucherRepo.findByCodeExact(data.code);
@@ -73,7 +84,8 @@ export const validateVoucher = async (code, subtotal, shippingFee = 30000, userI
         discountAmount = (subtotal * voucher.discountValue) / 100;
     }
     else if (voucher.discountType === "freeship") {
-        discountAmount = shippingFee > voucher.discountValue ? voucher.discountValue : shippingFee;
+        discountAmount =
+            shippingFee > voucher.discountValue ? voucher.discountValue : shippingFee;
     }
     if (voucher.maxDiscount && discountAmount > voucher.maxDiscount) {
         discountAmount = voucher.maxDiscount;
@@ -88,12 +100,12 @@ export const validateVoucher = async (code, subtotal, shippingFee = 30000, userI
  * Atomic increment usedCount — dùng khi order được tạo thành công.
  * Tránh race condition: $inc + $addToSet trong một findOneAndUpdate.
  */
-export const incrementVoucherUsage = (code, userId) => voucherRepo.atomicIncrementUsage(code, userId);
+export const incrementVoucherUsage = (code, userId, session) => voucherRepo.atomicIncrementUsage(code, userId, session);
 /**
  * Atomic decrement usedCount — dùng khi order bị cancel/thất bại (rollback).
  * Guard: chỉ decrement nếu usedCount > 0.
  */
-export const decrementVoucherUsage = (code, userId) => voucherRepo.atomicDecrementUsage(code, userId);
+export const decrementVoucherUsage = (code, userId, session) => voucherRepo.atomicDecrementUsage(code, userId, session);
 // ── Wallet ────────────────────────────────────────────────────────────────────
 export const getWalletVouchers = async (userId) => {
     const user = await voucherRepo.findUserWithVouchers(userId);
@@ -104,7 +116,8 @@ export const getWalletVouchers = async (userId) => {
         .filter((v) => v.isActive &&
         new Date(v.startDate) <= now &&
         new Date(v.endDate) >= now &&
-        (v.usageLimit === 0 || v.usedCount < v.usageLimit))
+        (v.usageLimit === 0 || v.usedCount < v.usageLimit) &&
+        !v.usedBy?.some((id) => id.toString() === userId))
         .map(mapVoucher);
 };
 export const getAllWalletVouchers = async (userId) => {
@@ -144,11 +157,11 @@ export const collectVoucher = async (userId, code) => {
     if (voucher.usageLimit > 0 && voucher.usedCount >= voucher.usageLimit)
         throw badRequest("Mã giảm giá đã hết lượt sử dụng");
     // findUserWithVouchers dùng populate — cần lazy load để check alreadySaved
-    const { default: User } = await import("../../models/user.schema.js");
+    const { default: User } = await import("../../models/user/user.schema.js");
     const user = await User.findById(userId);
     if (!user)
         throw notFound("Không tìm thấy người dùng");
-    const alreadySaved = user.savedVouchers?.some(id => id.toString() === voucher._id.toString());
+    const alreadySaved = user.savedVouchers?.some((id) => id.toString() === voucher._id.toString());
     if (alreadySaved)
         throw conflict("Bạn đã lưu mã giảm giá này rồi");
     await voucherRepo.addVoucherToWallet(userId, voucher._id);

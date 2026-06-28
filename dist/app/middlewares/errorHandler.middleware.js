@@ -11,6 +11,11 @@ export const errorHandler = (err, _req, res, _next) => {
         res.status(409).json({ success: false, message: `${field} đã tồn tại` });
         return;
     }
+    // Zod validation error
+    if (err.name === "ZodError") {
+        res.status(400).json({ success: false, message: "Dữ liệu không hợp lệ", errors: err.errors });
+        return;
+    }
     console.error("[Unexpected Error]", {
         message: err?.message,
         name: err?.name,
@@ -18,5 +23,7 @@ export const errorHandler = (err, _req, res, _next) => {
         method: _req.method,
         stack: err?.stack?.split("\n").slice(0, 5).join(" | "),
     });
-    res.status(500).json({ success: false, message: "Lỗi server, vui lòng thử lại sau" });
+    res
+        .status(500)
+        .json({ success: false, message: "Lỗi server, vui lòng thử lại sau" });
 };

@@ -8,12 +8,18 @@ import mongoose from "mongoose";
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 vi.mock("../../app/modules/user/user.repository.js");
 vi.mock("../../app/modules/user/dto/user.response.dto.js", () => ({
-  mapUser: (u: any) => ({ id: u._id?.toString() ?? "uid", name: u.name, role: u.role, phone: u.phone, points: u.points ?? 0 }),
+  mapUser: (u: any) => ({
+    id: u._id?.toString() ?? "uid",
+    name: u.name,
+    role: u.role,
+    phone: u.phone,
+    points: u.points ?? 0,
+  }),
 }));
-vi.mock("../../app/models/order.schema.js", () => ({
+vi.mock("../../app/models/order/order.schema.js", () => ({
   default: { aggregate: vi.fn() },
 }));
-vi.mock("../../app/models/point-history.schema.js", () => ({
+vi.mock("../../app/models/user/point-history.schema.js", () => ({
   default: { create: vi.fn().mockResolvedValue(undefined) },
 }));
 vi.mock("../../app/modules/product/product.repository.js", () => ({
@@ -28,22 +34,21 @@ vi.mock("bcryptjs", () => ({
 
 import * as userRepo from "../../app/modules/user/user.repository.js";
 import * as userService from "../../app/modules/user/user.service.js";
-import Order from "../../app/models/order.schema.js";
-import PointHistory from "../../app/models/point-history.schema.js";
+import PointHistory from "../../app/models/user/point-history.schema.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-const FAKE_ID      = new mongoose.Types.ObjectId().toString();
+const FAKE_ID = new mongoose.Types.ObjectId().toString();
 const FAKE_ADDR_ID = new mongoose.Types.ObjectId().toString();
 
 const makeUser = (overrides: Record<string, any> = {}): any => ({
-  _id:       { toString: () => FAKE_ID },
-  name:      "Nguyễn Test",
-  phone:     "0901234567",
-  email:     "test@example.com",
-  role:      "customer",
-  isActive:  true,
-  points:    100,
+  _id: { toString: () => FAKE_ID },
+  name: "Nguyễn Test",
+  phone: "0901234567",
+  email: "test@example.com",
+  role: "customer",
+  isActive: true,
+  points: 100,
   addresses: [],
   favorites: [],
   recentlyViewed: [],
@@ -51,7 +56,10 @@ const makeUser = (overrides: Record<string, any> = {}): any => ({
 });
 
 const makeAdmin = (role: "owner" | "manager" | "staff" = "owner"): any =>
-  makeUser({ role, _id: { toString: () => new mongoose.Types.ObjectId().toString() } });
+  makeUser({
+    role,
+    _id: { toString: () => new mongoose.Types.ObjectId().toString() },
+  });
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -61,28 +69,31 @@ describe("userService.updateCurrentUser", () => {
   it("cập nhật name thành công", async () => {
     const user = makeUser();
     vi.mocked(userRepo.findById).mockResolvedValue(user);
-    vi.mocked(userRepo.save).mockResolvedValue(undefined as any);
+    await userService.updateCurrentUser(FAKE_ID, { name: "Tên Mới" });
 
-    const result = await userService.updateCurrentUser(FAKE_ID, { name: "Tên Mới" });
     expect(user.name).toBe("Tên Mới");
     expect(userRepo.save).toHaveBeenCalledWith(user);
   });
 
   it("throw conflict khi phone mới thuộc tài khoản khác", async () => {
     const user = makeUser();
-    const otherUser = makeUser({ _id: { toString: () => new mongoose.Types.ObjectId().toString() } });
+    const otherUser = makeUser({
+      _id: { toString: () => new mongoose.Types.ObjectId().toString() },
+    });
     vi.mocked(userRepo.findById).mockResolvedValue(user);
     vi.mocked(userRepo.findByPhone).mockResolvedValue(otherUser);
 
-    await expect(userService.updateCurrentUser(FAKE_ID, { phone: "0999999999" }))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      userService.updateCurrentUser(FAKE_ID, { phone: "0999999999" }),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it("throw notFound khi user không tồn tại", async () => {
     vi.mocked(userRepo.findById).mockResolvedValue(null);
 
-    await expect(userService.updateCurrentUser(FAKE_ID, { name: "X" }))
-      .rejects.toMatchObject({ status: 404 });
+    await expect(
+      userService.updateCurrentUser(FAKE_ID, { name: "X" }),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });
 
@@ -95,7 +106,11 @@ describe("userService.addAddress", () => {
     vi.mocked(userRepo.save).mockResolvedValue(undefined as any);
 
     await userService.addAddress(FAKE_ID, {
-      province: "HCM", district: "Q1", ward: "P1", street: "123 Test", isDefault: false,
+      province: "HCM",
+      district: "Q1",
+      ward: "P1",
+      street: "123 Test",
+      isDefault: false,
     });
 
     expect(user.addresses.length).toBe(1);
@@ -109,7 +124,11 @@ describe("userService.addAddress", () => {
     vi.mocked(userRepo.save).mockResolvedValue(undefined as any);
 
     await userService.addAddress(FAKE_ID, {
-      province: "HCM", district: "Q1", ward: "P1", street: "456", isDefault: true,
+      province: "HCM",
+      district: "Q1",
+      ward: "P1",
+      street: "456",
+      isDefault: true,
     });
 
     expect(existingAddr.isDefault).toBe(false);
@@ -144,8 +163,9 @@ describe("userService.deleteAddress", () => {
     const user = makeUser({ addresses: [] });
     vi.mocked(userRepo.findById).mockResolvedValue(user);
 
-    await expect(userService.deleteAddress(FAKE_ID, FAKE_ADDR_ID))
-      .rejects.toMatchObject({ status: 404 });
+    await expect(
+      userService.deleteAddress(FAKE_ID, FAKE_ADDR_ID),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });
 
@@ -167,8 +187,9 @@ describe("userService.updateUserStatus", () => {
     const requester = makeAdmin("manager");
     vi.mocked(userRepo.findById).mockResolvedValue(owner);
 
-    await expect(userService.updateUserStatus(FAKE_ID, false, requester))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      userService.updateUserStatus(FAKE_ID, false, requester),
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   it("manager không thể tác động lên owner (hierarchy check)", async () => {
@@ -176,8 +197,9 @@ describe("userService.updateUserStatus", () => {
     const managerRequester = makeAdmin("manager");
     vi.mocked(userRepo.findById).mockResolvedValue(ownerTarget);
 
-    await expect(userService.updateUserStatus(FAKE_ID, false, managerRequester))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      userService.updateUserStatus(FAKE_ID, false, managerRequester),
+    ).rejects.toMatchObject({ status: 409 });
   });
 });
 
@@ -207,8 +229,9 @@ describe("userService.updateUserRole", () => {
     const requester = makeAdmin("owner");
     vi.mocked(userRepo.findById).mockResolvedValue(owner);
 
-    await expect(userService.updateUserRole(FAKE_ID, "manager", [], requester))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      userService.updateUserRole(FAKE_ID, "manager", [], requester),
+    ).rejects.toMatchObject({ status: 409 });
   });
 });
 
@@ -224,7 +247,7 @@ describe("userService.adjustUserPoints", () => {
 
     expect(user.points).toBe(150);
     expect(PointHistory.create).toHaveBeenCalledWith(
-      expect.objectContaining({ pointsChanged: 50, reason: "Thưởng" })
+      expect.objectContaining({ pointsChanged: 50, reason: "Thưởng" }),
     );
   });
 
@@ -241,8 +264,9 @@ describe("userService.adjustUserPoints", () => {
     const user = makeUser({ points: 10 });
     vi.mocked(userRepo.findById).mockResolvedValue(user);
 
-    await expect(userService.adjustUserPoints(FAKE_ID, -50, "Trừ", "admin_id"))
-      .rejects.toMatchObject({ status: 409 });
+    await expect(
+      userService.adjustUserPoints(FAKE_ID, -50, "Trừ", "admin_id"),
+    ).rejects.toMatchObject({ status: 409 });
   });
 });
 
@@ -299,7 +323,10 @@ describe("userService.recordRecentlyViewed", () => {
   });
 
   it("giới hạn 20 items — loại bỏ item cũ nhất", async () => {
-    const items = Array.from({ length: 20 }, () => new mongoose.Types.ObjectId());
+    const items = Array.from(
+      { length: 20 },
+      () => new mongoose.Types.ObjectId(),
+    );
     const user = makeUser({ recentlyViewed: [...items] });
     vi.mocked(userRepo.findById).mockResolvedValue(user);
     vi.mocked(userRepo.save).mockResolvedValue(undefined as any);

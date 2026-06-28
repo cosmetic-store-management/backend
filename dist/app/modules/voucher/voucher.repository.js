@@ -3,8 +3,8 @@
  * Data access layer cho Voucher module.
  */
 import mongoose from "mongoose";
-import Voucher from "../../models/voucher.schema.js";
-import User from "../../models/user.schema.js";
+import Voucher from "../../models/system/voucher.schema.js";
+import User from "../../models/user/user.schema.js";
 // ── Voucher CRUD ──────────────────────────────────────────────────────────────
 export const findAll = (query = {}) => Voucher.find(query).sort({ createdAt: -1 }).lean();
 export const findById = (id) => Voucher.findById(id);
@@ -19,7 +19,7 @@ export const findByIdAndDelete = (id) => Voucher.findByIdAndDelete(id);
  * Dùng findOneAndUpdate thay vì save() để ngăn race condition khi nhiều user
  * cùng apply một voucher.
  */
-export const atomicIncrementUsage = async (code, userId) => {
+export const atomicIncrementUsage = async (code, userId, session) => {
     const update = { $inc: { usedCount: 1 } };
     if (userId)
         update.$addToSet = { usedBy: new mongoose.Types.ObjectId(userId) };
@@ -27,9 +27,9 @@ export const atomicIncrementUsage = async (code, userId) => {
         code: code.toUpperCase(),
         $or: [
             { usageLimit: 0 },
-            { $expr: { $lt: ["$usedCount", "$usageLimit"] } }
-        ]
-    }, update, { returnDocument: "after" });
+            { $expr: { $lt: ["$usedCount", "$usageLimit"] } },
+        ],
+    }, update, { session, returnDocument: "after" });
     if (!result) {
         throw new Error("Mã giảm giá đã hết lượt sử dụng hoặc không tồn tại.");
     }
@@ -39,12 +39,16 @@ export const atomicIncrementUsage = async (code, userId) => {
  * Giảm usedCount khi rollback (order thất bại).
  * Guard: chỉ decrement nếu usedCount > 0 để tránh giá trị âm.
  */
-export const atomicDecrementUsage = (code, userId) => {
+export const atomicDecrementUsage = (code, userId, session) => {
     const update = { $inc: { usedCount: -1 } };
     if (userId)
         update.$pull = { usedBy: new mongoose.Types.ObjectId(userId) };
-    return Voucher.findOneAndUpdate({ code: code.toUpperCase(), usedCount: { $gt: 0 } }, update, { returnDocument: "after" });
+    return Voucher.findOneAndUpdate({ code: code.toUpperCase(), usedCount: { $gt: 0 } }, update, { returnDocument: "after", session });
 };
+/**
+ * Ghi đè toàn bộ mảng usedBy — dùng khi admin cần reset danh sách users đã dùng voucher.
+ */
+export const setUsedBy = (voucherId, objectIds) => Voucher.findByIdAndUpdate(voucherId, { $set: { usedBy: objectIds } }, { returnDocument: "after" });
 // ── Wallet (User's saved vouchers) ────────────────────────────────────────────
 export const findUserWithVouchers = (userId) => User.findById(userId).populate({
     path: "savedVouchers",

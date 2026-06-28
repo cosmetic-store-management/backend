@@ -1,5 +1,13 @@
 import { badRequest, notFound } from "../../shared/errors/httpErrors.js";
 import * as inventoryRepo from "./inventory.repository.js";
+import { mapGoodsReceipt, } from "./dto/inventory.response.dto.js";
+import mongoose from "mongoose";
+import { Variant } from "../../models/index.js";
+/** Số ký tự cần lấy trong chuỗi ISO để được dạng "yyyy-MM-dd HH:mm" */
+const ISO_DATETIME_LENGTH = 16;
+/** Khoảng số random cho mã transaction */
+const TX_CODE_MIN = 100000;
+const TX_CODE_RANGE = 900000;
 // ── SUPPLIERS ─────────────────────────────────────────────────────────────────
 export const getSuppliers = () => inventoryRepo.findAllSuppliers();
 export const createSupplier = async (data) => {
@@ -9,52 +17,88 @@ export const createSupplier = async (data) => {
     return inventoryRepo.createSupplier(data);
 };
 // ── STOCK ─────────────────────────────────────────────────────────────────────
-export const getStockList = async (search, page = 1, limit = 10) => {
+export const getStockList = async (search, cursor, limit = 10) => {
     const query = {};
     if (search) {
         const productIds = await inventoryRepo.findProductIdsByName(search);
         query.$or = [
             { name: { $regex: search.trim(), $options: "i" } },
             { sku: { $regex: search.trim(), $options: "i" } },
-            { productId: { $in: productIds } }
+            { productId: { $in: productIds } },
         ];
     }
-    const skip = (page - 1) * limit;
-    const [variants, totalItems] = await Promise.all([
-        inventoryRepo.findVariantsByQuery(query, skip, limit),
-        inventoryRepo.countVariantsByQuery(query)
+    const [result, totalItems] = await Promise.all([
+        inventoryRepo.findVariantsByQuery(query, cursor || null, limit),
+        inventoryRepo.countVariantsByQuery(query),
     ]);
+    const variants = result.variants;
+    const variantIds = variants.map((v) => v._id);
+    const activeBatches = await inventoryRepo.findActiveBatchesByVariants(variantIds);
+    const currentCostMap = new Map();
+    const expiringBatchesMap = new Map();
+    for (const vId of variantIds) {
+        const vBatches = activeBatches.filter((b) => b.variantId.toString() === vId.toString());
+        // FIFO: Lấy giá nhập, NSX, HSD của lô cũ nhất đang xuất
+        const currentCost = vBatches.length > 0 ? vBatches[0].importPrice : 0;
+        const currentMfgDate = vBatches.length > 0 ? vBatches[0].manufactureDate : null;
+        const currentExpDate = vBatches.length > 0 ? vBatches[0].expiryDate : null;
+        currentCostMap.set(vId.toString(), {
+            cost: currentCost,
+            mfgDate: currentMfgDate,
+            expDate: currentExpDate
+        });
+        // Cảnh báo các lô sắp hết hạn (< 3 tháng)
+        const expiringCount = vBatches.filter((b) => b.expiryDate && new Date(b.expiryDate).getTime() <= Date.now() + 90 * 24 * 60 * 60 * 1000).length;
+        expiringBatchesMap.set(vId.toString(), expiringCount);
+    }
     const stock = variants.map((v) => {
         const prod = v.productId;
         const brand = prod?.brandId;
         return {
             id: v._id.toString(),
-            name: `${prod?.name || "Unknown"} - ${v.name}`,
+            name: v.name.includes("Default Title") ? (prod?.name || "Unknown") : `${prod?.name || "Unknown"} - ${v.name}`,
             sku: v.sku,
             barcode: v.barcode,
+            productImage: prod?.imageUrl || prod?.imageUrls?.[0] || "",
             stock: v.stock,
-            minStock: v.minStock ?? 10,
+            minStock: v.minStock ?? 0,
+            mac: currentCostMap.get(v._id.toString())?.cost || 0,
+            manufactureDate: currentCostMap.get(v._id.toString())?.mfgDate
+                ? new Date(currentCostMap.get(v._id.toString()).mfgDate).toISOString().substring(0, 10)
+                : undefined,
+            expiryDate: currentCostMap.get(v._id.toString())?.expDate
+                ? new Date(currentCostMap.get(v._id.toString()).expDate).toISOString().substring(0, 10)
+                : undefined,
             brandId: brand?._id?.toString() ?? "",
             brandName: brand?.name ?? prod?.brand ?? "",
             brandImage: brand?.imageUrl ?? "",
             supplier: brand?.name ?? prod?.brand ?? "",
             lastUpdated: v.updatedAt
-                ? new Date(v.updatedAt).toISOString().replace("T", " ").substring(0, 16)
+                ? new Date(v.updatedAt)
+                    .toISOString()
+                    .replace("T", " ")
+                    .substring(0, ISO_DATETIME_LENGTH)
                 : "",
+            expiringBatchesCount: expiringBatchesMap.get(v._id.toString()) || 0,
         };
     });
     return {
         stock,
-        pagination: { page, limit, totalPages: Math.ceil(totalItems / limit), totalItems }
+        pagination: {
+            limit,
+            totalItems,
+            nextCursor: result.nextCursor,
+            hasNextPage: result.hasNextPage,
+        },
     };
 };
 // ── TRANSACTIONS ──────────────────────────────────────────────────────────────
-export const getTransactions = async (page = 1, limit = 10) => {
-    const skip = (page - 1) * limit;
-    const [txs, totalItems] = await Promise.all([
-        inventoryRepo.findTransactions(skip, limit),
-        inventoryRepo.countTransactions()
+export const getTransactions = async (cursor, limit, type) => {
+    const [result, totalItems] = await Promise.all([
+        inventoryRepo.findTransactions(cursor || null, limit, type),
+        inventoryRepo.countTransactions(type),
     ]);
+    const txs = result.transactions;
     const transactions = txs.map((tx) => {
         const variant = tx.variantId;
         return {
@@ -64,14 +108,32 @@ export const getTransactions = async (page = 1, limit = 10) => {
             qty: tx.qty,
             user: tx.creatorId?.name ?? "N/A",
             date: tx.date
-                ? new Date(tx.date).toISOString().replace("T", " ").substring(0, 16)
+                ? new Date(tx.date)
+                    .toISOString()
+                    .replace("T", " ")
+                    .substring(0, ISO_DATETIME_LENGTH)
                 : "",
         };
     });
     return {
         transactions,
-        pagination: { page, limit, totalPages: Math.ceil(totalItems / limit), totalItems }
+        pagination: {
+            limit,
+            totalItems,
+            nextCursor: result.nextCursor,
+            hasNextPage: result.hasNextPage,
+        },
     };
+};
+// ── BATCHES ───────────────────────────────────────────────────────────────────
+export const getVariantBatches = async (variantId) => {
+    return await inventoryRepo.findActiveBatchesByVariant(variantId);
+};
+export const updateBatch = async (batchId, data) => {
+    const batch = await inventoryRepo.updateBatchInfo(batchId, data);
+    if (!batch)
+        throw notFound("Không tìm thấy lô hàng");
+    return batch;
 };
 // ── GOODS RECEIPTS ────────────────────────────────────────────────────────────
 export const createGoodsReceipt = async (operator, data) => {
@@ -86,10 +148,14 @@ export const createGoodsReceipt = async (operator, data) => {
         throw notFound("Không tìm thấy nhà cung cấp");
     let totalAmount = 0;
     const receiptItems = [];
-    const { Types: { ObjectId } } = await import("mongoose");
+    const { ObjectId } = mongoose.Types;
     for (const item of items) {
-        const { variantId, quantity, importPrice } = item;
-        if (!variantId || !quantity || quantity <= 0 || !importPrice || importPrice <= 0) {
+        const { variantId, quantity, importPrice, batchCode, manufactureDate, expiryDate } = item;
+        if (!variantId ||
+            !quantity ||
+            quantity <= 0 ||
+            !importPrice ||
+            importPrice <= 0) {
             throw badRequest("Thông tin sản phẩm nhập kho không hợp lệ");
         }
         const variant = await inventoryRepo.findVariantById(variantId);
@@ -106,57 +172,121 @@ export const createGoodsReceipt = async (operator, data) => {
             variantName: variant.name,
             quantity,
             importPrice,
+            batchCode,
+            manufactureDate,
+            expiryDate,
         });
     }
     const receiptCode = `GR-${Date.now()}`;
-    const receipt = await inventoryRepo.createGoodsReceipt({
-        code: receiptCode,
-        supplierId: supplier._id,
-        items: receiptItems,
-        totalAmount,
-        creatorId: operator._id,
-    });
-    // Cộng tồn kho + ghi transaction
-    for (const item of receiptItems) {
-        const variant = await inventoryRepo.findVariantById(item.variantId.toString());
-        if (variant) {
-            variant.stock += item.quantity;
-            await inventoryRepo.saveVariant(variant);
-            await inventoryRepo.createTransaction({
-                code: `TX-GR-${Math.floor(100000 + Math.random() * 900000)}`,
-                productId: item.productId,
-                variantId: item.variantId,
-                type: "in",
-                qty: item.quantity,
-                creatorId: operator._id,
-                date: new Date(),
-            });
+    let receipt = null;
+    const session = await mongoose.startSession();
+    try {
+        session.startTransaction();
+        receipt = await inventoryRepo.createGoodsReceipt({
+            code: receiptCode,
+            supplierId: supplier._id,
+            items: receiptItems,
+            totalAmount,
+            creatorId: operator._id,
+        }, session);
+        // Cộng tồn kho + ghi transaction cho từng dòng hàng
+        for (const item of receiptItems) {
+            const variant = await inventoryRepo.findVariantById(item.variantId.toString());
+            if (variant) {
+                await inventoryRepo.atomicUpdateStock(variant._id, item.quantity, session);
+                await inventoryRepo.createTransaction({
+                    code: `TX-GR-${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
+                    productId: item.productId,
+                    variantId: item.variantId,
+                    type: "in",
+                    qty: item.quantity,
+                    creatorId: operator._id,
+                    date: new Date(),
+                }, session);
+                await inventoryRepo.createBatch({
+                    variantId: item.variantId,
+                    goodsReceiptId: receipt._id,
+                    batchCode: item.batchCode,
+                    manufactureDate: item.manufactureDate,
+                    expiryDate: item.expiryDate,
+                    importPrice: item.importPrice,
+                    originalQty: item.quantity,
+                    remainingQty: item.quantity,
+                }, session);
+            }
         }
+        await session.commitTransaction();
     }
-    return receipt;
+    catch (error) {
+        await session.abortTransaction();
+        throw error;
+    }
+    finally {
+        session.endSession();
+    }
+    return mapGoodsReceipt(receipt);
 };
 // ── ADJUST STOCK (KIỂM KHO) ──────────────────────────────────────────────────
 export const adjustStock = async (operator, data) => {
-    const { variantId, actualStock, reason } = data;
-    if (!variantId || actualStock === undefined || actualStock < 0) {
-        throw badRequest("Dữ liệu kiểm kho không hợp lệ");
-    }
+    const { variantId, actualStock, minStock } = data;
     const variant = await inventoryRepo.findVariantById(variantId);
     if (!variant)
         throw notFound(`Không tìm thấy biến thể ${variantId}`);
-    const diff = actualStock - variant.stock;
-    if (diff === 0)
-        return variant; // No change
-    variant.stock = actualStock;
-    await inventoryRepo.saveVariant(variant);
-    await inventoryRepo.createTransaction({
-        code: `TX-ADJ-${Math.floor(100000 + Math.random() * 900000)}`,
-        productId: variant.productId,
-        variantId: variant._id,
-        type: "adjustment",
-        qty: diff, // có thể âm hoặc dương
-        creatorId: operator._id,
-        date: new Date(),
-    });
+    let diff = actualStock !== undefined ? actualStock - variant.stock : 0;
+    let isMinStockChanged = minStock !== undefined && variant.minStock !== minStock;
+    if (diff === 0 && !isMinStockChanged)
+        return variant; // Không thay đổi, bỏ qua
+    let updatedVariant = null;
+    const session = await mongoose.startSession();
+    try {
+        session.startTransaction();
+        updatedVariant = await inventoryRepo.atomicUpdateStock(variant._id, diff, session);
+        if (diff < 0) {
+            await inventoryRepo.deductBatchesFIFO(variant._id, Math.abs(diff), session);
+        }
+        else if (diff > 0) {
+            const importPrice = Math.round(variant.price * 0.6);
+            await inventoryRepo.createBatch({
+                variantId: variant._id,
+                goodsReceiptId: null,
+                importPrice,
+                originalQty: diff,
+                remainingQty: diff,
+            }, session);
+        }
+        if (isMinStockChanged) {
+            await Variant.updateOne({ _id: variant._id }, { $set: { minStock } }, { session });
+            if (updatedVariant) {
+                updatedVariant.minStock = minStock;
+            }
+        }
+        await inventoryRepo.createTransaction({
+            code: `TX-ADJ-${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
+            productId: variant.productId,
+            variantId: variant._id,
+            type: "adjustment",
+            qty: diff, // có thể âm (giảm) hoặc dương (tăng)
+            creatorId: operator._id,
+            date: new Date(),
+        }, session);
+        await session.commitTransaction();
+    }
+    catch (error) {
+        await session.abortTransaction();
+        throw error;
+    }
+    finally {
+        session.endSession();
+    }
+    return updatedVariant;
+};
+// ── UPDATE MIN STOCK ────────────────────────────────────────────────────────
+export const updateMinStock = async (operator, data) => {
+    const { variantId, minStock } = data;
+    const variant = await Variant.findById(variantId);
+    if (!variant)
+        throw new Error("Không tìm thấy sản phẩm");
+    variant.minStock = minStock;
+    await variant.save();
     return variant;
 };

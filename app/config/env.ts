@@ -2,7 +2,10 @@ const REQUIRED_VARS = [
   "MONGODB_URI",
   "JWT_SECRET",
   "JWT_EXPIRES_IN",
+  "JWT_REFRESH_EXPIRES_IN",
   "CORS_ORIGIN",
+  "SMTP_USER",
+  "SMTP_PASS",
 ] as const;
 
 export function validateEnv(): void {

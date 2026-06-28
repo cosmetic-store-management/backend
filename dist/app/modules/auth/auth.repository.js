@@ -1,4 +1,5 @@
-import User from "../../models/user.schema.js";
+import User from "../../models/user/user.schema.js";
+import Otp from "../../models/user/otp.schema.js";
 export const findByPhone = (phone) => User.findOne({ phone });
 export const findByEmail = (email) => User.findOne({ email });
 export const findByIdWithPassword = (id) => User.findById(id);
@@ -9,5 +10,9 @@ export const findByPhoneWithResetToken = (phone) => User.findOne({ phone }).sele
 export const findByResetToken = (token) => User.findOne({ resetToken: token }).select("+resetToken +resetTokenExpiry");
 export const create = (data) => User.create(data);
 export const save = (user) => user.save();
-// Cần select thêm refreshToken vì schema có select:false
-export const findByIdWithRefreshToken = (id) => User.findById(id).select("+refreshToken");
+// Cần select thêm refreshTokens vì schema có select:false
+export const findByIdWithRefreshToken = (id) => User.findById(id).select("+refreshTokens");
+export const findOtpByEmail = (email) => Otp.findOne({ email });
+export const upsertOtp = (email, otpCode, expiresAt) => Otp.findOneAndUpdate({ email }, { otpCode, expiresAt, isVerified: false }, { upsert: true, returnDocument: "after" });
+export const markOtpVerified = (email) => Otp.findOneAndUpdate({ email }, { isVerified: true }, { returnDocument: "after" });
+export const deleteOtp = (email) => Otp.deleteOne({ email });

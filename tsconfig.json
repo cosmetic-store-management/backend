@@ -10,7 +10,9 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": ["node"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist"]

@@ -150,71 +150,71 @@ npm run test:coverage
 
 ### Auth (`/api/auth`)
 
-| Method | Path | Mô tả |
-|--------|------|--------|
-| POST | `/register` | Đăng ký tài khoản |
-| POST | `/public/login` | Đăng nhập khách hàng |
-| POST | `/admin/login` | Đăng nhập quản trị |
-| POST | `/refresh` | Làm mới access token |
-| POST | `/logout` | Đăng xuất |
-| GET | `/me` | Thông tin người dùng hiện tại |
-| POST | `/change-password` | Đổi mật khẩu |
-| POST | `/forgot-password` | Quên mật khẩu |
-| POST | `/reset-password` | Đặt lại mật khẩu |
+| Method | Path               | Mô tả                         |
+| ------ | ------------------ | ----------------------------- |
+| POST   | `/register`        | Đăng ký tài khoản             |
+| POST   | `/public/login`    | Đăng nhập khách hàng          |
+| POST   | `/admin/login`     | Đăng nhập quản trị            |
+| POST   | `/refresh`         | Làm mới access token          |
+| POST   | `/logout`          | Đăng xuất                     |
+| GET    | `/me`              | Thông tin người dùng hiện tại |
+| POST   | `/change-password` | Đổi mật khẩu                  |
+| POST   | `/forgot-password` | Quên mật khẩu                 |
+| POST   | `/reset-password`  | Đặt lại mật khẩu              |
 
 ### Products (`/api/products`)
 
-| Method | Path | Mô tả |
-|--------|------|--------|
-| GET | `/` | Danh sách sản phẩm công khai |
-| GET | `/:slug` | Chi tiết sản phẩm |
-| GET | `/admin/all` | Danh sách admin (auth) |
-| POST | `/admin` | Tạo sản phẩm (admin) |
-| PUT | `/admin/:id` | Cập nhật sản phẩm (admin) |
-| DELETE | `/admin/:id` | Xóa sản phẩm (admin) |
+| Method | Path         | Mô tả                        |
+| ------ | ------------ | ---------------------------- |
+| GET    | `/`          | Danh sách sản phẩm công khai |
+| GET    | `/:slug`     | Chi tiết sản phẩm            |
+| GET    | `/admin/all` | Danh sách admin (auth)       |
+| POST   | `/admin`     | Tạo sản phẩm (admin)         |
+| PUT    | `/admin/:id` | Cập nhật sản phẩm (admin)    |
+| DELETE | `/admin/:id` | Xóa sản phẩm (admin)         |
 
 ### Orders (`/api/orders`)
 
-| Method | Path | Mô tả |
-|--------|------|--------|
-| GET | `/my-orders` | Đơn hàng của tôi |
-| POST | `/preview` | Xem trước đơn hàng (checkout) |
-| POST | `/` | Tạo đơn hàng |
-| POST | `/:id/cancel` | Hủy đơn hàng |
-| GET | `/admin/all` | Tất cả đơn hàng (admin) |
-| PATCH | `/admin/:id/status` | Cập nhật trạng thái (admin) |
+| Method | Path                | Mô tả                         |
+| ------ | ------------------- | ----------------------------- |
+| GET    | `/my-orders`        | Đơn hàng của tôi              |
+| POST   | `/preview`          | Xem trước đơn hàng (checkout) |
+| POST   | `/`                 | Tạo đơn hàng                  |
+| POST   | `/:id/cancel`       | Hủy đơn hàng                  |
+| GET    | `/admin/all`        | Tất cả đơn hàng (admin)       |
+| PATCH  | `/admin/:id/status` | Cập nhật trạng thái (admin)   |
 
 ### Vouchers (`/api/vouchers`)
 
-| Method | Path | Mô tả |
-|--------|------|--------|
-| POST | `/validate` | Kiểm tra voucher trước checkout |
-| GET | `/wallet` | Ví voucher của tôi |
-| POST | `/wallet/collect` | Lưu voucher vào ví |
-| GET | `/admin/all` | Tất cả vouchers (admin) |
-| POST | `/admin` | Tạo voucher (admin) |
-| PUT | `/admin/:id` | Cập nhật voucher (admin) |
+| Method | Path              | Mô tả                           |
+| ------ | ----------------- | ------------------------------- |
+| POST   | `/validate`       | Kiểm tra voucher trước checkout |
+| GET    | `/wallet`         | Ví voucher của tôi              |
+| POST   | `/wallet/collect` | Lưu voucher vào ví              |
+| GET    | `/admin/all`      | Tất cả vouchers (admin)         |
+| POST   | `/admin`          | Tạo voucher (admin)             |
+| PUT    | `/admin/:id`      | Cập nhật voucher (admin)        |
 
 ### Reviews (`/api/reviews`)
 
-| Method | Path | Mô tả |
-|--------|------|--------|
-| GET | `/product/:id` | Reviews của sản phẩm |
-| POST | `/` | Tạo review (auth, verified purchase) |
-| PUT | `/:id` | Cập nhật review (chủ review) |
-| DELETE | `/:id` | Xóa review |
-| GET | `/admin/all` | Tất cả reviews (admin) |
+| Method | Path           | Mô tả                                |
+| ------ | -------------- | ------------------------------------ |
+| GET    | `/product/:id` | Reviews của sản phẩm                 |
+| POST   | `/`            | Tạo review (auth, verified purchase) |
+| PUT    | `/:id`         | Cập nhật review (chủ review)         |
+| DELETE | `/:id`         | Xóa review                           |
+| GET    | `/admin/all`   | Tất cả reviews (admin)               |
 
 ### Inventory (`/api/inventory`)
 
-| Method | Path | Mô tả |
-|--------|------|--------|
-| GET | `/suppliers` | Danh sách nhà cung cấp |
-| POST | `/suppliers` | Tạo nhà cung cấp |
-| POST | `/goods-receipts` | Nhập kho |
-| GET | `/goods-receipts` | Lịch sử nhập kho |
-| POST | `/stock/adjust` | Điều chỉnh tồn kho (kiểm kho) |
-| GET | `/stock/low` | Cảnh báo hàng sắp hết |
+| Method | Path              | Mô tả                         |
+| ------ | ----------------- | ----------------------------- |
+| GET    | `/suppliers`      | Danh sách nhà cung cấp        |
+| POST   | `/suppliers`      | Tạo nhà cung cấp              |
+| POST   | `/goods-receipts` | Nhập kho                      |
+| GET    | `/goods-receipts` | Lịch sử nhập kho              |
+| POST   | `/stock/adjust`   | Điều chỉnh tồn kho (kiểm kho) |
+| GET    | `/stock/low`      | Cảnh báo hàng sắp hết         |
 
 ---
 
@@ -240,6 +240,7 @@ Mongoose Schema (MongoDB)
 - **Response DTOs**: Interface + mapper function để transform DB documents (`*.response.dto.ts`)
 
 Ví dụ chuẩn:
+
 ```typescript
 // product.response.dto.ts
 export interface ProductResponse { id: string; name: string; slug: string; ... }
@@ -254,11 +255,11 @@ return products.map(mapProduct); // Luôn map qua DTO
 
 ```typescript
 // shared/errors/httpErrors.ts
-throw badRequest("Validation error");  // 400
-throw unauthorized("Token hết hạn");  // 401
-throw forbidden("Không có quyền");    // 403
-throw notFound("Không tìm thấy");     // 404
-throw conflict("Đã tồn tại");         // 409
+throw badRequest("Validation error"); // 400
+throw unauthorized("Token hết hạn"); // 401
+throw forbidden("Không có quyền"); // 403
+throw notFound("Không tìm thấy"); // 404
+throw conflict("Đã tồn tại"); // 409
 ```
 
 ---
@@ -283,6 +284,7 @@ Preview Order → Validate Voucher → Check Stock → Create Order
 ```
 
 Khi hủy/trả hàng:
+
 ```
 Cancel/Return Order → Restore Stock → Decrement Voucher Usage
 → Restore Points → Refund (if paid)

@@ -3,35 +3,41 @@
  * Data access layer cho Review module.
  */
 import mongoose from "mongoose";
-import Review from "../../models/review.schema.js";
-import Product from "../../models/product.schema.js";
+import Review from "../../models/user/review.schema.js";
+import Product from "../../models/product/product.schema.js";
 
 // ── Public ────────────────────────────────────────────────────────────────────
 
-export const findByProductId = (
+export const findByProductId = async (
   query: Record<string, any>,
-  skip: number,
-  limit: number
-) =>
-  Review.find(query)
+  cursor: string | null,
+  limit: number,
+) => {
+  if (cursor) query._id = { $lt: cursor };
+  const reviews = await Review.find(query)
     .populate("userId", "name avatarUrl")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
+    .sort({ _id: -1 })
+    .limit(limit + 1)
     .lean();
+    
+  const hasNextPage = reviews.length > limit;
+  const items = hasNextPage ? reviews.slice(0, limit) : reviews;
+  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+
+  return { reviews: items, nextCursor, hasNextPage, limit };
+};
 
 export const countByQuery = (query: Record<string, any>) =>
   Review.countDocuments(query);
 
-export const findOne = (query: Record<string, any>) =>
-  Review.findOne(query);
+export const findOne = (query: Record<string, any>) => Review.findOne(query);
 
 export const create = (data: {
-  userId:             mongoose.Types.ObjectId;
-  productId:          mongoose.Types.ObjectId;
-  rating:             number;
-  comment?:           string;
-  images?:            string[];
+  userId: mongoose.Types.ObjectId;
+  productId: mongoose.Types.ObjectId;
+  rating: number;
+  comment?: string;
+  images?: string[];
   isVerifiedPurchase: boolean;
 }) => Review.create(data);
 
@@ -41,26 +47,38 @@ export const save = (review: any) => review.save();
 export const aggregateStats = (productId: mongoose.Types.ObjectId) =>
   Review.aggregate([
     { $match: { productId } },
-    { $group: { _id: null, averageRating: { $avg: "$rating" }, totalReviews: { $sum: 1 } } }
+    {
+      $group: {
+        _id: null,
+        averageRating: { $avg: "$rating" },
+        totalReviews: { $sum: 1 },
+      },
+    },
   ]);
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
-export const findAllAdmin = (
+export const findAllAdmin = async (
   query: Record<string, any>,
-  skip: number,
-  limit: number
-) =>
-  Review.find(query)
+  cursor: string | null,
+  limit: number,
+) => {
+  if (cursor) query._id = { $lt: cursor };
+  const reviews = await Review.find(query)
     .populate("userId", "name avatarUrl")
-    .populate("productId", "name slug")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
+    .populate("productId", "name slug imageUrl")
+    .sort({ _id: -1 })
+    .limit(limit + 1)
     .lean();
+    
+  const hasNextPage = reviews.length > limit;
+  const items = hasNextPage ? reviews.slice(0, limit) : reviews;
+  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
 
-export const findByIdAndDelete = (id: string) =>
-  Review.findByIdAndDelete(id);
+  return { reviews: items, nextCursor, hasNextPage, limit };
+};
+
+export const findByIdAndDelete = (id: string) => Review.findByIdAndDelete(id);
 
 export const findByIdAndUpdate = (id: string, data: Record<string, any>) =>
   Review.findByIdAndUpdate(id, data, { returnDocument: "after" });
@@ -71,10 +89,12 @@ export const findOneAndDelete = (query: Record<string, any>) =>
 // ── Product Stats Sync ────────────────────────────────────────────────────────
 
 /** Tìm sản phẩm theo tên (để lọc reviews theo product) */
-export const findProductIdsByName = async (name: string): Promise<mongoose.Types.ObjectId[]> => {
+export const findProductIdsByName = async (
+  name: string,
+): Promise<mongoose.Types.ObjectId[]> => {
   const products = await Product.find(
     { name: { $regex: name.trim(), $options: "i" } },
-    "_id"
+    "_id",
   ).lean();
   return products.map((p: any) => p._id);
 };
@@ -82,6 +102,5 @@ export const findProductIdsByName = async (name: string): Promise<mongoose.Types
 export const updateProductStats = (
   productId: mongoose.Types.ObjectId,
   averageRating: number,
-  numReviews: number
-) =>
-  Product.findByIdAndUpdate(productId, { averageRating, numReviews });
+  numReviews: number,
+) => Product.findByIdAndUpdate(productId, { averageRating, numReviews });

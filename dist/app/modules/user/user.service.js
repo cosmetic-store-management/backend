@@ -1,12 +1,13 @@
 import mongoose from "mongoose";
-import Order from "../../models/order.schema.js";
-import { getTierBySpending, getNextTier, TIERS } from "./tier.constants.js";
+import Order from "../../models/order/order.schema.js";
+import { getTierBySpending, getNextTier, TIERS, } from "./tier.constants.js";
 import * as userRepo from "./user.repository.js";
+import * as authRepo from "../auth/auth.repository.js";
 import { mapUser } from "./dto/user.response.dto.js";
-import { notFound, conflict, forbidden } from "../../shared/errors/httpErrors.js";
-import User from "../../models/user.schema.js";
+import { notFound, conflict, forbidden, } from "../../shared/errors/httpErrors.js";
+import User from "../../models/user/user.schema.js";
 import bcrypt from "bcryptjs";
-import PointHistory from "../../models/point-history.schema.js";
+import PointHistory from "../../models/user/point-history.schema.js";
 import { mapProduct } from "../product/dto/product.response.dto.js";
 import { attachVariants } from "../product/product.repository.js";
 /**
@@ -41,7 +42,7 @@ export const getMyTierInfo = async (userId) => {
         progressPercent = Math.min(100, Math.round((totalSpent / next.minSpent) * 100));
     }
     // Tier summary list (thấp → cao, để hiển thị bảng)
-    const tiers = [...TIERS].reverse().map(t => ({
+    const tiers = [...TIERS].reverse().map((t) => ({
         key: t.key,
         label: t.label,
         minSpent: t.minSpent,
@@ -80,6 +81,21 @@ export const updateCurrentUser = async (userId, data) => {
         }
         user.phone = data.phone;
     }
+    if (data.email !== undefined && data.email !== user.email) {
+        if (data.email) {
+            const emailOwner = await userRepo.findByEmail(data.email);
+            if (emailOwner && emailOwner._id.toString() !== userId) {
+                throw conflict("Email này đã được sử dụng bởi tài khoản khác");
+            }
+            // Check if OTP was verified
+            const otpRecord = await authRepo.findOtpByEmail(data.email);
+            if (!otpRecord || !otpRecord.isVerified) {
+                throw forbidden("Bạn phải xác thực Email bằng mã OTP trước khi cập nhật");
+            }
+            await authRepo.deleteOtp(data.email);
+        }
+        user.email = data.email;
+    }
     if (data.dob !== undefined)
         user.dob = new Date(data.dob);
     if (data.gender !== undefined)
@@ -110,7 +126,7 @@ export const addAddress = async (userId, data) => {
     if (!user)
         throw notFound("Không tìm thấy user");
     if (data.isDefault) {
-        user.addresses.forEach(a => a.isDefault = false);
+        user.addresses.forEach((a) => (a.isDefault = false));
     }
     else if (user.addresses.length === 0) {
         data.isDefault = true;
@@ -125,11 +141,11 @@ export const updateAddress = async (userId, addressId, data) => {
     const user = await userRepo.findById(userId);
     if (!user)
         throw notFound("Không tìm thấy user");
-    const address = user.addresses.find(a => a._id?.toString() === addressId);
+    const address = user.addresses.find((a) => a._id?.toString() === addressId);
     if (!address)
         throw notFound("Không tìm thấy địa chỉ");
     if (data.isDefault) {
-        user.addresses.forEach(a => a.isDefault = false);
+        user.addresses.forEach((a) => (a.isDefault = false));
     }
     address.province = data.province;
     address.district = data.district;
@@ -144,7 +160,7 @@ export const deleteAddress = async (userId, addressId) => {
     const user = await userRepo.findById(userId);
     if (!user)
         throw notFound("Không tìm thấy user");
-    const addrIndex = user.addresses.findIndex(a => a._id?.toString() === addressId);
+    const addrIndex = user.addresses.findIndex((a) => a._id?.toString() === addressId);
     if (addrIndex === -1)
         throw notFound("Không tìm thấy địa chỉ");
     const isDefault = user.addresses[addrIndex].isDefault;
@@ -164,8 +180,8 @@ const checkHierarchy = (requester, target) => {
         }
     }
 };
-export const getStaffUsers = async (page = 1, limit = 20, search, status, role) => {
-    const result = await userRepo.findStaffs(page, limit, search, status, role);
+export const getStaffUsers = async (cursor = null, limit = 20, search, status, role) => {
+    const result = await userRepo.findStaffs(cursor, limit, search, status, role);
     return {
         ...result,
         users: result.users.map(mapUser),
@@ -188,6 +204,36 @@ export const updateUserByAdmin = async (id, data, requester) => {
         user.phone = data.phone;
     if (data.email !== undefined)
         user.email = data.email;
+    if (data.province !== undefined ||
+        data.district !== undefined ||
+        data.ward !== undefined ||
+        data.street !== undefined) {
+        let defaultAddr = user.addresses.find((a) => a.isDefault);
+        if (!defaultAddr && user.addresses.length > 0) {
+            defaultAddr = user.addresses[0];
+        }
+        if (!defaultAddr) {
+            user.addresses.push({
+                isDefault: true,
+                name: data.name || user.name,
+                phone: data.phone || user.phone,
+                province: data.province || "",
+                district: data.district || "",
+                ward: data.ward || "",
+                street: data.street || "",
+            });
+        }
+        else {
+            if (data.province !== undefined)
+                defaultAddr.province = data.province;
+            if (data.district !== undefined)
+                defaultAddr.district = data.district;
+            if (data.ward !== undefined)
+                defaultAddr.ward = data.ward;
+            if (data.street !== undefined)
+                defaultAddr.street = data.street;
+        }
+    }
     await userRepo.save(user);
     return mapUser(user);
 };
@@ -244,7 +290,9 @@ export const resetUserPassword = async (id, requester) => {
     if (user.role === "owner")
         throw conflict("Không thể thao tác trên tài khoản Chủ cửa hàng");
     checkHierarchy(requester, user);
-    user.password = await bcrypt.hash("GlowUp@123456", 12);
+    // Đọc từ env để không hardcode mật khẩu trong source code
+    const defaultPassword = process.env.DEFAULT_STAFF_PASSWORD || "GlowUp@123456";
+    user.password = await bcrypt.hash(defaultPassword, 12);
     await userRepo.save(user);
     return mapUser(user);
 };
@@ -255,7 +303,32 @@ export const deleteUserById = async (id, requester) => {
     if (user.role === "owner")
         throw conflict("Không thể xóa tài khoản Chủ cửa hàng");
     checkHierarchy(requester, user);
-    await userRepo.deleteById(id);
+    // Kiểm tra đơn hàng đang xử lý nếu là khách hàng
+    if (user.role === "customer") {
+        const activeOrder = await Order.findOne({
+            userId: id,
+            orderStatus: { $in: ["pending", "processing", "shipping", "return_pending"] },
+        });
+        if (activeOrder) {
+            throw conflict("Không thể xóa. Khách hàng này đang có đơn hàng chưa hoàn tất hoặc đang chờ hoàn trả.");
+        }
+    }
+    // Thực thi Ẩn danh hóa (Data Anonymization)
+    user.isDeleted = true;
+    user.deletedAt = new Date();
+    user.deletedBy = requester._id;
+    user.name = "Người dùng ẩn danh";
+    user.email = undefined;
+    user.phone = undefined;
+    user.password = undefined;
+    user.dob = undefined;
+    user.gender = undefined;
+    user.avatar = undefined;
+    user.addresses = [];
+    user.refreshTokens = [];
+    user.internalNotes = `Đã bị xóa bởi hệ thống lúc ${new Date().toISOString()}`;
+    user.isActive = false;
+    await userRepo.save(user);
 };
 export const createStaff = async (data, requester) => {
     const existingPhone = await userRepo.findByPhone(data.phone);
@@ -309,26 +382,26 @@ export const getCustomers = async (page = 1, limit = 20, search, tier, status, s
                     $filter: {
                         input: "$orders",
                         as: "order",
-                        cond: { $eq: ["$$order.orderStatus", "completed"] }
-                    }
-                }
-            }
+                        cond: { $eq: ["$$order.orderStatus", "completed"] },
+                    },
+                },
+            },
         },
         {
             $addFields: {
                 orderCount: { $size: "$completedOrders" },
-                lastPurchaseDate: { $max: "$completedOrders.createdAt" }
-            }
+                lastPurchaseDate: { $max: "$completedOrders.createdAt" },
+            },
         },
         {
             $group: {
                 _id: null,
                 totalCustomers: { $sum: 1 },
                 newCustomers: {
-                    $sum: { $cond: [{ $gte: ["$createdAt", thirtyDaysAgo] }, 1, 0] }
+                    $sum: { $cond: [{ $gte: ["$createdAt", thirtyDaysAgo] }, 1, 0] },
                 },
                 returningCustomers: {
-                    $sum: { $cond: [{ $gte: ["$orderCount", 2] }, 1, 0] }
+                    $sum: { $cond: [{ $gte: ["$orderCount", 2] }, 1, 0] },
                 },
                 churningCustomers: {
                     $sum: {
@@ -336,20 +409,22 @@ export const getCustomers = async (page = 1, limit = 20, search, tier, status, s
                             {
                                 $and: [
                                     { $gte: ["$orderCount", 1] },
-                                    { $lt: ["$lastPurchaseDate", ninetyDaysAgo] }
-                                ]
-                            }, 1, 0
-                        ]
-                    }
-                }
-            }
-        }
+                                    { $lt: ["$lastPurchaseDate", ninetyDaysAgo] },
+                                ],
+                            },
+                            1,
+                            0,
+                        ],
+                    },
+                },
+            },
+        },
     ]);
     const overview = overviewResult || {
         totalCustomers: 0,
         newCustomers: 0,
         returningCustomers: 0,
-        churningCustomers: 0
+        churningCustomers: 0,
     };
     // 2. Build Filtered Table Pipeline
     const match = { role: "customer" };
@@ -392,23 +467,39 @@ export const getCustomers = async (page = 1, limit = 20, search, tier, status, s
                 isActive: 1,
                 createdAt: 1,
                 password: 1,
+                providers: 1,
+                province: 1,
+                district: 1,
+                ward: 1,
+                street: 1,
                 completedOrders: {
                     $filter: {
                         input: "$orders",
                         as: "order",
-                        cond: { $eq: ["$$order.orderStatus", "completed"] }
-                    }
-                }
-            }
+                        cond: { $eq: ["$$order.orderStatus", "completed"] },
+                    },
+                },
+            },
         },
         {
             $addFields: {
                 orderCount: { $size: "$completedOrders" },
                 totalSpent: { $sum: "$completedOrders.totalAmount" },
                 lastPurchaseDate: { $max: "$completedOrders.createdAt" },
-                hasPassword: { $cond: [{ $ifNull: ["$password", false] }, true, false] }
-            }
-        }
+                hasOnlineAccount: {
+                    $cond: [
+                        {
+                            $or: [
+                                { $ifNull: ["$password", false] },
+                                { $gt: [{ $size: { $ifNull: ["$providers", []] } }, 0] },
+                            ],
+                        },
+                        true,
+                        false,
+                    ],
+                },
+            },
+        },
     ];
     // Post-match for spending, tier, and lastPurchase
     const postMatch = {};
@@ -428,11 +519,14 @@ export const getCustomers = async (page = 1, limit = 20, search, tier, status, s
     }
     // Tier filter dùng TIERS constants (single source of truth từ tier.constants.ts)
     if (tier && tier !== "all") {
-        const tierDef = TIERS.find(t => t.key === tier);
+        const tierDef = TIERS.find((t) => t.key === tier);
         if (tierDef) {
             const nextTierDef = TIERS[TIERS.indexOf(tierDef) - 1]; // tier cao hơn tiếp theo
             if (nextTierDef) {
-                postMatch.totalSpent = { $gte: tierDef.minSpent, $lt: nextTierDef.minSpent };
+                postMatch.totalSpent = {
+                    $gte: tierDef.minSpent,
+                    $lt: nextTierDef.minSpent,
+                };
             }
             else {
                 // Diamond (tier cao nhất) — không có giới hạn trên
@@ -448,10 +542,16 @@ export const getCustomers = async (page = 1, limit = 20, search, tier, status, s
             postMatch.lastPurchaseDate = { $lt: thirtyDaysAgo, $gte: ninetyDaysAgo };
         }
         else if (lastPurchase === "180_days") {
-            postMatch.lastPurchaseDate = { $lt: ninetyDaysAgo, $gte: oneEightyDaysAgo };
+            postMatch.lastPurchaseDate = {
+                $lt: ninetyDaysAgo,
+                $gte: oneEightyDaysAgo,
+            };
         }
         else if (lastPurchase === "365_days") {
-            postMatch.lastPurchaseDate = { $lt: oneEightyDaysAgo, $gte: threeSixtyFiveDaysAgo };
+            postMatch.lastPurchaseDate = {
+                $lt: oneEightyDaysAgo,
+                $gte: threeSixtyFiveDaysAgo,
+            };
         }
         else if (lastPurchase === "over_365_days") {
             postMatch.lastPurchaseDate = { $lt: threeSixtyFiveDaysAgo };
@@ -478,16 +578,18 @@ export const getCustomers = async (page = 1, limit = 20, search, tier, status, s
     // Sorting
     let sortStage = { createdAt: -1 };
     if (sortBy) {
-        if (sortBy === "spent_desc")
+        if (sortBy === "spent_high" || sortBy === "spent_desc")
             sortStage = { totalSpent: -1, createdAt: -1 };
-        else if (sortBy === "points_desc")
+        else if (sortBy === "spent_low")
+            sortStage = { totalSpent: 1, createdAt: -1 };
+        else if (sortBy === "points_high" || sortBy === "points_desc")
             sortStage = { points: -1, createdAt: -1 };
-        else if (sortBy === "last_purchase_desc")
-            sortStage = { lastPurchaseDate: -1, createdAt: -1 };
-        else if (sortBy === "last_purchase_asc")
-            sortStage = { lastPurchaseDate: 1, createdAt: -1 };
+        else if (sortBy === "points_low")
+            sortStage = { points: 1, createdAt: -1 };
         else if (sortBy === "new_customer")
             sortStage = { createdAt: -1 };
+        else if (sortBy === "old_customer")
+            sortStage = { createdAt: 1 };
     }
     pipeline.push({ $sort: sortStage });
     const skip = (page - 1) * limit;
@@ -496,34 +598,42 @@ export const getCustomers = async (page = 1, limit = 20, search, tier, status, s
             data: [
                 { $skip: skip },
                 { $limit: limit },
-                { $project: { completedOrders: 0, password: 0 } }
+                { $project: { completedOrders: 0, password: 0 } },
             ],
-            totalCount: [
-                { $count: "count" }
-            ]
-        }
+            totalCount: [{ $count: "count" }],
+        },
     });
     const [result] = await User.aggregate(pipeline);
-    const customers = result.data.map((u) => ({
-        id: u._id.toString(),
-        name: u.name,
-        email: u.email,
-        phone: u.phone,
-        points: u.points || 0,
-        isActive: u.isActive,
-        hasPassword: u.hasPassword,
-        orderCount: u.orderCount,
-        totalSpent: u.totalSpent,
-        createdAt: u.createdAt,
-        lastPurchaseDate: u.lastPurchaseDate || null
-    }));
+    const customers = result.data.map((u) => {
+        const defaultAddress = (u.addresses || []).find((a) => a.isDefault) || (u.addresses || [])[0] || {};
+        return {
+            id: u._id.toString(),
+            name: u.name,
+            email: u.email,
+            phone: u.phone,
+            points: u.points || 0,
+            isActive: u.isActive,
+            hasOnlineAccount: u.hasOnlineAccount,
+            orderCount: u.orderCount,
+            totalSpent: u.totalSpent,
+            createdAt: u.createdAt,
+            lastPurchaseDate: u.lastPurchaseDate || null,
+            province: defaultAddress.province || "",
+            district: defaultAddress.district || "",
+            ward: defaultAddress.ward || "",
+            street: defaultAddress.street || "",
+        };
+    });
     const totalElements = result.totalCount[0]?.count || 0;
+    if (customers.length > 0) {
+        console.log("DEBUG getCustomers first user province:", customers[0].name, customers[0].province);
+    }
     return {
         overview: {
             totalCustomers: overview.totalCustomers || 0,
             newCustomers: overview.newCustomers || 0,
             returningCustomers: overview.returningCustomers || 0,
-            churningCustomers: overview.churningCustomers || 0
+            churningCustomers: overview.churningCustomers || 0,
         },
         content: customers,
         totalPages: Math.ceil(totalElements / limit),
@@ -536,7 +646,9 @@ export const createManualCustomer = async (data) => {
     const existing = await userRepo.findByPhone(data.phone);
     if (existing)
         throw conflict("Số điện thoại đã tồn tại");
-    const hashedPassword = data.password ? await bcrypt.hash(data.password, 12) : undefined;
+    const hashedPassword = data.password
+        ? await bcrypt.hash(data.password, 12)
+        : undefined;
     const newUser = await userRepo.create({
         name: data.name,
         email: data.email || undefined,
@@ -569,10 +681,16 @@ export const getFavorites = async (userId) => {
     const user = await userRepo.findById(userId);
     if (!user)
         throw notFound("Không tìm thấy user");
-    await user.populate("favorites");
+    await user.populate({
+        path: "favorites",
+        populate: [
+            { path: "brandId", select: "name" },
+            { path: "categoryId", select: "name" }
+        ]
+    });
     const products = (user.favorites || []);
     const productsWithVariants = await attachVariants(products);
-    return productsWithVariants.map(p => mapProduct(p));
+    return productsWithVariants.map((p) => mapProduct(p));
 };
 // POST toggle favorite
 export const toggleFavorite = async (userId, productId) => {
@@ -597,14 +715,20 @@ export const getRecentlyViewed = async (userId, page = 1, limit = 12) => {
     const user = await userRepo.findById(userId);
     if (!user)
         throw notFound("Không tìm thấy user");
-    await user.populate("recentlyViewed");
+    await user.populate({
+        path: "recentlyViewed",
+        populate: [
+            { path: "brandId", select: "name" },
+            { path: "categoryId", select: "name" }
+        ]
+    });
     const all = (user.recentlyViewed || []);
     const total = all.length;
     const totalPages = Math.ceil(total / limit);
     const sliced = all.slice((page - 1) * limit, page * limit);
     const withVariants = await attachVariants(sliced);
     return {
-        products: withVariants.map(p => mapProduct(p)),
+        products: withVariants.map((p) => mapProduct(p)),
         total,
         page,
         limit,

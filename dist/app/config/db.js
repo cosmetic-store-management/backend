@@ -7,6 +7,8 @@ const connectDB = async (uri) => {
     await mongoose.connect(uri, {
         serverSelectionTimeoutMS: 10000,
         socketTimeoutMS: 45000,
+        maxPoolSize: 200, // Tối ưu cho 100-200 CCU (tránh nghẽn connection khi chạy Transactions)
+        minPoolSize: 20,
     });
     console.log("✅ MongoDB connected");
     mongoose.connection.on("disconnected", () => console.warn("⚠️  MongoDB disconnected"));
