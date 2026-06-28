@@ -13,6 +13,7 @@ import User from "../../app/models/user/user.schema.js";
 import Variant from "../../app/models/product/variant.schema.js";
 import Product from "../../app/models/product/product.schema.js";
 import Category from "../../app/models/product/category.schema.js";
+import PointHistory from "../../app/models/user/point-history.schema.js";
 import mongoose from "mongoose";
 
 let userId: string;
@@ -22,6 +23,7 @@ let staffUser: any;
 
 beforeAll(async () => {
   await connectTestDB();
+  await PointHistory.createCollection();
 });
 afterAll(async () => {
   await disconnectTestDB();

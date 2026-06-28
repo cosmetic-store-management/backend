@@ -60,6 +60,7 @@ passport.use(
       clientSecret: GOOGLE_CLIENT_SECRET,
       callbackURL: "/api/auth/google/callback",
       passReqToCallback: true,
+      proxy: true,
     },
     verifyCallback
   )
@@ -74,6 +75,7 @@ passport.use(
       callbackURL: "/api/auth/facebook/callback",
       profileFields: ["id", "displayName", "photos", "email"],
       passReqToCallback: true,
+      proxy: true,
       graphAPIVersion: 'v19.0'
     },
     verifyCallback

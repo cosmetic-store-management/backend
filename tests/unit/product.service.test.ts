@@ -58,7 +58,7 @@ describe("productService.getAdminProducts", () => {
       makeFakeProduct(),
       makeFakeProduct({ name: "Serum" }),
     ];
-    vi.mocked(productRepo.findAdmin).mockResolvedValue(fakeProducts as any);
+    vi.mocked(productRepo.findAdmin).mockResolvedValue({ products: fakeProducts, nextCursor: null, hasNextPage: false, limit: 10 } as any);
     vi.mocked(productRepo.countAll).mockResolvedValue(2);
 
     const result = await productService.getAdminProducts({
@@ -69,22 +69,25 @@ describe("productService.getAdminProducts", () => {
   });
 
   it("filter theo trạng thái active", async () => {
-    vi.mocked(productRepo.findAdmin).mockResolvedValue([
-      makeFakeProduct(),
-    ] as any);
+    vi.mocked(productRepo.findAdmin).mockResolvedValue({
+      products: [makeFakeProduct()],
+      nextCursor: null,
+      hasNextPage: false,
+      limit: 10
+    } as any);
     vi.mocked(productRepo.countAll).mockResolvedValue(1);
 
     await productService.getAdminProducts({ status: "active" });
 
     expect(productRepo.findAdmin).toHaveBeenCalledWith(
       expect.objectContaining({ isActive: true }),
-      0,
+      null,
       20,
     );
   });
 
   it("trả về trang 2 đúng với skip", async () => {
-    vi.mocked(productRepo.findAdmin).mockResolvedValue([] as any);
+    vi.mocked(productRepo.findAdmin).mockResolvedValue({ products: [], nextCursor: null, hasNextPage: false, limit: 10 } as any);
     vi.mocked(productRepo.countAll).mockResolvedValue(25);
 
     const result = await productService.getAdminProducts({

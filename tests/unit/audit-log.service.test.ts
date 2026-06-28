@@ -50,17 +50,22 @@ describe("auditLogService.logAction", () => {
 
 describe("auditLogService.getAuditLogs", () => {
   it("trả về danh sách logs và format đúng ngày tháng", async () => {
-    vi.mocked(auditRepo.findByQuery).mockResolvedValue([
-      {
-        _id: "log1",
-        userName: "Admin",
-        action: "update",
-        domain: "settings",
-        description: "Cập nhật lợi nhuận",
-        ipAddress: "127.0.0.1",
-        createdAt: new Date("2026-06-23T15:00:00.000Z")
-      }
-    ] as any);
+    vi.mocked(auditRepo.findByQuery).mockResolvedValue({
+      logs: [
+        {
+          _id: "log1",
+          userName: "Admin",
+          action: "update",
+          domain: "settings",
+          description: "Cập nhật lợi nhuận",
+          ipAddress: "127.0.0.1",
+          createdAt: new Date("2026-06-23T15:00:00.000Z"),
+        },
+      ],
+      nextCursor: null,
+      hasNextPage: false,
+      limit: 10
+    } as any);
 
     const result = await auditService.getAuditLogs("Admin", "settings");
     
@@ -71,7 +76,12 @@ describe("auditLogService.getAuditLogs", () => {
   });
 
   it("truyền đúng query lọc", async () => {
-    vi.mocked(auditRepo.findByQuery).mockResolvedValue([] as any);
+    vi.mocked(auditRepo.findByQuery).mockResolvedValue({
+      logs: [],
+      nextCursor: null,
+      hasNextPage: false,
+      limit: 10
+    } as any);
 
     await auditService.getAuditLogs("Test", "catalog", "2026-06-20", "2026-06-21");
 
