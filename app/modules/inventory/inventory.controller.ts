@@ -58,10 +58,10 @@ router.get(
   authenticate,
   requirePermission("products.view"),
   catchAsync(async (req, res) => {
-    const { search, cursor, limit = "10" } = req.query;
+    const { search, page, limit = "10" } = req.query;
     const result = await inventoryService.getStockList(
       search as string,
-      cursor as string | undefined,
+      Number(page) || 1,
       Number(limit),
     );
     return response.success(res, result);
@@ -107,9 +107,9 @@ router.get(
   authenticate,
   requirePermission("products.view"),
   catchAsync(async (req, res) => {
-    const { cursor, limit = "10", type } = req.query;
+    const { page, limit = "10", type } = req.query;
     const result = await inventoryService.getTransactions(
-      cursor as string | undefined,
+      Number(page) || 1,
       Number(limit),
       type as string | undefined,
     );

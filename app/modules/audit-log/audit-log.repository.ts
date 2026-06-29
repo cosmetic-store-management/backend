@@ -36,15 +36,16 @@ export const createLog = (data: {
 
 export const findByQuery = async (
   query: Record<string, any>,
-  cursor: string | null,
+  page: number,
   limit: number,
 ) => {
-  if (cursor) query._id = { $lt: cursor };
-  const logs = await AuditLog.find(query).sort({ _id: -1 }).limit(limit + 1).lean();
+  const skip = (page - 1) * limit;
+  const [logs, total] = await Promise.all([
+    AuditLog.find(query).sort({ _id: -1 }).skip(skip).limit(limit).lean(),
+    AuditLog.countDocuments(query),
+  ]);
   
-  const hasNextPage = logs.length > limit;
-  const items = hasNextPage ? logs.slice(0, limit) : logs;
-  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+  const totalPages = Math.ceil(total / limit);
   
-  return { logs: items, nextCursor, hasNextPage, limit };
+  return { logs, total, limit, page, totalPages };
 };

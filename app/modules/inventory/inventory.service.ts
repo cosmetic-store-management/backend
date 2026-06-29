@@ -30,15 +30,15 @@ export const createSupplier = async (data: any) => {
 
 export const getStockList = async (
   search?: string,
-  cursor?: string,
+  page = 1,
   limit = 10,
 ): Promise<{
   stock: StockItemResponse[];
   pagination: {
     limit: number;
     totalItems: number;
-    nextCursor: string | null;
-    hasNextPage: boolean;
+    page: number;
+    totalPages: number;
   };
 }> => {
   const query: Record<string, any> = {};
@@ -53,7 +53,7 @@ export const getStockList = async (
   }
 
   const [result, totalItems] = await Promise.all([
-    inventoryRepo.findVariantsByQuery(query, cursor || null, limit),
+    inventoryRepo.findVariantsByQuery(query, page, limit),
     inventoryRepo.countVariantsByQuery(query),
   ]);
   const variants = result.variants;
@@ -118,8 +118,8 @@ export const getStockList = async (
     pagination: {
       limit,
       totalItems,
-      nextCursor: result.nextCursor,
-      hasNextPage: result.hasNextPage,
+      page: result.page,
+      totalPages: result.totalPages,
     },
   };
 };
@@ -127,7 +127,7 @@ export const getStockList = async (
 // ── TRANSACTIONS ──────────────────────────────────────────────────────────────
 
 export const getTransactions = async (
-  cursor: string | undefined,
+  page = 1,
   limit: number,
   type?: string,
 ): Promise<{
@@ -135,12 +135,12 @@ export const getTransactions = async (
   pagination: {
     limit: number;
     totalItems: number;
-    nextCursor: string | null;
-    hasNextPage: boolean;
+    page: number;
+    totalPages: number;
   };
 }> => {
   const [result, totalItems] = await Promise.all([
-    inventoryRepo.findTransactions(cursor || null, limit, type),
+    inventoryRepo.findTransactions(page, limit, type),
     inventoryRepo.countTransactions(type),
   ]);
   const txs = result.transactions;
@@ -167,8 +167,8 @@ export const getTransactions = async (
     pagination: {
       limit,
       totalItems,
-      nextCursor: result.nextCursor,
-      hasNextPage: result.hasNextPage,
+      page: result.page,
+      totalPages: result.totalPages,
     },
   };
 };
@@ -192,9 +192,9 @@ export const createGoodsReceipt = async (
   data: any,
 ): Promise<GoodsReceiptResponse> => {
   const { supplierId, items } = data;
-  if (!supplierId) throw badRequest("supplierId là bắt buộc");
+  if (!supplierId) throw badRequest("supplierId is required");
   if (!items || !Array.isArray(items) || items.length === 0) {
-    throw badRequest("Đơn nhập hàng phải có ít nhất một sản phẩm");
+    throw badRequest("Import order must have at least one product");
   }
 
   const supplier = await inventoryRepo.findSupplierById(supplierId);
@@ -395,7 +395,7 @@ export const updateMinStock = async (operator: any, data: any) => {
   const { variantId, minStock } = data;
 
   const variant = await Variant.findById(variantId);
-  if (!variant) throw new Error("Không tìm thấy sản phẩm");
+  if (!variant) throw new Error("Product not found");
 
   variant.minStock = minStock;
   await variant.save();

@@ -81,12 +81,11 @@ interface AdminOrderQuery {
   channel?: string;
   userId?: string;
   search?: string;
-  cursor?: string;
+  page?: number;
   limit?: number;
   paymentStatus?: string;
   dateFrom?: string;
   dateTo?: string;
-  shopId?: string | null;
 }
 
 export const getOrdersForAdmin = async ({
@@ -94,21 +93,17 @@ export const getOrdersForAdmin = async ({
   channel,
   userId,
   search,
-  cursor,
+  page = 1,
   limit = 20,
   paymentStatus,
   dateFrom,
   dateTo,
-  shopId,
 }: AdminOrderQuery) => {
   const parsedLimit = Math.max(Number(limit) || 20, 1);
+  const parsedPage = Math.max(Number(page) || 1, 1);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const query: Record<string, any> = {};
-  if (shopId !== undefined) {
-    const { default: mongoose } = await import("mongoose");
-    query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
-  }
   if (orderStatus) query.orderStatus = orderStatus;
   if (channel) query.channel = channel;
   if (userId) query.userId = userId;
@@ -122,7 +117,7 @@ export const getOrdersForAdmin = async ({
   }
 
   if (!orderStatus && !search) {
-    query.note = { $ne: "Hệ thống tự động hủy do quá hạn thanh toán" };
+    query.note = { $ne: "System auto-cancelled due to payment timeout" };
   }
 
   // Filter theo ngày đặt (createdAt)
@@ -137,7 +132,7 @@ export const getOrdersForAdmin = async ({
   }
 
   const [result, total] = await Promise.all([
-    orderRepo.findOrders(query, cursor || null, parsedLimit),
+    orderRepo.findOrders(query, parsedPage, parsedLimit),
     orderRepo.countOrders(query),
   ]);
 
@@ -147,8 +142,8 @@ export const getOrdersForAdmin = async ({
     pagination: {
       limit: parsedLimit,
       total,
-      nextCursor: result.nextCursor,
-      hasNextPage: result.hasNextPage,
+      page: result.page,
+      totalPages: result.totalPages,
     },
   };
 };
@@ -160,7 +155,7 @@ export const getMyOrders = async (userId: string) => {
 
 export const getOrder = async (orderId: string, requestUser: UserDocument) => {
   const order = await orderRepo.findOrderById(orderId);
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   const isAdmin = requestUser.role === "owner" || requestUser.role === "staff";
   const isOwner = String(order.userId) === String(requestUser._id);
@@ -173,7 +168,7 @@ export const getOrder = async (orderId: string, requestUser: UserDocument) => {
 
 export const trackOrder = async (orderCode: string) => {
   const order = await orderRepo.findOne({ code: orderCode.toUpperCase() });
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   const items = (order as any).items || [];
   return mapPublicOrder(order, items);
@@ -188,10 +183,8 @@ export const updateOrderStatus = async (
     transactionId?: string;
   },
   requestUser: UserDocument,
-  shopId?: string | null,
 ) => {
   const query: any = { _id: orderId };
-  if (shopId) query.shopId = new mongoose.Types.ObjectId(shopId);
 
   let order: any = await orderRepo.findOne(query);
   if (!order)
@@ -284,7 +277,7 @@ export const updateOrderStatus = async (
             await PointHistory.create([{
               userId: userDoc._id,
               pointsChanged: order.usedPoints,
-              reason: `Hoàn điểm do đơn hàng #${order.code} bị ${data.orderStatus === "cancelled" ? "hủy" : "trả lại"}`,
+              reason: `Hoàn điểm do đơn hàng #${order.code} bị ${data.orderStatus === "cancelled" ? "cancelled" : "returned"}`,
               performedBy: requestUser?._id,
             }], { session });
             order.usedPoints = 0;
@@ -300,7 +293,7 @@ export const updateOrderStatus = async (
             await PointHistory.create([{
               userId: userDoc._id,
               pointsChanged: -order.earnedPoints,
-              reason: `Thu hồi điểm do đơn hàng #${order.code} bị ${data.orderStatus === "cancelled" ? "hủy" : "trả lại"}`,
+              reason: `Thu hồi điểm do đơn hàng #${order.code} bị ${data.orderStatus === "cancelled" ? "cancelled" : "returned"}`,
               performedBy: requestUser?._id,
             }], { session });
             order.earnedPoints = 0;
@@ -430,7 +423,7 @@ export const requestReturnOrder = async (
   }
 
   const order = await orderRepo.findOrderById(orderId);
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   if (order.userId?.toString() !== requestUser._id.toString())
     throw forbidden("Không có quyền thực hiện");
@@ -458,10 +451,10 @@ export const requestReturnOrder = async (
 
 export const approveReturnOrder = async (orderId: string, _requestUser: UserDocument) => {
   const order = await orderRepo.findOrderById(orderId);
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   if (order.orderStatus !== "return_pending") {
-    throw badRequest("Đơn hàng không ở trạng thái yêu cầu trả hàng");
+    throw badRequest("Order is not in return request status");
   }
 
   // Chuyển trạng thái sang returned và refund_pending
@@ -489,10 +482,10 @@ export const rejectReturnOrder = async (orderId: string, _requestUser: UserDocum
   }
 
   const order = await orderRepo.findOrderById(orderId);
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   if (order.orderStatus !== "return_pending") {
-    throw badRequest("Đơn hàng không ở trạng thái yêu cầu trả hàng");
+    throw badRequest("Order is not in return request status");
   }
 
   // Khôi phục lại trạng thái completed
@@ -516,7 +509,7 @@ export const cancelOrder = async (
   requestUser: UserDocument,
 ) => {
   let order: any = await orderRepo.findOrderById(orderId);
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   const isAdmin = ["owner", "manager", "staff"].includes(requestUser.role);
   const isOwner = String(order.userId) === String(requestUser._id);
@@ -524,7 +517,7 @@ export const cancelOrder = async (
     throw forbidden("Bạn không có quyền thao tác đơn hàng này");
 
   if (order.orderStatus !== "pending")
-    throw badRequest("Chỉ có thể hủy đơn hàng đang chờ xử lý");
+    throw badRequest("Only pending orders can be cancelled");
 
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -537,7 +530,7 @@ export const cancelOrder = async (
     );
 
     if (!updatedOrder) {
-      throw badRequest("Đơn hàng đã được xử lý hoặc không còn ở trạng thái chờ.");
+      throw badRequest("Order has been processed or is no longer pending.");
     }
 
     order = updatedOrder as any;
@@ -592,10 +585,10 @@ export const cancelPendingOrder = async (
   reason: string = "Khách hàng hủy thanh toán"
 ) => {
   let order: any = await orderRepo.findOne({ code: orderCode.toUpperCase() });
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   if (order.orderStatus !== "pending")
-    throw badRequest("Chỉ có thể hủy đơn hàng đang chờ xử lý");
+    throw badRequest("Only pending orders can be cancelled");
 
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -610,7 +603,7 @@ export const cancelPendingOrder = async (
     );
 
     if (!updatedOrder) {
-      throw badRequest("Đơn hàng đã được xử lý hoặc không còn ở trạng thái chờ.");
+      throw badRequest("Order has been processed or is no longer pending.");
     }
 
     order = updatedOrder as any;
@@ -657,10 +650,10 @@ export const cancelPendingOrder = async (
 
 export const abandonPendingOrder = async (orderCode: string) => {
   const order = await orderRepo.findOne({ code: orderCode.toUpperCase() });
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   if (order.orderStatus !== "pending")
-    throw badRequest("Chỉ có thể hủy đơn hàng đang chờ xử lý");
+    throw badRequest("Only pending orders can be cancelled");
 
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -704,7 +697,7 @@ export const updateOrderDetailsAdmin = async (
   data: UpdateOrderDetailsInput,
 ) => {
   const order = await orderRepo.findOne({ _id: orderId });
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   if (["completed", "cancelled", "returned"].includes(order.orderStatus)) {
     throw badRequest("Không thể sửa thông tin đơn hàng đã đóng");
@@ -724,7 +717,7 @@ export const refundOrderAdmin = async (
   orderId: string,
 ) => {
   const order = await orderRepo.findOne({ _id: orderId });
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   if (order.paymentStatus !== "refund_pending") {
     throw badRequest("Đơn hàng này không ở trạng thái chờ hoàn tiền");

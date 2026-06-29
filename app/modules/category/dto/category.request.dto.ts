@@ -13,7 +13,7 @@ export const CreateCategorySchema = z.object({
 
 export const UpdateCategorySchema = CreateCategorySchema.partial().refine(
   (data) => Object.keys(data).length > 0,
-  "Vui lòng cung cấp ít nhất một thông tin cần cập nhật",
+  "Please provide at least one field to update",
 );
 
 export const UpdateCategoryStatusSchema = z.object({

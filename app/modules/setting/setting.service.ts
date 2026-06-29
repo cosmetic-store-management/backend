@@ -37,7 +37,7 @@ export const getSettings = async () => {
     doc = await Setting.create({
       key: "general_settings",
       value: DEFAULT_SETTINGS,
-      description: "Cấu hình chung hệ thống và tùy chọn thanh toán",
+      description: "General system configuration and payment options",
     });
   }
   return doc.value;
@@ -49,7 +49,7 @@ export const updateSettings = async (value: any) => {
     doc = await Setting.create({
       key: "general_settings",
       value: { ...DEFAULT_SETTINGS, ...value },
-      description: "Cấu hình chung hệ thống và tùy chọn thanh toán",
+      description: "General system configuration and payment options",
     });
   } else {
     doc.value = { ...doc.value, ...value };

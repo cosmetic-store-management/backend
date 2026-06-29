@@ -74,7 +74,6 @@ router.get(
   catchAsync(async (req, res) => {
     const result = await productService.getAdminProducts({
       ...(req.query as any),
-      shopId: req.shopId,
     });
     return response.success(res, result);
   }),
@@ -100,7 +99,6 @@ router.post(
   catchAsync(async (req, res) => {
     const product = await productService.createProduct({
       ...req.body,
-      shopId: req.shopId,
     });
     await logAction(
       req.user!._id.toString(),
@@ -126,14 +124,13 @@ router.patch(
     const product = await productService.updateProductStatus(
       req.params.id as string,
       req.body.isActive,
-      req.shopId,
     );
     await logAction(
       req.user!._id.toString(),
       req.user!.name,
       "update",
       "catalog",
-      `Cập nhật trạng thái sản phẩm "${product.name}" thành ${product.isActive ? "Bán" : "Ngừng bán"}`,
+      `Cập nhật trạng thái sản phẩm "${product.name}" thành ${product.isActive ? "Bán" : "Discontinued"}`,
       req.ip || "127.0.0.1",
     );
     return response.success(res, {
@@ -151,7 +148,7 @@ router.patch(
   catchAsync(async (req, res) => {
     const product = await productService.updateProduct(
       req.params.id as string,
-      { ...req.body, shopId: req.shopId },
+      { ...req.body },
     );
     await logAction(
       req.user!._id.toString(),
@@ -175,9 +172,8 @@ router.delete(
   catchAsync(async (req, res) => {
     const product = await productService.getAdminProductDetail(
       req.params.id as string,
-      req.shopId,
     );
-    await productService.deleteProduct(req.params.id as string, req.shopId);
+    await productService.deleteProduct(req.params.id as string);
     if (product) {
       await logAction(
         req.user!._id.toString(),

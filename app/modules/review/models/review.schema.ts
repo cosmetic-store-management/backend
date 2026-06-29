@@ -2,7 +2,6 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 
 export interface IReview {
   userId: Types.ObjectId;
-  shopId?: Types.ObjectId | null; // Multi-tenant
   productId: Types.ObjectId;
   rating: number; // 1 to 5
   comment: string;
@@ -17,7 +16,6 @@ export type ReviewDocument = Document & IReview;
 const reviewSchema = new Schema<ReviewDocument>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    shopId: { type: Schema.Types.ObjectId, ref: "Shop", default: null }, // Multi-tenant
     productId: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     rating: { type: Number, required: true, min: 1, max: 5 },
     comment: { type: String, trim: true, default: "" },

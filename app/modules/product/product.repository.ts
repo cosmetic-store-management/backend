@@ -74,15 +74,23 @@ export const findPublicByIds = async (
   return attachVariants(sorted);
 };
 
-export const findAdmin = async (query: Query, cursor: string | null, limit: number) => {
-  if (cursor) {
+export const findAdmin = async (query: Query, cursor: string | null, limit: number, page?: number) => {
+  let dbQuery = Product.find(query);
+
+  if (page && page > 0) {
+    const skip = (page - 1) * limit;
+    dbQuery = dbQuery.skip(skip).sort({ _id: -1 });
+  } else if (cursor) {
     query._id = { $lt: cursor };
+    dbQuery = Product.find(query).sort({ _id: -1 });
+  } else {
+    dbQuery = dbQuery.sort({ _id: -1 });
   }
-  const products = await Product.find(query)
+
+  const products = await dbQuery
     .populate("categoryId", "name slug imageUrl")
     .populate("categoryIds", "name slug imageUrl")
     .populate("brandId", BRAND_FIELDS)
-    .sort({ _id: -1 })
     .limit(limit + 1)
     .lean();
   

@@ -33,9 +33,9 @@ export const getAllFlashSales = async (page = 1, limit = 10) => {
 };
 
 export const getFlashSaleById = async (id: string) => {
-  if (!mongoose.Types.ObjectId.isValid(id)) throw badRequest("ID không hợp lệ");
+  if (!mongoose.Types.ObjectId.isValid(id)) throw badRequest("Invalid ID");
   const fs = await flashSaleRepo.findById(id);
-  if (!fs) throw notFound("Flash Sale không tồn tại");
+  if (!fs) throw notFound("Flash Sale does not exist");
   return mapFlashSale(fs);
 };
 
@@ -57,9 +57,9 @@ export const createFlashSale = async (data: CreateFlashSaleInput) => {
 };
 
 export const updateFlashSale = async (id: string, data: CreateFlashSaleInput) => {
-  if (!mongoose.Types.ObjectId.isValid(id)) throw badRequest("ID không hợp lệ");
+  if (!mongoose.Types.ObjectId.isValid(id)) throw badRequest("Invalid ID");
   const fs = await flashSaleRepo.findById(id);
-  if (!fs) throw notFound("Flash Sale không tồn tại");
+  if (!fs) throw notFound("Flash Sale does not exist");
 
   const updatedFs = await flashSaleRepo.update(id, {
     ...data,
@@ -82,9 +82,9 @@ export const updateFlashSale = async (id: string, data: CreateFlashSaleInput) =>
 };
 
 export const deleteFlashSale = async (id: string) => {
-  if (!mongoose.Types.ObjectId.isValid(id)) throw badRequest("ID không hợp lệ");
+  if (!mongoose.Types.ObjectId.isValid(id)) throw badRequest("Invalid ID");
   const fs = await flashSaleRepo.findById(id);
-  if (!fs) throw notFound("Flash Sale không tồn tại");
+  if (!fs) throw notFound("Flash Sale does not exist");
   await flashSaleRepo.deleteById(id);
   return { message: "Xóa thành công" };
 };

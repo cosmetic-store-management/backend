@@ -49,11 +49,11 @@ export const addItem = async (userId: string, data: AddItemInput) => {
   }
 
   const variant = await Variant.findOne({ _id: data.variantId, isActive: true });
-  if (!variant) throw notFound("Sản phẩm không tồn tại hoặc đã ngừng kinh doanh");
+  if (!variant) throw notFound("Product does not exist or has been discontinued");
 
   // Check stock
   if (variant.stock < data.quantity) {
-    throw badRequest("Số lượng sản phẩm trong kho không đủ");
+    throw badRequest("Insufficient product stock");
   }
 
   const existingItem = cart.items.find(
@@ -62,7 +62,7 @@ export const addItem = async (userId: string, data: AddItemInput) => {
 
   if (existingItem) {
     if (variant.stock < existingItem.quantity + data.quantity) {
-      throw badRequest("Số lượng sản phẩm trong kho không đủ");
+      throw badRequest("Insufficient product stock");
     }
     existingItem.quantity += data.quantity;
   } else {
@@ -75,7 +75,7 @@ export const addItem = async (userId: string, data: AddItemInput) => {
 
 export const updateItem = async (userId: string, data: UpdateItemInput) => {
   const cart = await cartRepo.findByUserId(userId);
-  if (!cart) throw notFound("Giỏ hàng trống");
+  if (!cart) throw notFound("Cart is empty");
 
   const existingItem = cart.items.find(
     (item) => item.variantId?._id?.toString() === data.variantId || item.variantId?.toString() === data.variantId
@@ -84,10 +84,10 @@ export const updateItem = async (userId: string, data: UpdateItemInput) => {
   if (!existingItem) throw notFound("Sản phẩm không có trong giỏ hàng");
 
   const variant = await Variant.findOne({ _id: data.variantId, isActive: true });
-  if (!variant) throw notFound("Sản phẩm không tồn tại hoặc đã ngừng kinh doanh");
+  if (!variant) throw notFound("Product does not exist or has been discontinued");
 
   if (variant.stock < data.quantity) {
-    throw badRequest("Số lượng sản phẩm trong kho không đủ");
+    throw badRequest("Insufficient product stock");
   }
 
   existingItem.quantity = data.quantity;
@@ -98,7 +98,7 @@ export const updateItem = async (userId: string, data: UpdateItemInput) => {
 
 export const removeItem = async (userId: string, variantId: string) => {
   const cart = await cartRepo.findByUserId(userId);
-  if (!cart) throw notFound("Giỏ hàng trống");
+  if (!cart) throw notFound("Cart is empty");
 
   cart.items = cart.items.filter(
     (item) => item.variantId?._id?.toString() !== variantId && item.variantId?.toString() !== variantId

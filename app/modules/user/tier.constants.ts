@@ -26,7 +26,7 @@ export interface TierConfig {
 export const TIERS: TierConfig[] = [
   {
     key: "diamond",
-    label: "Kim cương",
+    label: "Diamond",
     labelEn: "Diamond",
     minSpent: 10_000_000, // ≥ 10 triệu VNĐ
     discount: 0.1, // 10%

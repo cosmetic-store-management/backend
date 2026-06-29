@@ -69,13 +69,13 @@ export const previewOrder = async (user: UserDocument | null, data: any) => {
 
   for (const item of data.items) {
     if (!mongoose.Types.ObjectId.isValid(item.productId))
-      throw badRequest("productId không hợp lệ");
+      throw badRequest("Invalid productId");
     if (!item.variantId || !mongoose.Types.ObjectId.isValid(item.variantId))
-      throw badRequest("variantId không hợp lệ");
+      throw badRequest("Invalid variantId");
 
     const variant = variantMap.get(item.variantId);
     if (!variant || variant.productId.toString() !== item.productId)
-      throw notFound("Phân loại hàng không hợp lệ");
+      throw notFound("Invalid product variant");
     if (!variant.isActive)
       throw badRequest(
         `Phân loại ${variant.name} hiện không khả dụng`,
@@ -269,14 +269,14 @@ export const createOrder = async (
 
   for (const item of data.items) {
     if (!mongoose.Types.ObjectId.isValid(item.productId))
-      throw badRequest("productId không hợp lệ");
+      throw badRequest("Invalid productId");
     if (!item.variantId || !mongoose.Types.ObjectId.isValid(item.variantId))
-      throw badRequest("variantId không hợp lệ");
+      throw badRequest("Invalid variantId");
 
     const product = productMap.get(item.productId);
-    if (!product) throw notFound("Có sản phẩm không tồn tại");
+    if (!product) throw notFound("Some products do not exist");
     if (!product.isActive)
-      throw badRequest(`Sản phẩm ${product.name} hiện không khả dụng`);
+      throw badRequest(`Product ${product.name} is currently unavailable`);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((product.categoryId as any)?.isActive === false)
@@ -284,11 +284,11 @@ export const createOrder = async (
 
     const variant = variantMap.get(item.variantId);
     if (!variant || variant.productId.toString() !== item.productId)
-      throw notFound("Phân loại hàng không hợp lệ");
+      throw notFound("Invalid product variant");
     if (!variant.isActive)
-      throw badRequest(`Phân loại ${variant.name} của sản phẩm ${product.name} hiện không khả dụng`);
+      throw badRequest(`Variant ${variant.name} of product ${product.name} is currently unavailable`);
     if (variant.stock < item.quantity)
-      throw badRequest(`Sản phẩm ${product.name} (${variant.name}) không đủ tồn kho`);
+      throw badRequest(`Product ${product.name} (${variant.name}) has insufficient stock`);
 
     let unitPrice =
       variant.discountPrice && variant.discountPrice > 0
@@ -417,8 +417,8 @@ export const createOrder = async (
     // Trừ tồn kho trước (Atomic Increment with conditions within session)
     // Sort array to prevent Deadlock when locking multiple variant documents
     let orderTotalCost = 0;
-    const sortedItemsToDeduct = [...normalizedItems].sort((a: any, b: any) => 
-       a.variantId.toString().localeCompare(b.variantId.toString())
+    const sortedItemsToDeduct = [...normalizedItems].sort((a: any, b: any) =>
+      a.variantId.toString().localeCompare(b.variantId.toString())
     );
     for (const item of sortedItemsToDeduct) {
       await orderRepo.decrementVariantStock(
@@ -426,7 +426,7 @@ export const createOrder = async (
         item.quantity,
         session
       );
-      
+
       const costPriceTotal = await inventoryRepo.deductBatchesFIFO(
         item.variantId,
         item.quantity,
@@ -438,7 +438,7 @@ export const createOrder = async (
 
     // Tạo đơn hàng
     newOrder = await orderRepo.createOrder({
-      code: generateOrderCode(),
+      code: generateOrderCode("ONL"),
       receiverName,
       phone,
       province,
@@ -512,7 +512,7 @@ export const createOrder = async (
     await session.commitTransaction();
   } catch (error: any) {
     await session.abortTransaction();
-    
+
     // Xử lý E11000 Duplicate Key (Race condition của Idempotency Key)
     if (error.code === 11000 && data.idempotencyKey) {
       const existingOrder = await Order.findOne({
@@ -531,9 +531,6 @@ export const createOrder = async (
     await session.endSession();
   }
 
-  // Gửi email bất đồng bộ, không đợi kết quả để tránh block response
-  // Chỉ gửi email ngay lập tức cho COD hoặc Cash (chưa thanh toán nhưng đặt thành công)
-  // Các phương thức QR/Stripe (cần thanh toán) thì chỉ gửi email sau khi ĐÃ thanh toán xong
   if (user.email && ["cod", "cash"].includes(data.paymentMethod)) {
     sendOrderSuccessEmail(user.email, newOrder.code, finalTotalAmount).catch(
       console.error,
@@ -543,8 +540,6 @@ export const createOrder = async (
   const mappedOrder = mapOrder(newOrder, orderItems);
   return mappedOrder;
 };
-
-// ── Source: order-pos.service.ts ──────────────────────────────────────────────
 
 export const createPOSOrder = async (operator: UserDocument, data: any) => {
   if (data.items && Array.isArray(data.items)) {
@@ -569,7 +564,6 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
       role: "customer",
     });
 
-    // Implicit Customer Creation
     if (!customerUser) {
       customerUser = await User.create({
         name: customerName || `Khách hàng`,
@@ -596,22 +590,22 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
 
   for (const item of data.items) {
     if (!mongoose.Types.ObjectId.isValid(item.productId))
-      throw badRequest("productId không hợp lệ");
+      throw badRequest("Invalid productId");
     if (!item.variantId || !mongoose.Types.ObjectId.isValid(item.variantId))
-      throw badRequest("variantId không hợp lệ");
+      throw badRequest("Invalid variantId");
 
     const product = productMap.get(item.productId);
-    if (!product) throw notFound("Có sản phẩm không tồn tại");
+    if (!product) throw notFound("Some products do not exist");
     if (!product.isActive)
-      throw badRequest(`Sản phẩm ${product.name} hiện không khả dụng`);
+      throw badRequest(`Product ${product.name} is currently unavailable`);
 
     const variant = variantMap.get(item.variantId);
     if (!variant || variant.productId.toString() !== item.productId)
-      throw notFound("Phân loại hàng không hợp lệ");
+      throw notFound("Invalid product variant");
     if (!variant.isActive)
-      throw badRequest(`Phân loại ${variant.name} của sản phẩm ${product.name} hiện không khả dụng`);
+      throw badRequest(`Variant ${variant.name} of product ${product.name} is currently unavailable`);
     if (variant.stock < item.quantity)
-      throw badRequest(`Sản phẩm ${product.name} (${variant.name}) không đủ tồn kho`);
+      throw badRequest(`Product ${product.name} (${variant.name}) has insufficient stock`);
 
     const unitPrice =
       variant.discountPrice && variant.discountPrice > 0
@@ -642,7 +636,7 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
     tierDiscountAmount = calculateTierDiscount(customerTotalSpent, subtotal);
   }
 
-  const orderCode = `POS-${generateOrderCode().replace("GLU-", "")}`;
+  const orderCode = generateOrderCode("OFF");
 
   const providedDiscount =
     typeof data.discountAmount === "number" && data.discountAmount > 0
@@ -687,8 +681,8 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
     // Trừ tồn kho trước (Atomic Increment with conditions within session)
     // Sort array to prevent Deadlock when locking multiple variant documents
     let orderTotalCost = 0;
-    const sortedItemsToDeduct = [...normalizedItems].sort((a: any, b: any) => 
-       a.variantId.toString().localeCompare(b.variantId.toString())
+    const sortedItemsToDeduct = [...normalizedItems].sort((a: any, b: any) =>
+      a.variantId.toString().localeCompare(b.variantId.toString())
     );
     for (const item of sortedItemsToDeduct) {
       await orderRepo.decrementVariantStock(
@@ -777,8 +771,8 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
 
     // Log inventory transactions & Increment soldCount
     // Sort by productId to prevent deadlocks
-    const sortedProductsToLog = [...normalizedItems].sort((a: any, b: any) => 
-       a.productId.toString().localeCompare(b.productId.toString())
+    const sortedProductsToLog = [...normalizedItems].sort((a: any, b: any) =>
+      a.productId.toString().localeCompare(b.productId.toString())
     );
     for (const item of sortedProductsToLog) {
       await InventoryTransaction.create([{

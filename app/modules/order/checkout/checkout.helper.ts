@@ -21,13 +21,9 @@ export const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   return_pending: ["returned", "completed"],
 };
 
-export const generateOrderCode = (): string => {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const random = Math.floor(100000 + Math.random() * 900000);
-  return `GLU-${yyyy}${mm}${dd}-${random}`;
+export const generateOrderCode = (prefix = "ORD"): string => {
+  const random = Math.floor(10000000 + Math.random() * 90000000); // 8-digit random
+  return `${prefix}-${random}`;
 };
 
 export const calculateTierDiscount = (

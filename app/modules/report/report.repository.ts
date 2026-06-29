@@ -132,7 +132,7 @@ export const aggregateRevenueForPeriod = (start: Date, end: Date) => {
 export const countOrdersForPeriod = (start: Date, end: Date) =>
   Order.countDocuments({ 
     createdAt: { $gte: start, $lte: end },
-    note: { $ne: "Hệ thống tự động hủy do quá hạn thanh toán" }
+    note: { $ne: "System auto-cancelled due to payment timeout" }
   });
 
 export const countCustomersForPeriod = (start: Date, end: Date) =>
@@ -148,7 +148,7 @@ export const findRecentOrders = (dateFilter: DateFilter, limit: number = 5) => {
   return withCache(key, () =>
     Order.find({
       ...dateFilter,
-      note: { $ne: "Hệ thống tự động hủy do quá hạn thanh toán" }
+      note: { $ne: "System auto-cancelled due to payment timeout" }
     })
       .sort({ createdAt: -1 })
       .limit(limit)

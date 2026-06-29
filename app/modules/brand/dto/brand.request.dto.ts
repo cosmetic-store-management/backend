@@ -10,7 +10,7 @@ export const CreateBrandSchema = z.object({
 
 export const UpdateBrandSchema = CreateBrandSchema.partial().refine(
   (data) => Object.keys(data).length > 0,
-  "Vui lòng cung cấp ít nhất một thông tin cần cập nhật",
+  "Please provide at least one field to update",
 );
 
 export const UpdateBrandStatusSchema = z.object({

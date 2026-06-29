@@ -84,7 +84,7 @@ router.post(
   validate(RegisterSchema),
   catchAsync(async (req, res) => {
     const result = await authService.register(req.body);
-    return response.created(res, { message: "Đăng ký thành công", ...result });
+    return response.created(res, { message: "Registered successfully", ...result });
   }),
 );
 
@@ -103,13 +103,13 @@ router.post(
         result.user.name,
         "login",
         "identity",
-        "Đăng nhập hệ thống",
+        "System login",
         req.ip || req.socket.remoteAddress || "127.0.0.1",
       );
     }
 
     return response.success(res, {
-      message: "Đăng nhập thành công",
+      message: "Logged in successfully",
       ...result,
     });
   }),
@@ -120,11 +120,11 @@ router.post(
   "/refresh",
   catchAsync(async (req, res) => {
     const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
-    if (!refreshToken) throw badRequest("Thiếu refresh token");
+    if (!refreshToken) throw badRequest("Missing refresh token");
 
     const result = await authService.refreshAccessToken(refreshToken);
     return response.success(res, {
-      message: "Làm mới token thành công",
+      message: "Token refreshed successfully",
       ...result,
     });
   }),
@@ -137,7 +137,7 @@ router.post(
   catchAsync(async (req, res) => {
     const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
     await authService.logout(req.user!._id.toString(), refreshToken);
-    return response.success(res, { message: "Đăng xuất thành công" });
+    return response.success(res, { message: "Logged out successfully" });
   }),
 );
 
@@ -158,7 +158,7 @@ router.post(
   validate(ChangePasswordSchema),
   catchAsync(async (req, res) => {
     await authService.changePassword(req.user!._id.toString(), req.body);
-    return response.success(res, { message: "Đổi mật khẩu thành công" });
+    return response.success(res, { message: "Password changed successfully" });
   }),
 );
 
@@ -181,7 +181,7 @@ router.post(
   catchAsync(async (req, res) => {
     await authService.resetPassword(req.body);
     return response.success(res, {
-      message: "Đặt lại mật khẩu thành công, vui lòng đăng nhập lại",
+      message: "Password reset successfully, please log in again",
     });
   }),
 );

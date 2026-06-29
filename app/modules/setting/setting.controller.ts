@@ -15,7 +15,7 @@ const router = Router();
 const UpdateSettingsSchema = z
   .object({
     storeName: z.string().trim().max(100).optional(),
-    email: z.string().trim().email("Email không hợp lệ").optional(),
+    email: z.string().trim().email("Invalid email").optional(),
     phone: z.string().trim().max(20).optional(),
     storeAddress: z.string().trim().max(300).optional(),
     taxId: z.string().trim().max(20).optional(),

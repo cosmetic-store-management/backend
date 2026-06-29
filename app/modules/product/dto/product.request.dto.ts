@@ -4,7 +4,6 @@ export const CreateProductSchema = z.object({
   name: z.string().min(1, "Tên sản phẩm không được để trống").trim(),
   brand: z.string().trim().optional().default(""), // legacy — auto-filled from brandId
   brandId: z.string().min(1, "Thương hiệu không được để trống"),
-  shopId: z.string().nullable().optional(), // Multi-tenant
   description: z.string().trim().optional().default(""),
   imageUrl: z.string().trim().optional().default(""),
   imageUrls: z.array(z.string()).optional().default([]),
@@ -43,7 +42,7 @@ export const CreateProductSchema = z.object({
 
 export const UpdateProductSchema = CreateProductSchema.partial().refine(
   (data) => Object.keys(data).length > 0,
-  "Vui lòng cung cấp ít nhất một thông tin cần cập nhật",
+  "Please provide at least one field to update",
 );
 
 export const UpdateProductStatusSchema = z.object({

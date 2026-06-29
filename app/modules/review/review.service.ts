@@ -93,7 +93,7 @@ export const createReview = async (userId: string, data: CreateReviewInput) => {
 
 export const getReviewsByProductId = async (
   productId: string,
-  cursor: string | null = null,
+  page: number = 1,
   limit = 10,
   filterRating?: number,
   hasImage?: boolean,
@@ -109,7 +109,7 @@ export const getReviewsByProductId = async (
   if (hasImage) query.images = { $exists: true, $not: { $size: 0 } };
 
   const [result, total] = await Promise.all([
-    reviewRepo.findByProductId(query, cursor, parsedLimit),
+    reviewRepo.findByProductId(query, page, parsedLimit),
     reviewRepo.countByQuery(query),
   ]);
 
@@ -118,8 +118,8 @@ export const getReviewsByProductId = async (
     pagination: {
       limit: parsedLimit,
       total,
-      nextCursor: result.nextCursor,
-      hasNextPage: result.hasNextPage,
+      page: result.page,
+      totalPages: result.totalPages,
     },
   };
 };
@@ -145,7 +145,7 @@ export const getProductReviewStats = async (productId: string) => {
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export const getAllReviewsAdmin = async (
-  cursor: string | null = null,
+  page: number = 1,
   limit = 10,
   rating?: number,
   isReplied?: string,
@@ -165,7 +165,7 @@ export const getAllReviewsAdmin = async (
   }
 
   const [result, total] = await Promise.all([
-    reviewRepo.findAllAdmin(query, cursor, parsedLimit),
+    reviewRepo.findAllAdmin(query, page, parsedLimit),
     reviewRepo.countByQuery(query),
   ]);
 
@@ -174,15 +174,15 @@ export const getAllReviewsAdmin = async (
     pagination: {
       limit: parsedLimit,
       total,
-      nextCursor: result.nextCursor,
-      hasNextPage: result.hasNextPage,
+      page: result.page,
+      totalPages: result.totalPages,
     },
   };
 };
 
 export const deleteReviewAdmin = async (reviewId: string) => {
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
-    throw badRequest("Mã đánh giá không hợp lệ");
+    throw badRequest("Invalid review code");
   }
 
   const result = await reviewRepo.findByIdAndDelete(reviewId);
@@ -194,7 +194,7 @@ export const deleteReviewAdmin = async (reviewId: string) => {
 
 export const replyReviewAdmin = async (reviewId: string, replyText: string) => {
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
-    throw badRequest("Mã đánh giá không hợp lệ");
+    throw badRequest("Invalid review code");
   }
   const text = replyText?.trim() || "";
   const updateData = text ? { adminReply: text } : { $unset: { adminReply: "" } };
@@ -215,7 +215,7 @@ export const updateReviewByUser = async (
   images?: string[],
 ) => {
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
-    throw badRequest("Mã đánh giá không hợp lệ");
+    throw badRequest("Invalid review code");
   }
 
   const review = await reviewRepo.findOne({
@@ -239,7 +239,7 @@ export const updateReviewByUser = async (
 
 export const deleteReviewByUser = async (userId: string, reviewId: string) => {
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
-    throw badRequest("Mã đánh giá không hợp lệ");
+    throw badRequest("Invalid review code");
   }
 
   const result = await reviewRepo.findOneAndDelete({
@@ -253,5 +253,5 @@ export const deleteReviewByUser = async (userId: string, reviewId: string) => {
   }
 
   await updateProductStats(result.productId as mongoose.Types.ObjectId);
-  return { message: "Đã xóa đánh giá thành công" };
+  return { message: "Review deleted successfully" };
 };

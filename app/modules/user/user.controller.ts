@@ -27,14 +27,14 @@ router.get(
   authenticate,
   isManager,
   catchAsync(async (req, res) => {
-    const cursor = req.query.cursor as string | undefined;
+    const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const search = req.query.search as string;
     const status = req.query.status as string;
     const role = req.query.role as string;
 
     const result = await userService.getStaffUsers(
-      cursor || null,
+      page,
       limit,
       search,
       status,

@@ -8,7 +8,7 @@ export const findAll = () =>
   User.find({ isDeleted: { $ne: true } }).select("-password").sort({ createdAt: -1 }).lean();
 
 export const findStaffs = async (
-  cursor: string | null = null,
+  page: number = 1,
   limit: number = 20,
   search?: string,
   status?: string,
@@ -32,25 +32,21 @@ export const findStaffs = async (
     query.role = role;
   }
 
-  if (cursor) {
-    query._id = { $lt: cursor };
-  }
+  const skip = (page - 1) * limit;
 
   const [users, total] = await Promise.all([
     User.find(query)
       .select("-password")
       .sort({ _id: -1 })
-      .limit(limit + 1)
+      .skip(skip)
+      .limit(limit)
       .lean(),
-    // Vẫn đếm total để FE hiển thị "Tổng số: X" nếu cần (tuy nhiên countDocuments chạy khá nặng với DB siêu lớn)
     User.countDocuments(query),
   ]);
 
-  const hasNextPage = users.length > limit;
-  const items = hasNextPage ? users.slice(0, limit) : users;
-  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+  const totalPages = Math.ceil(total / limit);
 
-  return { users: items, total, limit, nextCursor, hasNextPage };
+  return { users, total, limit, page, totalPages };
 };
 
 export const findById = (id: string) => User.findById(id).select("-password");

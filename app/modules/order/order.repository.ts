@@ -10,17 +10,16 @@ type Query = Record<string, any>;
 
 // ── Order ─────────────────────────────────────────────────────────────────────
 
-export const findOrders = async (query: Query, cursor: string | null, limit: number) => {
-  if (cursor) {
-    query._id = { $lt: cursor };
-  }
-  const orders = await Order.find(query).sort({ _id: -1 }).limit(limit + 1).lean();
+export const findOrders = async (query: Query, page: number, limit: number) => {
+  const skip = (page - 1) * limit;
+  const [orders, total] = await Promise.all([
+    Order.find(query).sort({ _id: -1 }).skip(skip).limit(limit).lean(),
+    Order.countDocuments(query),
+  ]);
   
-  const hasNextPage = orders.length > limit;
-  const items = hasNextPage ? orders.slice(0, limit) : orders;
-  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+  const totalPages = Math.ceil(total / limit);
 
-  return { orders: items, nextCursor, hasNextPage, limit };
+  return { orders, total, limit, page, totalPages };
 };
 
 export const countOrders = (query: Query) => Order.countDocuments(query);
@@ -34,7 +33,7 @@ export const findOrderByCode = (code: string) => Order.findOne({ code });
 export const findOrdersByUserId = (userId: string | Types.ObjectId) =>
   Order.find({ 
     userId,
-    note: { $ne: "Hệ thống tự động hủy do quá hạn thanh toán" }
+    note: { $ne: "System auto-cancelled due to payment timeout" }
   }).sort({ createdAt: -1 }).lean();
 
 export const createOrder = async (data: Partial<IOrder>, session?: mongoose.ClientSession) => {

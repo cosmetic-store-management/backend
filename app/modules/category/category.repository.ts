@@ -8,18 +8,20 @@ import mongoose from "mongoose";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Query = Record<string, any>;
 
-export const findAll = async (query: Query, cursor: string | null, limit: number) => {
-  if (cursor) query._id = { $lt: cursor };
-  const categories = await Category.find(query)
-    .sort({ _id: -1 })
-    .limit(limit + 1)
-    .lean();
-    
-  const hasNextPage = categories.length > limit;
-  const items = hasNextPage ? categories.slice(0, limit) : categories;
-  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+export const findAll = async (query: Query, page: number, limit: number) => {
+  const skip = (page - 1) * limit;
+  const [categories, total] = await Promise.all([
+    Category.find(query)
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Category.countDocuments(query),
+  ]);
 
-  return { categories: items, nextCursor, hasNextPage, limit };
+  const totalPages = Math.ceil(total / limit);
+
+  return { categories, total, limit, page, totalPages };
 };
 
 export const countAll = (query: Query) => Category.countDocuments(query);

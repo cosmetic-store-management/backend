@@ -3,12 +3,11 @@ import type { Request, Response, NextFunction } from "express";
 import User, { type UserDocument } from "../modules/user/models/user.schema.js";
 import { unauthorized, forbidden } from "../shared/errors/httpErrors.js";
 
-// Extend Express Request to include `user` and `shopId`
+// Extend Express Request to include `user`
 declare global {
   namespace Express {
     interface Request {
       user?: UserDocument;
-      shopId?: string | null; // Multi-tenant context extracted from User or Header
     }
   }
 }

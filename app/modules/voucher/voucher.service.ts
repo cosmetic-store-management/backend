@@ -23,7 +23,7 @@ export const getAllVouchers = async (includeInactive = false) => {
 
 export const getVoucherById = async (id: string) => {
   const voucher = await voucherRepo.findById(id);
-  if (!voucher) throw notFound("Không tìm thấy voucher");
+  if (!voucher) throw notFound("Voucher not found");
   return mapVoucher(voucher);
 };
 
@@ -32,7 +32,7 @@ export const updateVoucherUsedUsers = async (
   usedUsers: any[],
 ) => {
   const voucher = await voucherRepo.findById(voucherId);
-  if (!voucher) throw notFound("Voucher không tồn tại");
+  if (!voucher) throw notFound("Voucher does not exist");
 
   // Dùng atomic update qua repository thay vì gán trực tiếp vào document
   const objectIds = usedUsers.map((id: any) => new Types.ObjectId(id));
@@ -41,9 +41,9 @@ export const updateVoucherUsedUsers = async (
 
 export const createVoucher = async (data: CreateVoucherInput) => {
   const existing = await voucherRepo.findByCodeExact(data.code);
-  if (existing) throw conflict("Mã voucher đã tồn tại");
+  if (existing) throw conflict("Voucher code already exists");
   if (new Date(data.startDate) >= new Date(data.endDate)) {
-    throw badRequest("Ngày bắt đầu phải trước ngày kết thúc");
+    throw badRequest("Start date must be before end date");
   }
 
   const voucher = await voucherRepo.create(data);
@@ -52,17 +52,17 @@ export const createVoucher = async (data: CreateVoucherInput) => {
 
 export const updateVoucher = async (id: string, data: UpdateVoucherInput) => {
   const voucher = await voucherRepo.findById(id);
-  if (!voucher) throw notFound("Không tìm thấy voucher");
+  if (!voucher) throw notFound("Voucher not found");
 
   if (data.code && data.code !== voucher.code) {
     const existing = await voucherRepo.findByCodeExact(data.code);
-    if (existing) throw conflict("Mã voucher đã tồn tại");
+    if (existing) throw conflict("Voucher code already exists");
   }
 
   Object.assign(voucher, data);
 
   if (new Date(voucher.startDate) >= new Date(voucher.endDate)) {
-    throw badRequest("Ngày bắt đầu phải trước ngày kết thúc");
+    throw badRequest("Start date must be before end date");
   }
 
   await voucherRepo.save(voucher);
@@ -71,7 +71,7 @@ export const updateVoucher = async (id: string, data: UpdateVoucherInput) => {
 
 export const deleteVoucher = async (id: string) => {
   const result = await voucherRepo.findByIdAndDelete(id);
-  if (!result) throw notFound("Không tìm thấy voucher");
+  if (!result) throw notFound("Voucher not found");
 };
 
 // ── Checkout Integration ───────────────────────────────────────────────────────
@@ -84,20 +84,20 @@ export const validateVoucher = async (
 ) => {
   const voucher = await voucherRepo.findByCode(code);
 
-  if (!voucher) throw notFound("Mã giảm giá không tồn tại");
-  if (!voucher.isActive) throw badRequest("Mã giảm giá đã bị vô hiệu hóa");
+  if (!voucher) throw notFound("Discount code does not exist");
+  if (!voucher.isActive) throw badRequest("Discount code has been disabled");
 
   const now = new Date();
   if (now < voucher.startDate)
-    throw badRequest("Mã giảm giá chưa đến thời gian sử dụng");
-  if (now > voucher.endDate) throw badRequest("Mã giảm giá đã hết hạn");
+    throw badRequest("Discount code is not yet active");
+  if (now > voucher.endDate) throw badRequest("Discount code has expired");
 
   if (voucher.usageLimit > 0 && voucher.usedCount >= voucher.usageLimit) {
-    throw badRequest("Mã giảm giá đã hết lượt sử dụng");
+    throw badRequest("Discount code usage limit reached");
   }
 
   if (userId && voucher.usedBy?.some((id: any) => id.toString() === userId)) {
-    throw badRequest("Bạn đã sử dụng mã giảm giá này");
+    throw badRequest("You have already used this discount code");
   }
 
   if (subtotal < voucher.minOrderValue) {
@@ -185,25 +185,25 @@ export const getAllWalletVouchers = async (userId: string) => {
 
 export const collectVoucher = async (userId: string, code: string) => {
   const voucher = await voucherRepo.findByCode(code);
-  if (!voucher) throw notFound("Không tìm thấy mã giảm giá");
-  if (!voucher.isActive) throw badRequest("Mã giảm giá không còn hoạt động");
+  if (!voucher) throw notFound("Discount code not found");
+  if (!voucher.isActive) throw badRequest("Discount code is no longer active");
 
   const now = new Date();
-  if (now > voucher.endDate) throw badRequest("Mã giảm giá đã hết hạn");
+  if (now > voucher.endDate) throw badRequest("Discount code has expired");
   if (now < voucher.startDate)
-    throw badRequest("Mã giảm giá chưa đến thời gian sử dụng");
+    throw badRequest("Discount code is not yet active");
   if (voucher.usageLimit > 0 && voucher.usedCount >= voucher.usageLimit)
-    throw badRequest("Mã giảm giá đã hết lượt sử dụng");
+    throw badRequest("Discount code usage limit reached");
 
   // findUserWithVouchers dùng populate — cần lazy load để check alreadySaved
   const { default: User } = await import("../user/models/user.schema.js");
   const user = await User.findById(userId);
-  if (!user) throw notFound("Không tìm thấy người dùng");
+  if (!user) throw notFound("User not found");
 
   const alreadySaved = user.savedVouchers?.some(
     (id) => id.toString() === voucher._id.toString(),
   );
-  if (alreadySaved) throw conflict("Bạn đã lưu mã giảm giá này rồi");
+  if (alreadySaved) throw conflict("You have already saved this discount code");
 
   await voucherRepo.addVoucherToWallet(userId, voucher._id);
   return mapVoucher(voucher);
@@ -211,7 +211,7 @@ export const collectVoucher = async (userId: string, code: string) => {
 
 export const uncollectVoucher = async (userId: string, code: string) => {
   const voucher = await voucherRepo.findByCode(code);
-  if (!voucher) throw notFound("Không tìm thấy mã giảm giá");
+  if (!voucher) throw notFound("Discount code not found");
 
   await voucherRepo.removeVoucherFromWallet(userId, voucher._id);
 };

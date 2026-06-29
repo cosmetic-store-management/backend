@@ -5,15 +5,16 @@ import Brand, {
 
 type Query = Record<string, any>;
 
-export const findAll = async (query: Query, cursor: string | null, limit: number) => {
-  if (cursor) query._id = { $lt: cursor };
-  const brands = await Brand.find(query).sort({ _id: -1 }).limit(limit + 1).lean();
+export const findAll = async (query: Query, page: number, limit: number) => {
+  const skip = (page - 1) * limit;
+  const [brands, total] = await Promise.all([
+    Brand.find(query).sort({ _id: -1 }).skip(skip).limit(limit).lean(),
+    Brand.countDocuments(query),
+  ]);
   
-  const hasNextPage = brands.length > limit;
-  const items = hasNextPage ? brands.slice(0, limit) : brands;
-  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+  const totalPages = Math.ceil(total / limit);
 
-  return { brands: items, nextCursor, hasNextPage, limit };
+  return { brands, total, limit, page, totalPages };
 };
 
 export const countAll = (query: Query) => Brand.countDocuments(query);

@@ -10,21 +10,23 @@ import Product from "../product/models/product.schema.js";
 
 export const findByProductId = async (
   query: Record<string, any>,
-  cursor: string | null,
+  page: number,
   limit: number,
 ) => {
-  if (cursor) query._id = { $lt: cursor };
-  const reviews = await Review.find(query)
-    .populate("userId", "name avatarUrl")
-    .sort({ _id: -1 })
-    .limit(limit + 1)
-    .lean();
-    
-  const hasNextPage = reviews.length > limit;
-  const items = hasNextPage ? reviews.slice(0, limit) : reviews;
-  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+  const skip = (page - 1) * limit;
+  const [reviews, total] = await Promise.all([
+    Review.find(query)
+      .populate("userId", "name avatarUrl")
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Review.countDocuments(query),
+  ]);
 
-  return { reviews: items, nextCursor, hasNextPage, limit };
+  const totalPages = Math.ceil(total / limit);
+
+  return { reviews, total, limit, page, totalPages };
 };
 
 export const countByQuery = (query: Record<string, any>) =>
@@ -60,22 +62,24 @@ export const aggregateStats = (productId: mongoose.Types.ObjectId) =>
 
 export const findAllAdmin = async (
   query: Record<string, any>,
-  cursor: string | null,
+  page: number,
   limit: number,
 ) => {
-  if (cursor) query._id = { $lt: cursor };
-  const reviews = await Review.find(query)
-    .populate("userId", "name avatarUrl")
-    .populate("productId", "name slug imageUrl")
-    .sort({ _id: -1 })
-    .limit(limit + 1)
-    .lean();
-    
-  const hasNextPage = reviews.length > limit;
-  const items = hasNextPage ? reviews.slice(0, limit) : reviews;
-  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+  const skip = (page - 1) * limit;
+  const [reviews, total] = await Promise.all([
+    Review.find(query)
+      .populate("userId", "name avatarUrl")
+      .populate("productId", "name slug imageUrl")
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Review.countDocuments(query),
+  ]);
 
-  return { reviews: items, nextCursor, hasNextPage, limit };
+  const totalPages = Math.ceil(total / limit);
+
+  return { reviews, total, limit, page, totalPages };
 };
 
 export const findByIdAndDelete = (id: string) => Review.findByIdAndDelete(id);

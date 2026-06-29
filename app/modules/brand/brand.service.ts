@@ -42,7 +42,7 @@ const getBrandProductCounts = async (
 // ── PUBLIC ────────────────────────────────────────────────────────────────────
 
 export const getPublicBrands = async () => {
-  const result = await brandRepo.findAll({ isActive: true }, null, 500);
+  const result = await brandRepo.findAll({ isActive: true }, 1, 500);
   const brands = result.brands;
   const brandIds = brands.map((b: any) => b._id.toString());
   const countMap = await getBrandProductCounts(brandIds);
@@ -58,17 +58,18 @@ export const getPublicBrands = async () => {
 interface AdminBrandQuery {
   search?: string;
   status?: string;
-  cursor?: string;
+  page?: number;
   limit?: number;
 }
 
 export const getAdminBrands = async ({
   search,
   status,
-  cursor,
+  page = 1,
   limit = 50,
 }: AdminBrandQuery) => {
   const parsedLimit = Math.max(Number(limit) || 50, 1);
+  const parsedPage = Math.max(Number(page) || 1, 1);
 
   const query: Record<string, any> = {};
   if (search) query.name = { $regex: search.trim(), $options: "i" };
@@ -76,7 +77,7 @@ export const getAdminBrands = async ({
   else if (status === "inactive") query.isActive = false;
 
   const [result, total] = await Promise.all([
-    brandRepo.findAll(query, cursor || null, parsedLimit),
+    brandRepo.findAll(query, parsedPage, parsedLimit),
     brandRepo.countAll(query),
   ]);
   const brands = result.brands;
@@ -90,15 +91,15 @@ export const getAdminBrands = async ({
     pagination: {
       limit: parsedLimit,
       total,
-      nextCursor: result.nextCursor,
-      hasNextPage: result.hasNextPage,
+      page: result.page,
+      totalPages: result.totalPages,
     },
   };
 };
 
 export const getBrandDetail = async (id: string) => {
   const brand = await brandRepo.findById(id);
-  if (!brand) throw notFound("Không tìm thấy thương hiệu");
+  if (!brand) throw notFound("Brand not found");
   const countMap = await getBrandProductCounts([id]);
   return mapBrand(brand, countMap[id] ?? 0);
 };
@@ -106,14 +107,14 @@ export const getBrandDetail = async (id: string) => {
 export const createBrand = async (data: CreateBrandInput) => {
   const slug = slugify(data.name);
   const existing = await brandRepo.findBySlug(slug);
-  if (existing) throw conflict("Tên/Slug thương hiệu đã tồn tại");
+  if (existing) throw conflict("Brand Name/Slug already exists");
   const newBrand = await brandRepo.create({ ...data, slug });
   return mapBrand(newBrand, 0);
 };
 
 export const updateBrand = async (id: string, data: UpdateBrandInput) => {
   const brand = await brandRepo.findById(id);
-  if (!brand) throw notFound("Không tìm thấy thương hiệu");
+  if (!brand) throw notFound("Brand not found");
 
   if (data.name !== undefined) {
     const nextSlug = slugify(data.name);
@@ -121,7 +122,7 @@ export const updateBrand = async (id: string, data: UpdateBrandInput) => {
       slug: nextSlug,
       _id: { $ne: brand._id },
     });
-    if (existing) throw conflict("Tên/Slug thương hiệu đã tồn tại");
+    if (existing) throw conflict("Brand Name/Slug already exists");
     brand.name = data.name;
     brand.slug = nextSlug;
   }
@@ -138,7 +139,7 @@ export const updateBrand = async (id: string, data: UpdateBrandInput) => {
 
 export const updateBrandStatus = async (id: string, isActive: boolean) => {
   const brand = await brandRepo.findById(id);
-  if (!brand) throw notFound("Không tìm thấy thương hiệu");
+  if (!brand) throw notFound("Brand not found");
   brand.isActive = isActive;
   await brandRepo.save(brand);
   const countMap = await getBrandProductCounts([id]);
@@ -147,7 +148,7 @@ export const updateBrandStatus = async (id: string, isActive: boolean) => {
 
 export const deleteBrand = async (id: string) => {
   const brand = await brandRepo.findById(id);
-  if (!brand) throw notFound("Không tìm thấy thương hiệu");
+  if (!brand) throw notFound("Brand not found");
 
   const { default: Product } =
     await import("../product/models/product.schema.js");

@@ -13,13 +13,13 @@ router.get(
   authenticate,
   isOwner,
   catchAsync(async (req, res) => {
-    const { search, domain, startDate, endDate, cursor, limit = "20" } = req.query;
+    const { search, domain, startDate, endDate, page, limit = "20" } = req.query;
     const result = await auditService.getAuditLogs(
       search as string,
       domain as string,
       startDate as string,
       endDate as string,
-      cursor as string | undefined,
+      Number(page) || 1,
       Number(limit)
     );
     return response.success(res, result);

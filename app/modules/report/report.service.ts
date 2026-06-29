@@ -16,7 +16,7 @@ function calcChange(current: number, previous: number): number {
 
 function buildDateFilter(startDate?: string, endDate?: string) {
   const filter: any = {
-    note: { $ne: "Hệ thống tự động hủy do quá hạn thanh toán" }
+    note: { $ne: "System auto-cancelled due to payment timeout" }
   };
   if (startDate || endDate) {
     filter.createdAt = {};

@@ -25,7 +25,7 @@ const getStripe = () => {
 
 export const createStripePaymentIntent = async (orderId: string) => {
   const order = await Order.findById(orderId);
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   if (order.orderStatus !== "pending") {
     throw badRequest("Đơn hàng không ở trạng thái chờ thanh toán");
@@ -361,7 +361,7 @@ export const lookupBankAccount = async (bin: string, accountNumber: string) => {
 // --- REFUND PAYMENT ---
 export const refundPayment = async (orderId: string, session?: mongoose.ClientSession) => {
   const order = await Order.findById(orderId).session(session || null);
-  if (!order) throw notFound("Không tìm thấy đơn hàng");
+  if (!order) throw notFound("Order not found");
 
   if (order.paymentStatus !== "paid") {
     return; // Không cần hoàn tiền nếu chưa thanh toán thành công

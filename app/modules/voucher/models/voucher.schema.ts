@@ -2,7 +2,6 @@ import mongoose, { Document, Schema } from "mongoose";
 
 export interface IVoucher {
   code: string;
-  shopId?: mongoose.Types.ObjectId | null; // Multi-tenant
   discountType: "percent" | "fixed" | "freeship";
   discountValue: number;
   minOrderValue: number;
@@ -26,7 +25,6 @@ const voucherSchema = new Schema<VoucherDocument>(
       trim: true,
       uppercase: true,
     },
-    shopId: { type: Schema.Types.ObjectId, ref: "Shop", default: null }, // Multi-tenant
     discountType: {
       type: String,
       enum: ["percent", "fixed", "freeship"],

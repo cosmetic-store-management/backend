@@ -45,7 +45,7 @@ export const getAuditLogs = async (
   domain?: string,
   startDate?: string,
   endDate?: string,
-  cursor?: string,
+  page = 1,
   limit = 20,
 ) => {
   const query: Record<string, any> = {};
@@ -71,7 +71,7 @@ export const getAuditLogs = async (
     ];
   }
 
-  const result = await auditRepo.findByQuery(query, cursor || null, limit);
+  const result = await auditRepo.findByQuery(query, page, limit);
   const formattedLogs = result.logs.map((log: any) => ({
     id: log._id.toString(),
     userName: log.userName,
@@ -86,9 +86,10 @@ export const getAuditLogs = async (
   return {
     logs: formattedLogs,
     pagination: {
-      nextCursor: result.nextCursor,
-      hasNextPage: result.hasNextPage,
+      page: result.page,
+      totalPages: result.totalPages,
       limit,
+      total: result.total,
     }
   };
 };

@@ -19,7 +19,7 @@ router.get(
   authenticate,
   requirePermission("reviews.manage"),
   catchAsync(async (req, res) => {
-    const cursor = req.query.cursor as string | undefined;
+    const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 10;
     const rating = req.query.rating
       ? parseInt(req.query.rating as string, 10)
@@ -28,7 +28,7 @@ router.get(
     const productName = req.query.productName as string | undefined;
 
     const result = await reviewService.getAllReviewsAdmin(
-      cursor || null,
+      page,
       limit,
       rating,
       isReplied,
@@ -54,7 +54,7 @@ router.delete(
       `Xóa đánh giá (ID: ${reviewId})`,
       req.ip || "127.0.0.1",
     );
-    return response.success(res, { message: "Đã xóa đánh giá thành công" });
+    return response.success(res, { message: "Review deleted successfully" });
   }),
 );
 
@@ -122,16 +122,17 @@ router.delete(
 router.get(
   "/product/:productId",
   catchAsync(async (req, res) => {
-    const cursor = req.query.cursor as string | undefined;
+    const { productId } = req.params;
+    const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 10;
     const rating = req.query.rating
       ? parseInt(req.query.rating as string, 10)
       : undefined;
     const hasImage = req.query.hasImage === "true";
-    const productId = req.params.productId as string;
+
     const result = await reviewService.getReviewsByProductId(
       productId,
-      cursor || null,
+      page,
       limit,
       rating,
       hasImage,

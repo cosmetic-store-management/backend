@@ -316,7 +316,7 @@ export const getPublicProductDetail = async (slugOrId: string) => {
   if (!product) {
     product = await productRepo.findBySlug(slugOrId);
   }
-  if (!product) throw notFound("Không tìm thấy sản phẩm");
+  if (!product) throw notFound("Product not found");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if ((product.categoryId as any)?.isActive === false)
     throw notFound("Không tìm thấy sản phẩm do danh mục đã ngừng hoạt động");
@@ -332,7 +332,7 @@ export const getRecommendedProducts = async (
   const pId = new mongoose.Types.ObjectId(productId);
 
   const product = await productRepo.findById(productId);
-  if (!product) throw notFound("Không tìm thấy sản phẩm");
+  if (!product) throw notFound("Product not found");
 
   const { default: Order } = await import("../order/models/order.schema.js");
 
@@ -410,7 +410,7 @@ interface AdminProductQuery {
   maxStock?: number;
   cursor?: string;
   limit?: number;
-  shopId?: string | null;
+  page?: number;
 }
 
 export const getAdminProducts = async ({
@@ -422,16 +422,12 @@ export const getAdminProducts = async ({
   maxStock,
   cursor,
   limit = 20,
-  shopId,
+  page,
 }: AdminProductQuery) => {
   const parsedLimit = Math.max(Number(limit) || 20, 1);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const query: Record<string, any> = {};
-
-  if (shopId !== undefined) {
-    query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
-  }
 
   if (search) query.name = { $regex: search.trim(), $options: "i" };
   if (status === "active") query.isActive = true;
@@ -466,8 +462,8 @@ export const getAdminProducts = async ({
         pagination: {
           limit: parsedLimit,
           total: 0,
-          nextCursor: null,
-          hasNextPage: false,
+          page: 1,
+          totalPages: 1,
         },
       };
     query.$or = [
@@ -477,7 +473,7 @@ export const getAdminProducts = async ({
   }
 
   const [result, total] = await Promise.all([
-    productRepo.findAdmin(query, cursor || null, parsedLimit),
+    productRepo.findAdmin(query, cursor || null, parsedLimit, page ? Number(page) : undefined),
     productRepo.countAll(query),
   ]);
 
@@ -486,33 +482,29 @@ export const getAdminProducts = async ({
     pagination: {
       limit: parsedLimit,
       total,
-      nextCursor: result.nextCursor,
-      hasNextPage: result.hasNextPage,
+      page: page ? Number(page) : 1,
+      totalPages: Math.ceil(total / parsedLimit),
     },
   };
 };
 
 export const getAdminProductDetail = async (
   id: string,
-  shopId?: string | null,
 ) => {
   const query: any = { _id: id };
-  if (shopId !== undefined) {
-    query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
-  }
-  const product = await productRepo.findOneBy(query);
-  if (!product) throw notFound("Không tìm thấy sản phẩm");
+  const product = await productRepo.findDocumentBy(query);
+  if (!product) throw notFound("Product not found");
   return mapProduct(product);
 };
 
 export const createProduct = async (data: CreateProductInput) => {
   const category = await productRepo.findCategoryById(data.categoryId);
-  if (!category) throw badRequest("Danh mục không tồn tại");
+  if (!category) throw badRequest("Category does not exist");
 
   const { default: Brand } =
     await import("../brand/models/brand.schema.js");
   const brandDoc = await Brand.findById(data.brandId);
-  if (!brandDoc) throw badRequest("Thương hiệu không tồn tại");
+  if (!brandDoc) throw badRequest("Brand does not exist");
 
   // Validate secondary categories if provided
   if (data.categoryIds && data.categoryIds.length > 0) {
@@ -520,7 +512,7 @@ export const createProduct = async (data: CreateProductInput) => {
       data.categoryIds.map((id) => productRepo.findCategoryById(id)),
     );
     if (validCategories.some((c) => !c))
-      throw badRequest("Một hoặc nhiều danh mục phụ không tồn tại");
+      throw badRequest("One or more subcategories do not exist");
   }
 
   const slug = slugify(data.name);
@@ -528,7 +520,7 @@ export const createProduct = async (data: CreateProductInput) => {
     slug,
     categoryId: data.categoryId,
   });
-  if (existing) throw conflict("Slug sản phẩm đã tồn tại trong danh mục này");
+  if (existing) throw conflict("Product slug already exists in this category");
 
   const newProduct = await productRepo.create({
     ...data,
@@ -559,13 +551,13 @@ export const createProduct = async (data: CreateProductInput) => {
 export const updateProduct = async (id: string, data: UpdateProductInput) => {
   const product = await productRepo.findDocumentById(id);
   if (!product)
-    throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền cập nhật");
+    throw notFound("Product not found or you do not have permission to update");
 
   let nextCategoryId = product.categoryId;
 
   if (data.categoryId !== undefined) {
     const category = await productRepo.findCategoryById(data.categoryId);
-    if (!category) throw badRequest("Danh mục không tồn tại");
+    if (!category) throw badRequest("Category does not exist");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     product.categoryId = data.categoryId as any;
     nextCategoryId = data.categoryId as any;
@@ -578,7 +570,7 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
         data.categoryIds.map((cid) => productRepo.findCategoryById(cid)),
       );
       if (validCategories.some((c) => !c))
-        throw badRequest("Một hoặc nhiều danh mục phụ không tồn tại");
+        throw badRequest("One or more subcategories do not exist");
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (product as any).categoryIds = data.categoryIds as any;
@@ -591,7 +583,7 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
       categoryId: nextCategoryId,
       _id: { $ne: product._id },
     });
-    if (existing) throw conflict("Slug sản phẩm đã tồn tại trong danh mục này");
+    if (existing) throw conflict("Product slug already exists in this category");
     product.name = data.name;
     product.slug = nextSlug;
   }
@@ -600,7 +592,7 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
     const { default: Brand } =
       await import("../brand/models/brand.schema.js");
     const brandDoc = await Brand.findById(data.brandId);
-    if (!brandDoc) throw badRequest("Thương hiệu không tồn tại");
+    if (!brandDoc) throw badRequest("Brand does not exist");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     product.brandId = data.brandId as any;
   }
@@ -652,26 +644,19 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
 export const updateProductStatus = async (
   id: string,
   isActive: boolean,
-  shopId?: string | null,
 ) => {
   const query: any = { _id: id };
-  if (shopId !== undefined) {
-    query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
-  }
   const product = await productRepo.findDocumentBy(query);
   if (!product)
-    throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền cập nhật");
+    throw notFound("Product not found or you do not have permission to update");
   product.isActive = isActive;
   await productRepo.save(product);
   const updated = await productRepo.findById(product._id.toString());
   return mapProduct(updated!);
 };
 
-export const deleteProduct = async (id: string, shopId?: string | null) => {
+export const deleteProduct = async (id: string) => {
   const query: any = { _id: id };
-  if (shopId !== undefined) {
-    query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
-  }
   const product = await productRepo.findOneBy(query);
   if (!product)
     throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền xóa");
@@ -688,7 +673,7 @@ export const batchImportProducts = async (productsData: any[]) => {
   
   const productGroups = new Map<string, any[]>();
   for (const row of productsData) {
-    const slug = row["Slug"] || slugify(row["Tên sản phẩm"]);
+    const slug = row["Slug"] || slugify(row["Product name"]);
     if (!slug) continue;
     if (!productGroups.has(slug)) {
       productGroups.set(slug, []);
@@ -700,25 +685,25 @@ export const batchImportProducts = async (productsData: any[]) => {
     const firstRow = rows[0];
     
     let brandId: mongoose.Types.ObjectId | undefined;
-    if (firstRow["Thương hiệu"]) {
-      let brand = await Brand.findOne({ name: new RegExp(`^${firstRow["Thương hiệu"]}$`, 'i') });
+    if (firstRow["Brand"]) {
+      let brand = await Brand.findOne({ name: new RegExp(`^${firstRow["Brand"]}$`, 'i') });
       if (!brand) {
-        brand = await Brand.create({ name: firstRow["Thương hiệu"], slug: slugify(firstRow["Thương hiệu"]) });
+        brand = await Brand.create({ name: firstRow["Brand"], slug: slugify(firstRow["Brand"]) });
       }
       brandId = brand._id;
     }
 
     let categoryId: mongoose.Types.ObjectId | undefined;
-    if (firstRow["Danh mục"]) {
-      let cat = await Category.findOne({ name: new RegExp(`^${firstRow["Danh mục"]}$`, 'i') });
+    if (firstRow["Category"]) {
+      let cat = await Category.findOne({ name: new RegExp(`^${firstRow["Category"]}$`, 'i') });
       if (!cat) {
-        cat = await Category.create({ name: firstRow["Danh mục"], slug: slugify(firstRow["Danh mục"]) });
+        cat = await Category.create({ name: firstRow["Category"], slug: slugify(firstRow["Category"]) });
       }
       categoryId = cat._id;
     }
 
     const productData = {
-      name: firstRow["Tên sản phẩm"],
+      name: firstRow["Product name"],
       slug: slug,
       brandId: brandId,
       categoryId: categoryId,
@@ -750,9 +735,9 @@ export const batchImportProducts = async (productsData: any[]) => {
         name: vName,
         sku: vSku,
         price: Number(row["Giá bán"]) || 0,
-        discountPrice: row["Giá khuyến mãi"] ? Number(row["Giá khuyến mãi"]) : undefined,
+        discountPrice: row["Discount price"] ? Number(row["Discount price"]) : undefined,
         stock: Number(row["Tồn kho"]) || 0,
-        isActive: row["Trạng thái (Biến thể)"] !== "Ngừng bán",
+        isActive: row["Trạng thái (Biến thể)"] !== "Discontinued",
       };
 
       if (existingVariantsMap.has(vKey)) {

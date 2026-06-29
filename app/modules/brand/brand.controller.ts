@@ -32,7 +32,7 @@ router.get(
   "/:id",
   catchAsync(async (req, res) => {
     const brand = await brandService.getBrandDetail(req.params.id as string);
-    if (!brand.isActive) throw new Error("Thương hiệu ngừng hoạt động");
+    if (!brand.isActive) throw new Error("Brand is inactive");
     return response.success(res, { brand });
   }),
 );
@@ -75,7 +75,7 @@ router.post(
       req.ip || "127.0.0.1",
     );
     return response.created(res, {
-      message: "Tạo thương hiệu thành công",
+      message: "Brand created successfully",
       brand,
     });
   }),

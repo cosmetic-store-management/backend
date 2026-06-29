@@ -17,9 +17,9 @@ export const CreateOrderSchema = z.object({
   note: z.string().trim().optional().default(""),
   receiverName: z.string().min(1, "Họ tên người nhận không được để trống"),
   phone: z.string().min(1, "Số điện thoại nhận hàng không được để trống"),
-  province: z.string().min(1, "Tỉnh/Thành phố không được để trống"),
-  district: z.string().min(1, "Quận/Huyện không được để trống"),
-  ward: z.string().min(1, "Phường/Xã không được để trống"),
+  province: z.string().min(1, "Province/City cannot be empty"),
+  district: z.string().min(1, "District cannot be empty"),
+  ward: z.string().min(1, "Ward cannot be empty"),
   street: z.string().min(1, "Số nhà, tên đường không được để trống"),
   shippingMethod: z.enum(["standard", "express"]).default("standard"),
   voucherCode: z.string().trim().optional(),
@@ -28,7 +28,7 @@ export const CreateOrderSchema = z.object({
 });
 
 export const PreviewOrderSchema = z.object({
-  items: z.array(OrderItemInputSchema).min(1, "Giỏ hàng trống"),
+  items: z.array(OrderItemInputSchema).min(1, "Cart is empty"),
   voucherCode: z.string().trim().optional(),
   usedPoints: z.number().int().min(0).optional().default(0),
   discountAmount: z.number().int().min(0).optional().default(0), // Manual POS discount
@@ -48,9 +48,9 @@ export const UpdateOrderStatusSchema = z.object({
 export const UpdateOrderDetailsSchema = z.object({
   receiverName: z.string().min(1, "Họ tên không được để trống").optional(),
   phone: z.string().min(1, "SĐT không được để trống").optional(),
-  province: z.string().min(1, "Tỉnh/Thành phố không được để trống").optional(),
-  district: z.string().min(1, "Quận/Huyện không được để trống").optional(),
-  ward: z.string().min(1, "Phường/Xã không được để trống").optional(),
+  province: z.string().min(1, "Province/City cannot be empty").optional(),
+  district: z.string().min(1, "District cannot be empty").optional(),
+  ward: z.string().min(1, "Ward cannot be empty").optional(),
   street: z.string().min(1, "Số nhà không được để trống").optional(),
   note: z.string().optional(),
 });

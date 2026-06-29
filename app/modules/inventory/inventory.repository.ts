@@ -23,24 +23,26 @@ export const createSupplier = (data: any) => Supplier.create(data);
 
 export const findVariantsByQuery = async (
   query: Record<string, any>,
-  cursor: string | null,
+  page: number,
   limit: number,
 ) => {
-  if (cursor) query._id = { $lt: cursor };
-  const variants = await Variant.find(query)
-    .populate({
-      path: "productId",
-      populate: { path: "brandId", select: "name slug imageUrl country" },
-    })
-    .sort({ _id: -1 })
-    .limit(limit + 1)
-    .lean();
+  const skip = (page - 1) * limit;
+  const [variants, total] = await Promise.all([
+    Variant.find(query)
+      .populate({
+        path: "productId",
+        populate: { path: "brandId", select: "name slug imageUrl country" },
+      })
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Variant.countDocuments(query),
+  ]);
 
-  const hasNextPage = variants.length > limit;
-  const items = hasNextPage ? variants.slice(0, limit) : variants;
-  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+  const totalPages = Math.ceil(total / limit);
 
-  return { variants: items, nextCursor, hasNextPage, limit };
+  return { variants, total, limit, page, totalPages };
 };
 
 export const countVariantsByQuery = (query: Record<string, any>) =>
@@ -76,25 +78,28 @@ export const findProductIdsByName = async (
 
 // ── Inventory Transactions ────────────────────────────────────────────────────
 
-export const findTransactions = async (cursor: string | null, limit: number, type?: string) => {
+export const findTransactions = async (page: number, limit: number, type?: string) => {
   const query: any = {};
   if (type) query.type = type;
-  if (cursor) query._id = { $lt: cursor };
 
-  const transactions = await InventoryTransaction.find(query)
-    .populate({
-      path: "variantId",
-      populate: { path: "productId", select: "name" },
-    })
-    .sort({ _id: -1 })
-    .limit(limit + 1)
-    .lean();
+  const skip = (page - 1) * limit;
 
-  const hasNextPage = transactions.length > limit;
-  const items = hasNextPage ? transactions.slice(0, limit) : transactions;
-  const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
+  const [transactions, total] = await Promise.all([
+    InventoryTransaction.find(query)
+      .populate({
+        path: "variantId",
+        populate: { path: "productId", select: "name" },
+      })
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    InventoryTransaction.countDocuments(query),
+  ]);
 
-  return { transactions: items, nextCursor, hasNextPage, limit };
+  const totalPages = Math.ceil(total / limit);
+
+  return { transactions, total, limit, page, totalPages };
 };
 
 export const countTransactions = (type?: string) => {

@@ -23,7 +23,7 @@ export const CreateVoucherSchema = BaseVoucherSchema.refine(
     return start < end;
   },
   {
-    message: "Ngày kết thúc phải sau ngày bắt đầu",
+    message: "End date must be after start date",
     path: ["endDate"],
   },
 ).refine(
@@ -34,7 +34,7 @@ export const CreateVoucherSchema = BaseVoucherSchema.refine(
     return true;
   },
   {
-    message: "Giá trị giảm không được vượt quá 100%",
+    message: "Discount value cannot exceed 100%",
     path: ["discountValue"],
   },
 );
@@ -50,7 +50,7 @@ export const UpdateVoucherSchema = BaseVoucherSchema.partial()
       return true;
     },
     {
-      message: "Ngày kết thúc phải sau ngày bắt đầu",
+      message: "End date must be after start date",
       path: ["endDate"],
     },
   )
@@ -66,7 +66,7 @@ export const UpdateVoucherSchema = BaseVoucherSchema.partial()
       return true;
     },
     {
-      message: "Giá trị giảm không được vượt quá 100%",
+      message: "Discount value cannot exceed 100%",
       path: ["discountValue"],
     },
   );

@@ -49,7 +49,7 @@ export const getPublicCategories = async () => {
   }
 
   // Fetch all active categories to build the tree, regardless of product count
-  const result = await categoryRepo.findAll({ isActive: true }, null, 1000);
+  const result = await categoryRepo.findAll({ isActive: true }, 1, 1000);
   const categories = result.categories;
   const countsMap = await categoryRepo.countProductsByCategoryIds(
     categories.map((c) => c._id as any),
@@ -89,7 +89,7 @@ export const getPublicCategories = async () => {
 
 export const getPublicCategoryDetail = async (slug: string) => {
   const category = await categoryRepo.findOneBy({ slug, isActive: true });
-  if (!category) throw notFound("Không tìm thấy danh mục");
+  if (!category) throw notFound("Category not found");
   return mapCategory(category);
 };
 
@@ -98,17 +98,18 @@ export const getPublicCategoryDetail = async (slug: string) => {
 interface AdminCategoryQuery {
   search?: string;
   status?: string;
-  cursor?: string;
+  page?: number;
   limit?: number;
 }
 
 export const getAdminCategories = async ({
   search,
   status,
-  cursor,
+  page = 1,
   limit = 20,
 }: AdminCategoryQuery) => {
   const parsedLimit = Math.max(Number(limit) || 20, 1);
+  const parsedPage = Math.max(Number(page) || 1, 1);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const query: Record<string, any> = {};
@@ -117,7 +118,7 @@ export const getAdminCategories = async ({
   else if (status === "inactive") query.isActive = false;
 
   const [result, total] = await Promise.all([
-    categoryRepo.findAll(query, cursor || null, parsedLimit),
+    categoryRepo.findAll(query, parsedPage, parsedLimit),
     categoryRepo.countAll(query),
   ]);
   const categories = result.categories;
@@ -134,22 +135,22 @@ export const getAdminCategories = async ({
     pagination: {
       limit: parsedLimit,
       total,
-      nextCursor: result.nextCursor,
-      hasNextPage: result.hasNextPage,
+      page: result.page,
+      totalPages: result.totalPages,
     },
   };
 };
 
 export const getAdminCategoryDetail = async (id: string) => {
   const category = await categoryRepo.findById(id);
-  if (!category) throw notFound("Không tìm thấy danh mục");
+  if (!category) throw notFound("Category not found");
   return mapCategory(category);
 };
 
 export const createCategory = async (data: CreateCategoryInput) => {
   const slug = slugify(data.name);
   const existing = await categoryRepo.findBySlug(slug);
-  if (existing) throw conflict("Slug danh mục đã tồn tại");
+  if (existing) throw conflict("Category slug already exists");
   const parentId = await parseParentId(data.parentId);
   const newCategory = await categoryRepo.create({ ...data, parentId, slug });
   return mapCategory(newCategory);
@@ -157,7 +158,7 @@ export const createCategory = async (data: CreateCategoryInput) => {
 
 export const updateCategory = async (id: string, data: UpdateCategoryInput) => {
   const category = await categoryRepo.findById(id);
-  if (!category) throw notFound("Không tìm thấy danh mục");
+  if (!category) throw notFound("Category not found");
 
   if (data.name !== undefined) {
     const nextSlug = slugify(data.name);
@@ -165,7 +166,7 @@ export const updateCategory = async (id: string, data: UpdateCategoryInput) => {
       slug: nextSlug,
       _id: { $ne: category._id },
     });
-    if (existing) throw conflict("Slug danh mục đã tồn tại");
+    if (existing) throw conflict("Category slug already exists");
     category.name = data.name;
     category.slug = nextSlug;
   }
@@ -193,7 +194,7 @@ export const updateCategory = async (id: string, data: UpdateCategoryInput) => {
 
 export const updateCategoryStatus = async (id: string, isActive: boolean) => {
   const category = await categoryRepo.findById(id);
-  if (!category) throw notFound("Không tìm thấy danh mục");
+  if (!category) throw notFound("Category not found");
   category.isActive = isActive;
   await categoryRepo.save(category);
   return mapCategory(category);
@@ -201,7 +202,7 @@ export const updateCategoryStatus = async (id: string, isActive: boolean) => {
 
 export const deleteCategory = async (id: string) => {
   const category = await categoryRepo.findById(id);
-  if (!category) throw notFound("Không tìm thấy danh mục");
+  if (!category) throw notFound("Category not found");
   const hasProducts = await categoryRepo.hasProducts(category._id.toString());
   if (hasProducts) throw badRequest("Không thể xóa danh mục đang có sản phẩm");
   await categoryRepo.deleteById(id);
