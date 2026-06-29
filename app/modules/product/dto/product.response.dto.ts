@@ -1,6 +1,6 @@
-import type { ProductDocument } from "../../../models/product/product.schema.js";
+import type { ProductDocument } from "../models/product.schema.js";
 import type { Types } from "mongoose";
-import type { VariantDocument } from "../../../models/product/variant.schema.js";
+import type { VariantDocument } from "../models/variant.schema.js";
 
 // ─── Populated sub-types ──────────────────────────────────────────────────────
 

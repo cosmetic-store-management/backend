@@ -8,10 +8,10 @@ import {
   clearCollections,
 } from "./helpers/db-helper.js";
 import * as productService from "../../app/modules/product/product.service.js";
-import Product from "../../app/models/product/product.schema.js";
-import Category from "../../app/models/product/category.schema.js";
-import Brand from "../../app/models/product/brand.schema.js";
-import Variant from "../../app/models/product/variant.schema.js";
+import Product from "../../app/modules/product/models/product.schema.js";
+import Category from "../../app/modules/category/models/category.schema.js";
+import Brand from "../../app/modules/brand/models/brand.schema.js";
+import Variant from "../../app/modules/product/models/variant.schema.js";
 
 let categoryId: string;
 let brandId: string;

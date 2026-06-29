@@ -88,83 +88,26 @@ router.post(
   }),
 );
 
-// POST /api/auth/admin/login
+// POST /api/auth/login
 router.post(
-  "/admin/login",
+  "/login",
   authLimiter,
   validate(LoginSchema),
   catchAsync(async (req, res) => {
-    const result = await authService.loginAdmin(req.body);
-    await auditService.logAction(
-      result.user.id,
-      result.user.name,
-      "login",
-      "identity",
-      "Đăng nhập hệ thống quản trị",
-      req.ip || req.socket.remoteAddress || "127.0.0.1",
-    );
-    return response.success(res, {
-      message: "Đăng nhập quản trị thành công",
-      ...result,
-    });
-  }),
-);
+    const result = await authService.login(req.body);
+    
+    // Ghi log hành động nếu là tài khoản quản trị
+    if (["owner", "manager", "staff"].includes(result.user.role)) {
+      await auditService.logAction(
+        result.user.id,
+        result.user.name,
+        "login",
+        "identity",
+        "Đăng nhập hệ thống",
+        req.ip || req.socket.remoteAddress || "127.0.0.1",
+      );
+    }
 
-/**
- * @swagger
- * /auth/public/login:
- *   post:
- *     summary: Khách hàng đăng nhập
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - email
- *               - password
- *             properties:
- *               email:
- *                 type: string
- *                 example: user@example.com
- *               password:
- *                 type: string
- *                 example: password123
- *     responses:
- *       200:
- *         description: Đăng nhập thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Đăng nhập thành công
- *                 data:
- *                   type: object
- *                   properties:
- *                     accessToken:
- *                       type: string
- *                     refreshToken:
- *                       type: string
- *                     user:
- *                       type: object
- *       400:
- *         description: Thông tin đăng nhập không hợp lệ
- */
-// POST /api/auth/public/login
-router.post(
-  "/public/login",
-  authLimiter,
-  validate(LoginSchema),
-  catchAsync(async (req, res) => {
-    const result = await authService.loginPublic(req.body);
     return response.success(res, {
       message: "Đăng nhập thành công",
       ...result,

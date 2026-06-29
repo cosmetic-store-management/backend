@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
 import * as productRepo from "./product.repository.js";
-import Variant from "../../models/product/variant.schema.js";
-import Brand from "../../models/product/brand.schema.js";
-import Category from "../../models/product/category.schema.js";
-import Product from "../../models/product/product.schema.js";
+import Variant from "./models/variant.schema.js";
+import Brand from "../brand/models/brand.schema.js";
+import Category from "../category/models/category.schema.js";
+import Product from "./models/product.schema.js";
 import { mapProduct } from "./dto/product.response.dto.js";
 import {
   badRequest,
@@ -334,7 +334,7 @@ export const getRecommendedProducts = async (
   const product = await productRepo.findById(productId);
   if (!product) throw notFound("Không tìm thấy sản phẩm");
 
-  const { default: Order } = await import("../../models/order/order.schema.js");
+  const { default: Order } = await import("../order/models/order.schema.js");
 
   // 1. Collaborative Filtering: "Customers who bought this also bought"
   const orders = await Order.find({ "items.productId": pId })
@@ -510,7 +510,7 @@ export const createProduct = async (data: CreateProductInput) => {
   if (!category) throw badRequest("Danh mục không tồn tại");
 
   const { default: Brand } =
-    await import("../../models/product/brand.schema.js");
+    await import("../brand/models/brand.schema.js");
   const brandDoc = await Brand.findById(data.brandId);
   if (!brandDoc) throw badRequest("Thương hiệu không tồn tại");
 
@@ -598,7 +598,7 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
 
   if (data.brandId !== undefined) {
     const { default: Brand } =
-      await import("../../models/product/brand.schema.js");
+      await import("../brand/models/brand.schema.js");
     const brandDoc = await Brand.findById(data.brandId);
     if (!brandDoc) throw badRequest("Thương hiệu không tồn tại");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -615,7 +615,7 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
 
   if (data.variants && data.variants.length > 0) {
     const { default: Brand } =
-      await import("../../models/product/brand.schema.js");
+      await import("../brand/models/brand.schema.js");
     const brandDoc = await Brand.findById(product.brandId);
 
     const variantIdsToKeep = data.variants
@@ -679,7 +679,7 @@ export const deleteProduct = async (id: string, shopId?: string | null) => {
   await productRepo.findByIdAndDelete(id);
 
   const { default: Variant } =
-    await import("../../models/product/variant.schema.js");
+    await import("./models/variant.schema.js");
   await Variant.deleteMany({ productId: id });
 };
 

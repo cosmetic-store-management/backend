@@ -9,8 +9,8 @@ import {
   clearCollections,
 } from "./helpers/db-helper.js";
 import * as userService from "../../app/modules/user/user.service.js";
-import User from "../../app/models/user/user.schema.js";
-import PointHistory from "../../app/models/user/point-history.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
+import PointHistory from "../../app/modules/user/models/point-history.schema.js";
 import mongoose from "mongoose";
 
 beforeAll(async () => {
@@ -130,7 +130,7 @@ describe("[Integration] User — Address Book", () => {
 
     const inDB = await User.findById(customer._id);
     expect(inDB?.addresses.length).toBe(2);
-    const defaults = inDB?.addresses.filter((a) => a.isDefault);
+    const defaults = inDB?.addresses.filter((a: any) => a.isDefault);
     expect(defaults?.length).toBe(1); // chỉ 1 địa chỉ mặc định
     expect(defaults?.[0].province).toBe("TP. HCM");
   });
@@ -155,7 +155,7 @@ describe("[Integration] User — Address Book", () => {
     });
 
     const userAfterAdd = await User.findById(customer._id);
-    const defaultAddr = userAfterAdd?.addresses.find((a) => a.isDefault);
+    const defaultAddr = userAfterAdd?.addresses.find((a: any) => a.isDefault);
     const addrId = defaultAddr?._id?.toString()!;
 
     await userService.deleteAddress(userId, addrId);

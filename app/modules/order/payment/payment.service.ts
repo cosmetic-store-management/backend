@@ -1,7 +1,7 @@
 import Stripe from "stripe";
-import Order from "../../../models/order/order.schema.js";
-import User from "../../../models/user/user.schema.js";
-import PaymentTransaction from "../../../models/order/payment-transaction.schema.js";
+import Order from "../models/order.schema.js";
+import User from "../../user/models/user.schema.js";
+import PaymentTransaction from "../models/payment-transaction.schema.js";
 import {
   notFound,
   badRequest,
@@ -116,6 +116,12 @@ export const handleStripeWebhook = async (payload: any, signature: string) => {
 
             // Ghi log thanh toán thành công
             console.log(`[Stripe Webhook] Đơn hàng ${order.code} đã được thanh toán.`);
+
+            // Gửi email xác nhận thanh toán thành công
+            const emailUser = await User.findById(order.userId).select("email");
+            if (emailUser && emailUser.email) {
+              sendOrderSuccessEmail(emailUser.email, order.code, order.totalAmount).catch(console.error);
+            }
           } else {
             // Đơn hàng không tồn tại hoặc không ở trạng thái pending (có thể đã được xử lý bởi cron huỷ đơn)
             const existingOrder = await Order.findById(orderId);
@@ -175,7 +181,7 @@ export const handleStripeWebhook = async (payload: any, signature: string) => {
 };
 
 // --- SEPAY WEBHOOK (AUTO CONFIRM CHUYỂN KHOẢN NGÂN HÀNG) ---
-import Setting from "../../../models/system/setting.schema.js";
+import Setting from "../../setting/models/setting.schema.js";
 
 export const handleSepayWebhook = async (payload: any, authHeader: string) => {
   // 1. Kiểm tra Token bảo mật (để chắc chắn request từ SePay)

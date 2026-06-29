@@ -185,7 +185,7 @@ describe("authService.loginAdmin", () => {
     );
     vi.mocked(bcrypt.compare as any).mockResolvedValue(true);
 
-    const result = await authService.loginAdmin({
+    const result = await authService.login({
       email: "admin@example.com",
       password: "pass",
     });
@@ -199,7 +199,7 @@ describe("authService.loginAdmin", () => {
     vi.mocked(bcrypt.compare as any).mockResolvedValue(false);
 
     await expect(
-      authService.loginAdmin({ email: "admin@example.com", password: "wrong" }),
+      authService.login({ email: "admin@example.com", password: "wrong" }),
     ).rejects.toMatchObject({ status: 401 });
   });
 
@@ -209,7 +209,7 @@ describe("authService.loginAdmin", () => {
     vi.mocked(bcrypt.compare as any).mockResolvedValue(true);
 
     await expect(
-      authService.loginAdmin({ email: "c@example.com", password: "pass" }),
+      authService.login({ email: "c@example.com", password: "pass" }),
     ).rejects.toMatchObject({ status: 401 });
   });
 
@@ -218,7 +218,7 @@ describe("authService.loginAdmin", () => {
     vi.mocked(authRepo.findByEmail).mockResolvedValue(lockedUser as any);
 
     await expect(
-      authService.loginAdmin({ email: "locked@example.com", password: "pass" }),
+      authService.login({ email: "locked@example.com", password: "pass" }),
     ).rejects.toMatchObject({ status: 401 });
   });
 });
@@ -234,7 +234,7 @@ describe("authService.loginPublic", () => {
     );
     vi.mocked(bcrypt.compare as any).mockResolvedValue(true);
 
-    const result = await authService.loginPublic({
+    const result = await authService.login({
       phone: "0901234567",
       password: "pass",
     });
@@ -246,7 +246,7 @@ describe("authService.loginPublic", () => {
     vi.mocked(authRepo.findByPhone).mockResolvedValue(adminUser as any);
 
     await expect(
-      authService.loginPublic({ phone: "0901234567", password: "pass" }),
+      authService.login({ phone: "0901234567", password: "pass" }),
     ).rejects.toMatchObject({ status: 401 });
   });
 });

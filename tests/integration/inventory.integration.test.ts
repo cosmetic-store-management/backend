@@ -9,12 +9,12 @@ import {
 } from "./helpers/db-helper.js";
 import * as inventoryService from "../../app/modules/inventory/inventory.service.js";
 import mongoose from "mongoose";
-import Supplier from "../../app/models/inventory/supplier.schema.js";
-import Variant from "../../app/models/product/variant.schema.js";
-import Product from "../../app/models/product/product.schema.js";
-import Category from "../../app/models/product/category.schema.js";
-import User from "../../app/models/user/user.schema.js";
-import InventoryTransaction from "../../app/models/inventory/inventory-transaction.schema.js";
+import Supplier from "../../app/modules/inventory/models/supplier.schema.js";
+import Variant from "../../app/modules/product/models/variant.schema.js";
+import Product from "../../app/modules/product/models/product.schema.js";
+import Category from "../../app/modules/category/models/category.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
+import InventoryTransaction from "../../app/modules/inventory/models/inventory-transaction.schema.js";
 
 let variantId: string;
 let supplierId: string;

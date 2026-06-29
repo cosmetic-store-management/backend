@@ -4,12 +4,12 @@
  * Service chỉ chứa business logic, repo lo query DB.
  */
 import mongoose from "mongoose";
-import Product from "../../models/product/product.schema.js";
-import Variant from "../../models/product/variant.schema.js";
-import Supplier from "../../models/inventory/supplier.schema.js";
-import GoodsReceipt from "../../models/inventory/goods-receipt.schema.js";
-import InventoryTransaction from "../../models/inventory/inventory-transaction.schema.js";
-import Batch from "../../models/inventory/batch.schema.js";
+import Product from "../product/models/product.schema.js";
+import Variant from "../product/models/variant.schema.js";
+import Supplier from "./models/supplier.schema.js";
+import GoodsReceipt from "./models/goods-receipt.schema.js";
+import InventoryTransaction from "./models/inventory-transaction.schema.js";
+import Batch from "./models/batch.schema.js";
 
 // ── Supplier ──────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import mongoose from "mongoose";
-import Cart from "../../models/cart/cart.schema.js";
+import Cart from "./models/cart.schema.js";
 
 // Chạy vào lúc 02:00 sáng mỗi ngày
 cron.schedule("0 2 * * *", async () => {

@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../app/models/system/setting.schema.js", () => {
+vi.mock("../../app/modules/setting/models/setting.schema.js", () => {
   return {
     default: {
       findOne: vi.fn(),
@@ -12,7 +12,7 @@ vi.mock("../../app/models/system/setting.schema.js", () => {
   };
 });
 
-import Setting from "../../app/models/system/setting.schema.js";
+import Setting from "../../app/modules/setting/models/setting.schema.js";
 import * as settingService from "../../app/modules/setting/setting.service.js";
 
 beforeEach(() => {

@@ -1,4 +1,4 @@
-import type { IFlashSale } from "../../../models/marketing/flash-sale.schema.js";
+import type { IFlashSale } from "../models/flash-sale.schema.js";
 
 export const mapFlashSale = (fs: IFlashSale | any) => {
   return {

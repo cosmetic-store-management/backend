@@ -11,7 +11,7 @@ import {
 
 // Import real implementations (không mock)
 import * as authService from "../../app/modules/auth/auth.service.js";
-import User from "../../app/models/user/user.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
 
 beforeAll(async () => {
   process.env.JWT_SECRET = "integration_test_secret_32chars!!";
@@ -49,7 +49,7 @@ describe("[Integration] Auth — register → login flow", () => {
 
   it("đăng nhập public thành công sau khi đăng ký", async () => {
     await authService.register(newUser);
-    const result = await authService.loginPublic({
+    const result = await authService.login({
       phone: "0901111111",
       password: "StrongPass@123",
     });
@@ -103,7 +103,7 @@ describe("[Integration] Auth — changePassword", () => {
     });
 
     // Đăng nhập với mật khẩu mới phải thành công
-    const result = await authService.loginPublic({
+    const result = await authService.login({
       phone: "0903333333",
       password: "NewPass@456",
     });
@@ -111,7 +111,7 @@ describe("[Integration] Auth — changePassword", () => {
 
     // Đăng nhập với mật khẩu cũ phải thất bại
     await expect(
-      authService.loginPublic({ phone: "0903333333", password: "OldPass@123" }),
+      authService.login({ phone: "0903333333", password: "OldPass@123" }),
     ).rejects.toMatchObject({ status: 401 });
   });
 });

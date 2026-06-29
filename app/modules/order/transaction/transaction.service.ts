@@ -1,4 +1,4 @@
-import PaymentTransaction from "../../../models/order/payment-transaction.schema.js";
+import PaymentTransaction from "../models/payment-transaction.schema.js";
 
 export const createTransaction = async (data: any) => {
   return PaymentTransaction.create(data);

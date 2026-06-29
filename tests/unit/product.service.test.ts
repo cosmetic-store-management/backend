@@ -15,7 +15,7 @@ vi.mock("../../app/modules/product/dto/product.response.dto.js", () => ({
 vi.mock("../../app/shared/helpers/sanitize.js", () => ({
   sanitizeRichText: (html: string) => html,
 }));
-vi.mock("../../app/models/product/variant.schema.js", () => ({
+vi.mock("../../app/modules/product/models/variant.schema.js", () => ({
   default: {
     find: vi.fn().mockResolvedValue([]),
     insertMany: vi.fn().mockResolvedValue([]),
@@ -23,7 +23,7 @@ vi.mock("../../app/models/product/variant.schema.js", () => ({
     aggregate: vi.fn().mockResolvedValue([]),
   },
 }));
-vi.mock("../../app/models/product/brand.schema.js", () => ({
+vi.mock("../../app/modules/brand/models/brand.schema.js", () => ({
   default: {
     findById: vi.fn().mockResolvedValue({ _id: "brand_xyz", name: "La Roche" }),
   },

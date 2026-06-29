@@ -1,8 +1,8 @@
 import User, {
   type UserDocument,
   type IUser,
-} from "../../models/user/user.schema.js";
-import Otp, { type IOtp } from "../../models/user/otp.schema.js";
+} from "../user/models/user.schema.js";
+import Otp, { type IOtp } from "./models/otp.schema.js";
 
 export const findByPhone = (phone: string) => User.findOne({ phone });
 

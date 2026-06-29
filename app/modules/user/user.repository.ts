@@ -1,8 +1,8 @@
 import User, {
   type UserDocument,
   type IUser,
-} from "../../models/user/user.schema.js";
-import Otp, { type IOtp } from "../../models/user/otp.schema.js";
+} from "./models/user.schema.js";
+import Otp, { type IOtp } from "../auth/models/otp.schema.js";
 
 export const findAll = () =>
   User.find({ isDeleted: { $ne: true } }).select("-password").sort({ createdAt: -1 }).lean();

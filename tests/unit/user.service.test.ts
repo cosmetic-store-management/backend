@@ -16,10 +16,10 @@ vi.mock("../../app/modules/user/dto/user.response.dto.js", () => ({
     points: u.points ?? 0,
   }),
 }));
-vi.mock("../../app/models/order/order.schema.js", () => ({
+vi.mock("../../app/modules/order/models/order.schema.js", () => ({
   default: { aggregate: vi.fn() },
 }));
-vi.mock("../../app/models/user/point-history.schema.js", () => ({
+vi.mock("../../app/modules/user/models/point-history.schema.js", () => ({
   default: { create: vi.fn().mockResolvedValue(undefined) },
 }));
 vi.mock("../../app/modules/product/product.repository.js", () => ({
@@ -34,7 +34,7 @@ vi.mock("bcryptjs", () => ({
 
 import * as userRepo from "../../app/modules/user/user.repository.js";
 import * as userService from "../../app/modules/user/user.service.js";
-import PointHistory from "../../app/models/user/point-history.schema.js";
+import PointHistory from "../../app/modules/user/models/point-history.schema.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

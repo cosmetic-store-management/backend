@@ -14,7 +14,7 @@ import {
   sendOtpVerificationEmail,
   sendWelcomeEmail
 } from "../../shared/email/email.service.js";
-import type { UserDocument } from "../../models/user/user.schema.js";
+import type { UserDocument } from "../user/models/user.schema.js";
 import type {
   RegisterInput,
   LoginInput,
@@ -167,45 +167,7 @@ export const register = async (data: RegisterInput) => {
   return { user: mapUser(user), accessToken, refreshToken };
 };
 
-export const loginAdmin = async (data: LoginInput) => {
-  const user = data.email
-    ? await authRepo.findByEmail(data.email)
-    : await authRepo.findByPhone(data.phone!);
-
-  if (!user) throw unauthorized("Tài khoản hoặc mật khẩu không đúng");
-  if (!user.password) throw unauthorized("Tài khoản chưa có mật khẩu");
-
-  if (!["owner", "manager", "staff"].includes(user.role)) {
-    throw unauthorized("Tài khoản không có quyền truy cập trang quản trị");
-  }
-
-  if (user.isActive === false) {
-    throw unauthorized(
-      "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Quản lý.",
-    );
-  }
-
-  const isValid = await bcrypt.compare(data.password, user.password);
-  if (!isValid) throw unauthorized("Số điện thoại hoặc mật khẩu không đúng");
-
-  const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken(user);
-
-  // Lưu refresh token vào DB
-  const userWithToken = await authRepo.findByIdWithRefreshToken(
-    user._id.toString(),
-  );
-  if (userWithToken) {
-    userWithToken.refreshTokens = userWithToken.refreshTokens || [];
-    userWithToken.refreshTokens.push(refreshToken);
-    if (userWithToken.refreshTokens.length > 5) userWithToken.refreshTokens.shift();
-    await authRepo.save(userWithToken);
-  }
-
-  return { user: mapUser(user), accessToken, refreshToken };
-};
-
-export const loginPublic = async (data: LoginInput) => {
+export const login = async (data: LoginInput) => {
   if (!data.phone && !data.email) throw unauthorized("Vui lòng nhập email hoặc số điện thoại");
   
   const user = data.email
@@ -216,16 +178,12 @@ export const loginPublic = async (data: LoginInput) => {
 
   if (!user.password) {
     throw unauthorized(
-      "Tài khoản của bạn được tạo tại Cửa hàng nhưng chưa có mật khẩu. Vui lòng Đăng ký lại hoặc chọn Quên mật khẩu để sử dụng Web.",
+      "Tài khoản của bạn chưa có mật khẩu. Vui lòng Đăng ký lại hoặc chọn Quên mật khẩu để sử dụng Web.",
     );
   }
 
-  if (user.role !== "customer") {
-    throw unauthorized("Tài khoản quản trị không thể đăng nhập tại đây");
-  }
-
   if (user.isActive === false) {
-    throw unauthorized("Tài khoản của bạn đã bị khóa.");
+    throw unauthorized("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Quản lý.");
   }
 
   const isValid = await bcrypt.compare(data.password, user.password);

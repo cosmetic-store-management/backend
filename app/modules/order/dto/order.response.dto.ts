@@ -1,4 +1,4 @@
-import type { OrderDocument } from "../../../models/order/order.schema.js";
+import type { OrderDocument } from "../models/order.schema.js";
 
 export interface OrderItemResponse {
   productId: string;

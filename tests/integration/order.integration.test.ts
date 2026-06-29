@@ -8,12 +8,12 @@ import {
   clearCollections,
 } from "./helpers/db-helper.js";
 import * as orderService from "../../app/modules/order/order.service.js";
-import Order from "../../app/models/order/order.schema.js";
-import User from "../../app/models/user/user.schema.js";
-import Variant from "../../app/models/product/variant.schema.js";
-import Product from "../../app/models/product/product.schema.js";
-import Category from "../../app/models/product/category.schema.js";
-import PointHistory from "../../app/models/user/point-history.schema.js";
+import Order from "../../app/modules/order/models/order.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
+import Variant from "../../app/modules/product/models/variant.schema.js";
+import Product from "../../app/modules/product/models/product.schema.js";
+import Category from "../../app/modules/category/models/category.schema.js";
+import PointHistory from "../../app/modules/user/models/point-history.schema.js";
 import mongoose from "mongoose";
 
 let userId: string;

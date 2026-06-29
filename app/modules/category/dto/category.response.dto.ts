@@ -1,4 +1,4 @@
-import type { CategoryDocument } from "../../../models/product/category.schema.js";
+import type { CategoryDocument } from "../models/category.schema.js";
 
 export interface CategoryResponse {
   id: string;

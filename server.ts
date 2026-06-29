@@ -17,14 +17,12 @@ import { globalLimiter } from "./app/middlewares/rateLimit.middleware.js";
 
 import connectDB from "./app/config/db.js";
 import healthRouter from "./app/config/health.js";
-import { setupSwagger } from "./app/config/swagger.js";
 import authRoutes from "./app/modules/auth/auth.controller.js";
 import userRoutes from "./app/modules/user/user.controller.js";
 import productRoutes from "./app/modules/product/product.controller.js";
 import categoryRoutes from "./app/modules/category/category.controller.js";
 import orderRoutes from "./app/modules/order/order.controller.js";
 import brandRoutes from "./app/modules/brand/brand.controller.js";
-import attributeRoutes from "./app/modules/attribute/attribute.controller.js";
 import inventoryRoutes from "./app/modules/inventory/inventory.controller.js";
 import reportRoutes from "./app/modules/report/report.controller.js";
 import auditLogRoutes from "./app/modules/audit-log/audit-log.controller.js";
@@ -92,15 +90,16 @@ app.use(
 
 import { stripeWebhook } from "./app/modules/order/payment/payment.controller.js";
 
-// ── [3] Stripe Webhook (bắt buộc dùng raw body) ──────────────────────────────
+// ── [3] Stripe Webhook ──────────────────────────────
 app.post(
   "/api/payments/webhook",
   express.raw({ type: "application/json" }),
   stripeWebhook,
 );
 
-// ── [4] Global Rate Limiter & Body Parser ──────────────────────────────────────
-app.use(globalLimiter); // Áp dụng cho tất cả routes trước khi parse body
+// ── [4] Global Rate Limiter ──────────────────────────────────────
+app.use(globalLimiter);
+// Body Parser
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
@@ -119,15 +118,13 @@ app.get("/", (_req, res) => {
   res.json({ success: true, message: "Backend is running", env: NODE_ENV });
 });
 
-setupSwagger(app);
 app.use("/api/health", healthRouter);
-app.use("/api/auth", authRoutes); // authLimiter đã được chuyển vào auth.controller.ts
+app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/brands", brandRoutes);
-app.use("/api/attributes", attributeRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
@@ -142,7 +139,7 @@ app.use("/api/checkout", checkoutRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/shipping", shippingRoutes);
 app.use("/api/transactions", transactionRoutes);
-app.use("/api/uploads", express.static(join(__dirname, "uploads")));
+app.use("/api/uploads", uploadRoutes);
 
 // ── [8] 404 Handler ───────────────────────────────────────────────────────────
 app.use((req, res) => {

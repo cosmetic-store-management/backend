@@ -3,8 +3,8 @@ import { badRequest, notFound } from "../../shared/errors/httpErrors.js";
 import * as flashSaleRepo from "./flash-sale.repository.js";
 import type { CreateFlashSaleInput } from "./dto/flash-sale.request.dto.js";
 import { mapFlashSale } from "./dto/flash-sale.response.dto.js";
-import Product from "../../models/product/product.schema.js";
-import Variant from "../../models/product/variant.schema.js";
+import Product from "../product/models/product.schema.js";
+import Variant from "../product/models/variant.schema.js";
 
 export const getActiveFlashSale = async () => {
   const fs = await flashSaleRepo.findActiveFlashSale();

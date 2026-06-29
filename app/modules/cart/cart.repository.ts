@@ -1,4 +1,4 @@
-import Cart, { CartDocument } from "../../models/cart/cart.schema.js";
+import Cart, { CartDocument } from "./models/cart.schema.js";
 
 export const findByUserId = async (
   userId: string,

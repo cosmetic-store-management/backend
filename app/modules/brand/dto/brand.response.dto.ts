@@ -1,4 +1,4 @@
-import type { BrandDocument } from "../../../models/product/brand.schema.js";
+import type { BrandDocument } from "../models/brand.schema.js";
 
 export interface BrandResponse {
   id: string;

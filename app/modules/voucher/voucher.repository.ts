@@ -3,8 +3,8 @@
  * Data access layer cho Voucher module.
  */
 import mongoose from "mongoose";
-import Voucher from "../../models/system/voucher.schema.js";
-import User from "../../models/user/user.schema.js";
+import Voucher from "./models/voucher.schema.js";
+import User from "../user/models/user.schema.js";
 
 // ── Voucher CRUD ──────────────────────────────────────────────────────────────
 

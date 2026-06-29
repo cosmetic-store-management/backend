@@ -1,4 +1,4 @@
-import type { UserDocument } from "../../../models/user/user.schema.js";
+import type { UserDocument } from "../models/user.schema.js";
 
 export interface UserResponse {
   id: string;

@@ -7,7 +7,7 @@ import {
   type GoodsReceiptResponse,
 } from "./dto/inventory.response.dto.js";
 import mongoose from "mongoose";
-import { Variant } from "../../models/index.js";
+import Variant from "../product/models/variant.schema.js";
 
 /** Số ký tự cần lấy trong chuỗi ISO để được dạng "yyyy-MM-dd HH:mm" */
 const ISO_DATETIME_LENGTH = 16;

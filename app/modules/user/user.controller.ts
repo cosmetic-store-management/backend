@@ -4,6 +4,7 @@ import {
   isManager,
   isAuthenticated,
   requirePermission,
+  authorize,
 } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validate.middleware.js";
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
@@ -518,6 +519,27 @@ router.patch(
       req.user!._id.toString(),
     );
     return response.success(res, { user });
+  }),
+);
+// DELETE /api/users/:id - admin only, requires users.delete
+router.delete(
+  "/:id",
+  authenticate,
+  authorize("owner", "manager"),
+  requirePermission("users.delete"),
+  catchAsync(async (req, res) => {
+    await userService.deleteUser(req.params.id as string, req.user!);
+    
+    await logAction(
+      req.user!._id.toString(),
+      req.user!.name,
+      "delete",
+      "identity",
+      `Xóa tài khoản nhân viên ${req.params.id as string}`,
+      req.ip || "127.0.0.1"
+    );
+
+    return response.success(res, { message: "Đã xóa tài khoản thành công" });
   }),
 );
 

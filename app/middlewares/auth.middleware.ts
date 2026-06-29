@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
-import User, { type UserDocument } from "../models/user/user.schema.js";
+import User, { type UserDocument } from "../modules/user/models/user.schema.js";
 import { unauthorized, forbidden } from "../shared/errors/httpErrors.js";
 
 // Extend Express Request to include `user` and `shopId`
@@ -97,7 +97,7 @@ export const requirePermission =
   (permission: string) =>
   (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) return next(unauthorized("Bạn chưa đăng nhập"));
-    if (req.user.role === "owner" || req.user.role === "manager") return next();
+    if (req.user.role === "owner") return next();
     if (req.user.role === "customer")
       return next(
         forbidden("Khách hàng không có quyền truy cập hệ thống quản trị"),

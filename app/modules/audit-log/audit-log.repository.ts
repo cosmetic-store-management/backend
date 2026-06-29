@@ -5,7 +5,7 @@
  */
 import AuditLog, {
   type AuditLogDocument,
-} from "../../models/system/audit-log.schema.js";
+} from "./models/audit-log.schema.js";
 
 // ── Write ─────────────────────────────────────────────────────────────────────
 

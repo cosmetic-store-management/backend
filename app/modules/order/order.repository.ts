@@ -1,8 +1,8 @@
 import Order, {
   type OrderDocument,
   type IOrder,
-} from "../../models/order/order.schema.js";
-import Product from "../../models/product/product.schema.js";
+} from "./models/order.schema.js";
+import Product from "../product/models/product.schema.js";
 import mongoose, { type Types } from "mongoose";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,13 +55,13 @@ export const findProductsByIds = (ids: string[]) =>
   Product.find({ _id: { $in: ids } }).populate("categoryId", "name slug imageUrl isActive");
 
 export const findVariantById = async (id: string) => {
-  const Variant = (await import("../../models/product/variant.schema.js"))
+  const Variant = (await import("../product/models/variant.schema.js"))
     .default;
   return Variant.findById(id);
 };
 
 export const findVariantsByIds = async (ids: string[]) => {
-  const Variant = (await import("../../models/product/variant.schema.js"))
+  const Variant = (await import("../product/models/variant.schema.js"))
     .default;
   return Variant.find({ _id: { $in: ids } });
 };
@@ -71,7 +71,7 @@ export const decrementVariantStock = async (
   quantity: number,
   session?: mongoose.ClientSession
 ) => {
-  const Variant = (await import("../../models/product/variant.schema.js"))
+  const Variant = (await import("../product/models/variant.schema.js"))
     .default;
   const updated = await Variant.findOneAndUpdate(
     { _id: variantId, stock: { $gte: quantity } },
@@ -91,7 +91,7 @@ export const incrementVariantStock = async (
   quantity: number,
   session?: mongoose.ClientSession
 ) => {
-  const Variant = (await import("../../models/product/variant.schema.js"))
+  const Variant = (await import("../product/models/variant.schema.js"))
     .default;
   return Variant.findByIdAndUpdate(
     variantId, 

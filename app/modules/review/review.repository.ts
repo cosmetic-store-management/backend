@@ -3,8 +3,8 @@
  * Data access layer cho Review module.
  */
 import mongoose from "mongoose";
-import Review from "../../models/user/review.schema.js";
-import Product from "../../models/product/product.schema.js";
+import Review from "./models/review.schema.js";
+import Product from "../product/models/product.schema.js";
 
 // ── Public ────────────────────────────────────────────────────────────────────
 

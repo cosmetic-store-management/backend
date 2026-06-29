@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import AuditLog from "../../models/system/audit-log.schema.js";
+import AuditLog from "./models/audit-log.schema.js";
 
 // Chạy cronjob định kỳ 1 lần mỗi ngày (24 giờ)
 const CRON_INTERVAL = 24 * 60 * 60 * 1000;

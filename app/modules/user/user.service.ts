@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import Order from "../../models/order/order.schema.js";
+import Order from "../order/models/order.schema.js";
 import {
   getTierBySpending,
   getNextTier,
@@ -15,9 +15,9 @@ import {
   forbidden,
 } from "../../shared/errors/httpErrors.js";
 import { UpdateProfileInput, AddressInput } from "./dto/user.request.dto.js";
-import User, { UserDocument } from "../../models/user/user.schema.js";
+import User, { UserDocument } from "./models/user.schema.js";
 import bcrypt from "bcryptjs";
-import PointHistory from "../../models/user/point-history.schema.js";
+import PointHistory from "./models/point-history.schema.js";
 import { mapProduct } from "../product/dto/product.response.dto.js";
 import { attachVariants } from "../product/product.repository.js";
 // ── Source: user-tier.service.ts ──────────────────────────────
@@ -941,5 +941,23 @@ export const clearRecentlyViewed = async (userId: string) => {
   if (!user) throw notFound("Không tìm thấy user");
   user.recentlyViewed = [];
   await userRepo.save(user);
+  return { success: true };
+};
+
+// DELETE user (Admin only)
+export const deleteUser = async (targetUserId: string, currentUser: UserDocument) => {
+  if (targetUserId === currentUser._id.toString()) {
+    throw forbidden("Bạn không thể xóa chính mình");
+  }
+
+  const targetUser = await userRepo.findById(targetUserId);
+  if (!targetUser) throw notFound("Không tìm thấy user");
+
+  if (targetUser.role === "owner") {
+    throw forbidden("Không thể xóa tài khoản chủ cửa hàng (owner)");
+  }
+
+  await User.findByIdAndDelete(targetUserId);
+  
   return { success: true };
 };

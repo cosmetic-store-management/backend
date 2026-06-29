@@ -1,4 +1,4 @@
-import Setting from "../../models/system/setting.schema.js";
+import Setting from "./models/setting.schema.js";
 
 const DEFAULT_SETTINGS = {
   storeName: "GlowUp Cosmetics",

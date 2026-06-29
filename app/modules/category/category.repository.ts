@@ -1,8 +1,8 @@
 import Category, {
   type CategoryDocument,
   type ICategory,
-} from "../../models/product/category.schema.js";
-import Product from "../../models/product/product.schema.js";
+} from "./models/category.schema.js";
+import Product from "../product/models/product.schema.js";
 import mongoose from "mongoose";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

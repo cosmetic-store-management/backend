@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as orderService from "../../app/modules/order/order.service.js";
 import * as orderRepo from "../../app/modules/order/order.repository.js";
 import * as paymentService from "../../app/modules/order/payment/payment.service.js";
-import User from "../../app/models/user/user.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
 import mongoose from "mongoose";
 
 vi.mock("../../app/modules/order/order.repository.js");

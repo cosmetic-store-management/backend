@@ -24,7 +24,7 @@ const getBrandProductCounts = async (
 ): Promise<Record<string, number>> => {
   if (!brandIds.length) return {};
   const { default: Product } =
-    await import("../../models/product/product.schema.js");
+    await import("../product/models/product.schema.js");
   const { Types } = await import("mongoose");
   const results = await Product.aggregate([
     {
@@ -150,7 +150,7 @@ export const deleteBrand = async (id: string) => {
   if (!brand) throw notFound("Không tìm thấy thương hiệu");
 
   const { default: Product } =
-    await import("../../models/product/product.schema.js");
+    await import("../product/models/product.schema.js");
   const productCount = await Product.countDocuments({ brandId: id });
   if (productCount > 0)
     throw conflict(

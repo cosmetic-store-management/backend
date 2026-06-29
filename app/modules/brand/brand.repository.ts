@@ -1,7 +1,7 @@
 import Brand, {
   type BrandDocument,
   type IBrand,
-} from "../../models/product/brand.schema.js";
+} from "./models/brand.schema.js";
 
 type Query = Record<string, any>;
 

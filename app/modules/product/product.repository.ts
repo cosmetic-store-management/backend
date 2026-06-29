@@ -1,9 +1,9 @@
 import Product, {
   type ProductDocument,
   type IProduct,
-} from "../../models/product/product.schema.js";
-import Variant from "../../models/product/variant.schema.js";
-import Category from "../../models/product/category.schema.js";
+} from "./models/product.schema.js";
+import Variant from "./models/variant.schema.js";
+import Category from "../category/models/category.schema.js";
 import mongoose from "mongoose";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

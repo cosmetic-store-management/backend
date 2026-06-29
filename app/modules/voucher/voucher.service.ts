@@ -196,7 +196,7 @@ export const collectVoucher = async (userId: string, code: string) => {
     throw badRequest("Mã giảm giá đã hết lượt sử dụng");
 
   // findUserWithVouchers dùng populate — cần lazy load để check alreadySaved
-  const { default: User } = await import("../../models/user/user.schema.js");
+  const { default: User } = await import("../user/models/user.schema.js");
   const user = await User.findById(userId);
   if (!user) throw notFound("Không tìm thấy người dùng");
 

@@ -1,8 +1,8 @@
 import * as cartRepo from "./cart.repository.js";
-import Variant from "../../models/product/variant.schema.js";
+import Variant from "../product/models/variant.schema.js";
 import { notFound, badRequest } from "../../shared/errors/httpErrors.js";
 import type { AddItemInput, SyncCartInput, UpdateItemInput } from "./dto/cart.request.dto.js";
-import type { CartDocument } from "../../models/cart/cart.schema.js";
+import type { CartDocument } from "./models/cart.schema.js";
 import { Types } from "mongoose";
 
 export const getCart = async (userId: string) => {

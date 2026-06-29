@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import Order from "../../../models/order/order.schema.js";
-import User, { UserDocument } from "../../../models/user/user.schema.js";
-import Product from "../../../models/product/product.schema.js";
-import PointHistory from "../../../models/user/point-history.schema.js";
-import InventoryTransaction from "../../../models/inventory/inventory-transaction.schema.js";
+import Order from "../models/order.schema.js";
+import User, { UserDocument } from "../../user/models/user.schema.js";
+import Product from "../../product/models/product.schema.js";
+import PointHistory from "../../user/models/point-history.schema.js";
+import InventoryTransaction from "../../inventory/models/inventory-transaction.schema.js";
 import * as inventoryRepo from "../../inventory/inventory.repository.js";
 import { mapOrder } from "../dto/order.response.dto.js";
 import { badRequest, notFound } from "../../../shared/errors/httpErrors.js";
@@ -203,6 +203,7 @@ export const previewOrder = async (user: UserDocument | null, data: any) => {
     shippingFee,
     tierDiscountAmount,
     voucherDiscountAmount,
+    freeshipDiscountAmount,
     finalVoucherCode,
     totalDiscount,
     userPoints,
@@ -531,9 +532,9 @@ export const createOrder = async (
   }
 
   // Gửi email bất đồng bộ, không đợi kết quả để tránh block response
-  // Chỉ gửi email ngay lúc này đối với các phương thức không phải qua cổng thanh toán online (ví dụ COD, Transfer)
-  // Đối với Stripe, email sẽ được gửi qua Webhook khi thanh toán thành công
-  if (user.email) {
+  // Chỉ gửi email ngay lập tức cho COD hoặc Cash (chưa thanh toán nhưng đặt thành công)
+  // Các phương thức QR/Stripe (cần thanh toán) thì chỉ gửi email sau khi ĐÃ thanh toán xong
+  if (user.email && ["cod", "cash"].includes(data.paymentMethod)) {
     sendOrderSuccessEmail(user.email, newOrder.code, finalTotalAmount).catch(
       console.error,
     );

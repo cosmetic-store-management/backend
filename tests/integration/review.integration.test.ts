@@ -10,11 +10,11 @@ import {
 import mongoose from "mongoose";
 
 import * as reviewService from "../../app/modules/review/review.service.js";
-import Review from "../../app/models/user/review.schema.js";
-import User from "../../app/models/user/user.schema.js";
-import Product from "../../app/models/product/product.schema.js";
-import Order from "../../app/models/order/order.schema.js";
-import Category from "../../app/models/product/category.schema.js";
+import Review from "../../app/modules/review/models/review.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
+import Product from "../../app/modules/product/models/product.schema.js";
+import Order from "../../app/modules/order/models/order.schema.js";
+import Category from "../../app/modules/category/models/category.schema.js";
 
 let userId: string;
 let productId: string;

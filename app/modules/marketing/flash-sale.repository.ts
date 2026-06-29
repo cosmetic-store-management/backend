@@ -1,4 +1,5 @@
-import FlashSale from "../../models/marketing/flash-sale.schema.js";
+import FlashSale from "./models/flash-sale.schema.js";
+import mongoose from "mongoose";
 
 export const findActiveFlashSale = async () => {
   const now = new Date();

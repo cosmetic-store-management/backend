@@ -3,7 +3,7 @@ import * as brandService from "../../app/modules/brand/brand.service.js";
 import * as brandRepo from "../../app/modules/brand/brand.repository.js";
 
 vi.mock("../../app/modules/brand/brand.repository.js");
-vi.mock("../../app/models/product/product.schema.js", () => ({
+vi.mock("../../app/modules/product/models/product.schema.js", () => ({
   default: {
     aggregate: vi.fn().mockResolvedValue([{ _id: "647a9f9c9b1d8b001a1d1d1d", count: 10 }]),
     countDocuments: vi.fn().mockResolvedValue(0),
@@ -81,7 +81,7 @@ describe("Brand Service", () => {
       vi.mocked(brandRepo.findById).mockResolvedValue(brand as any);
       
       // Override aggregate to return 0 for this test
-      const { default: Product } = await import("../../app/models/product/product.schema.js");
+      const { default: Product } = await import("../../app/modules/product/models/product.schema.js");
       vi.mocked(Product.countDocuments).mockResolvedValueOnce(0);
 
       vi.mocked(brandRepo.deleteById).mockResolvedValue(undefined as any);
@@ -94,7 +94,7 @@ describe("Brand Service", () => {
       const brand = makeFakeBrand();
       vi.mocked(brandRepo.findById).mockResolvedValue(brand as any);
       
-      const { default: Product } = await import("../../app/models/product/product.schema.js");
+      const { default: Product } = await import("../../app/modules/product/models/product.schema.js");
       vi.mocked(Product.countDocuments).mockResolvedValueOnce(5);
 
       await expect(brandService.deleteBrand(validObjectId)).rejects.toMatchObject({

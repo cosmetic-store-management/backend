@@ -14,7 +14,7 @@ export const UpdateProfileSchema = z.object({
 
 export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
 
-import { PERMISSIONS } from "../../../models/user/user.schema.js";
+import { PERMISSIONS } from "../models/user.schema.js";
 
 export const UpdateRoleSchema = z.object({
   role: z.enum(["manager", "staff"]).optional(),

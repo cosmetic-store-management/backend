@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { app } from "../../server.js";
-import User from "../../app/models/user/user.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
 import { connectTestDB, disconnectTestDB } from "../integration/helpers/db-helper.js";
 
 describe("Cart E2E Flow", () => {

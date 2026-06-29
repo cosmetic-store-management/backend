@@ -8,7 +8,7 @@ import type { CreateReviewInput } from "./dto/review.request.dto.js";
 import { mapReview, mapAdminReview } from "./dto/review.response.dto.js";
 import * as orderRepo from "../order/order.repository.js";
 import * as reviewRepo from "./review.repository.js";
-import Product from "../../models/product/product.schema.js";
+import Product from "../product/models/product.schema.js";
 
 // ── Internal Helper ───────────────────────────────────────────────────────────
 

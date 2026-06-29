@@ -1,4 +1,4 @@
-import Order, { OrderDocument } from "../../models/order/order.schema.js";
+import Order, { OrderDocument } from "./models/order.schema.js";
 import * as orderRepo from "./order.repository.js";
 import { mapOrder, mapPublicOrder } from "./dto/order.response.dto.js";
 
@@ -8,7 +8,7 @@ import {
   forbidden,
   badRequest,
 } from "../../shared/errors/httpErrors.js";
-import User, { UserDocument } from "../../models/user/user.schema.js";
+import User, { UserDocument } from "../user/models/user.schema.js";
 import {
   UpdateOrderStatusInput,
   UpdateOrderDetailsInput,
@@ -18,8 +18,8 @@ import {
   decrementVoucherUsage,
 } from "../voucher/voucher.service.js";
 import { refundPayment } from "./payment/payment.service.js";
-import PointHistory from "../../models/user/point-history.schema.js";
-import Product from "../../models/product/product.schema.js";
+import PointHistory from "../user/models/point-history.schema.js";
+import Product from "../product/models/product.schema.js";
 
 import {
   POINTS_EARN_RATE,

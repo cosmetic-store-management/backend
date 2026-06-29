@@ -8,9 +8,9 @@
  *   - In-memory cache TTL 5 phút → dashboard không cần realtime tuyệt đối
  */
 import mongoose from "mongoose";
-import Order from "../../models/order/order.schema.js";
-import Product from "../../models/product/product.schema.js";
-import User from "../../models/user/user.schema.js";
+import Order from "../order/models/order.schema.js";
+import Product from "../product/models/product.schema.js";
+import User from "../user/models/user.schema.js";
 
 type DateFilter = { createdAt?: { $gte?: Date; $lte?: Date } };
 
@@ -185,7 +185,7 @@ export const findProductById = (id: mongoose.Types.ObjectId | string) =>
 // ── Low Stock ─────────────────────────────────────────────────────────────────
 
 export const findLowStockVariants = async (limit = 10) => {
-  const Variant = (await import("../../models/product/variant.schema.js"))
+  const Variant = (await import("../product/models/variant.schema.js"))
     .default;
   return Variant.find({ $expr: { $lte: ["$stock", "$minStock"] } })
     .limit(limit)
@@ -195,7 +195,7 @@ export const findLowStockVariants = async (limit = 10) => {
 export const findVariantsByProductId = async (
   productId: mongoose.Types.ObjectId,
 ) => {
-  const Variant = (await import("../../models/product/variant.schema.js"))
+  const Variant = (await import("../product/models/variant.schema.js"))
     .default;
   return Variant.find({ productId }).lean();
 };
@@ -388,7 +388,7 @@ export const aggregatePaymentMethods = (dateFilter: DateFilter) => {
 // ── Voucher Stats ─────────────────────────────────────────────────────────────
 
 export const findAllVouchers = async (dateFilter: DateFilter) => {
-  const Voucher = (await import("../../models/system/voucher.schema.js"))
+  const Voucher = (await import("../voucher/models/voucher.schema.js"))
     .default;
   return Voucher.find(dateFilter).lean();
 };

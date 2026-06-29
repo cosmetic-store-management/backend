@@ -10,7 +10,7 @@ vi.mock("../../app/modules/review/dto/review.response.dto.js", () => ({
   mapReview: (r: any) => r,
   mapAdminReview: (r: any) => r,
 }));
-vi.mock("../../app/models/product/product.schema.js", () => ({
+vi.mock("../../app/modules/product/models/product.schema.js", () => ({
   default: {
     findById: vi.fn(),
     findByIdAndUpdate: vi.fn().mockResolvedValue(null),
@@ -20,7 +20,7 @@ vi.mock("../../app/models/product/product.schema.js", () => ({
 import * as reviewRepo from "../../app/modules/review/review.repository.js";
 import * as orderRepo from "../../app/modules/order/order.repository.js";
 import * as reviewService from "../../app/modules/review/review.service.js";
-import Product from "../../app/models/product/product.schema.js";
+import Product from "../../app/modules/product/models/product.schema.js";
 import mongoose from "mongoose";
 
 const FAKE_USER_ID = new mongoose.Types.ObjectId().toString();
