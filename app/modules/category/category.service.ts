@@ -93,6 +93,46 @@ export const getPublicCategoryDetail = async (slug: string) => {
   return mapCategory(category);
 };
 
+// ── Helper ──────────────────────────────────────────────────────────────────────
+const getRecursiveCountsMap = async () => {
+  const allCatsResult = await categoryRepo.findAll({}, 1, 5000);
+  const allCategories = allCatsResult.categories;
+  const directCountsMap = await categoryRepo.countProductsByCategoryIds(
+    allCategories.map((c) => c._id as any),
+  );
+
+  const categoryMap = new Map<string, any>();
+  allCategories.forEach((cat) => {
+    categoryMap.set(cat._id.toString(), {
+      _id: cat._id.toString(),
+      parentId: cat.parentId?.toString() || null,
+      productCount: directCountsMap.get(cat._id.toString()) || 0,
+      children: [],
+    });
+  });
+
+  const tree: any[] = [];
+  categoryMap.forEach((c) => {
+    if (c.parentId && categoryMap.has(c.parentId)) {
+      categoryMap.get(c.parentId).children.push(c);
+    } else {
+      tree.push(c);
+    }
+  });
+
+  const accumulateCounts = (node: any): number => {
+    let total = node.productCount || 0;
+    for (const child of node.children || []) {
+      total += accumulateCounts(child);
+    }
+    node.productCount = total;
+    return total;
+  };
+  tree.forEach((root) => accumulateCounts(root));
+
+  return categoryMap;
+};
+
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 
 interface AdminCategoryQuery {
@@ -117,19 +157,17 @@ export const getAdminCategories = async ({
   if (status === "active") query.isActive = true;
   else if (status === "inactive") query.isActive = false;
 
-  const [result, total] = await Promise.all([
+  const [result, total, countsMap] = await Promise.all([
     categoryRepo.findAll(query, parsedPage, parsedLimit),
     categoryRepo.countAll(query),
+    getRecursiveCountsMap(),
   ]);
+  
   const categories = result.categories;
-
-  const countsMap = await categoryRepo.countProductsByCategoryIds(
-    categories.map((c) => c._id as any),
-  );
 
   return {
     categories: categories.map((cat) => {
-      (cat as any).productCount = countsMap.get(cat._id.toString()) || 0;
+      (cat as any).productCount = countsMap.get(cat._id.toString())?.productCount || 0;
       return mapCategory(cat);
     }),
     pagination: {
