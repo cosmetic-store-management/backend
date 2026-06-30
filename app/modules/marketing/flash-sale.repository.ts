@@ -34,8 +34,8 @@ export const findTimelineFlashSales = async () => {
     .lean();
 };
 
-export const findAll = async (skip: number, limit: number) => {
-  return FlashSale.find()
+export const findAll = async (query: any = {}, skip: number = 0, limit: number = 10) => {
+  return FlashSale.find(query)
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit)
@@ -48,8 +48,8 @@ export const findAll = async (skip: number, limit: number) => {
     .lean();
 };
 
-export const countAll = async () => {
-  return FlashSale.countDocuments();
+export const countAll = async (query: any = {}) => {
+  return FlashSale.countDocuments(query);
 };
 
 export const findById = async (id: string) => {

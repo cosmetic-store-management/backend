@@ -22,10 +22,21 @@ router.get(
   "/admin",
   authenticate,
   isStaff,
-  catchAsync(async (_req, res) => {
-    const vouchers = await voucherService.getAllVouchers(true);
+  catchAsync(async (req, res) => {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const status = req.query.status as string;
+    const type = req.query.type as string;
+    const search = req.query.search as string;
+    
+    const { items: vouchers, pagination } = await voucherService.getAllVouchers(
+      { status, type, search },
+      page,
+      limit
+    );
     return response.success(res, {
       vouchers,
+      pagination,
       message: "Lấy danh sách mã giảm giá thành công",
     });
   }),
@@ -76,7 +87,7 @@ router.delete(
 router.get(
   "/public",
   catchAsync(async (_req, res) => {
-    const vouchers = await voucherService.getAllVouchers(false);
+    const { items: vouchers } = await voucherService.getAllVouchers(false);
     return response.success(res, {
       vouchers,
       message: "Lấy danh sách mã giảm giá khả dụng thành công",

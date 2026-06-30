@@ -36,8 +36,7 @@ export const CreateProductSchema = z.object({
             path: ["discountPrice"],
           },
         ),
-    )
-    .min(1, "Sản phẩm phải có ít nhất 1 phân loại hàng"),
+    ),
 });
 
 export const UpdateProductSchema = CreateProductSchema.partial().refine(

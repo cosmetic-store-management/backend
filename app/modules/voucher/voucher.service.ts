@@ -9,16 +9,61 @@ import type {
   UpdateVoucherInput,
 } from "./dto/voucher.request.dto.js";
 import * as voucherRepo from "./voucher.repository.js";
+import VoucherReservation from "./models/voucherReservation.schema.js";
 import mongoose, { Types } from "mongoose";
 
 // ── Admin CRUD ────────────────────────────────────────────────────────────────
 
-export const getAllVouchers = async (includeInactive = false) => {
-  const query = includeInactive
-    ? {}
-    : { isActive: true, endDate: { $gte: new Date() } };
-  const vouchers = await voucherRepo.findAll(query);
-  return vouchers.map(mapVoucher);
+export const getAllVouchers = async (filters: any = {}, page = 1, limit = 10) => {
+  const query: any = {};
+  const now = new Date();
+
+  // Status Filter
+  if (filters.status === "active") {
+    query.isActive = true;
+    query.startDate = { $lte: now };
+    query.endDate = { $gte: now };
+  } else if (filters.status === "upcoming") {
+    query.isActive = true;
+    query.startDate = { $gt: now };
+  } else if (filters.status === "inactive") {
+    query.isActive = false;
+  } else if (filters.status === "expired") {
+    query.isActive = true;
+    query.endDate = { $lt: now };
+  } else if (filters.status === "all") {
+    // include all, do nothing
+  } else {
+    // Default (backward compatibility for old includeInactive boolean logic)
+    if (filters === false) {
+      query.isActive = true;
+      query.endDate = { $gte: now };
+    }
+  }
+
+  // Type Filter
+  if (filters.type && filters.type !== "all") {
+    query.discountType = filters.type;
+  }
+
+  // Search Filter
+  if (filters.search) {
+    query.code = { $regex: filters.search, $options: "i" };
+  }
+
+  const skip = (page - 1) * limit;
+  const vouchers = await voucherRepo.findAll(query, skip, limit);
+  const total = await voucherRepo.countDocuments(query);
+
+  return {
+    items: vouchers.map(mapVoucher),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 };
 
 export const getVoucherById = async (id: string) => {
@@ -92,8 +137,23 @@ export const validateVoucher = async (
     throw badRequest("Discount code is not yet active");
   if (now > voucher.endDate) throw badRequest("Discount code has expired");
 
+  const userHasReservation = userId
+    ? await VoucherReservation.exists({ voucherId: voucher._id, userId })
+    : false;
+
   if (voucher.usageLimit > 0 && voucher.usedCount >= voucher.usageLimit) {
-    throw badRequest("Discount code usage limit reached");
+    let allowedToBypass = false;
+    if (userHasReservation && voucher.overbookingLimit !== 0) {
+      if (voucher.overbookingLimit === -1) {
+        allowedToBypass = true;
+      } else if (voucher.usedCount < voucher.usageLimit + voucher.overbookingLimit) {
+        allowedToBypass = true;
+      }
+    }
+
+    if (!allowedToBypass) {
+      throw badRequest("Discount code usage limit reached");
+    }
   }
 
   if (userId && voucher.usedBy?.some((id: any) => id.toString() === userId)) {
@@ -131,8 +191,29 @@ export const validateVoucher = async (
  * Atomic increment usedCount — dùng khi order được tạo thành công.
  * Tránh race condition: $inc + $addToSet trong một findOneAndUpdate.
  */
-export const incrementVoucherUsage = (code: string, userId?: string, session?: mongoose.ClientSession) =>
-  voucherRepo.atomicIncrementUsage(code, userId, session);
+export const incrementVoucherUsage = async (code: string, userId?: string, session?: mongoose.ClientSession) => {
+  let maxAllowed: number | undefined = undefined;
+
+  if (userId) {
+    const voucher = await voucherRepo.findByCode(code);
+    if (voucher) {
+      const hasReservation = await VoucherReservation.exists({ voucherId: voucher._id, userId });
+      if (hasReservation && voucher.overbookingLimit !== 0) {
+        maxAllowed = voucher.overbookingLimit === -1 ? -1 : voucher.usageLimit + voucher.overbookingLimit;
+      }
+    }
+  }
+
+  const result = await voucherRepo.atomicIncrementUsage(code, userId, session, maxAllowed);
+
+  if (userId) {
+    const voucher = await voucherRepo.findByCode(code);
+    if (voucher) {
+      await VoucherReservation.deleteOne({ voucherId: voucher._id, userId }).session(session || null);
+    }
+  }
+  return result;
+};
 
 /**
  * Atomic decrement usedCount — dùng khi order bị cancel/thất bại (rollback).
@@ -148,6 +229,14 @@ export const getWalletVouchers = async (userId: string) => {
   if (!user || !user.savedVouchers?.length) return [];
 
   const now = new Date();
+
+  // Lấy danh sách các voucher đang được giữ chỗ bởi user này
+  const activeReservations = await VoucherReservation.find({ 
+    userId,
+    $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }, { expiresAt: { $exists: false } }]
+  }).select('voucherId').lean();
+  const reservedVoucherIds = new Set(activeReservations.map(r => r.voucherId.toString()));
+
   return (user.savedVouchers as any[])
     .filter(
       (v: any) =>
@@ -155,7 +244,9 @@ export const getWalletVouchers = async (userId: string) => {
         new Date(v.startDate) <= now &&
         new Date(v.endDate) >= now &&
         (v.usageLimit === 0 || v.usedCount < v.usageLimit) &&
-        !v.usedBy?.some((id: any) => id.toString() === userId),
+        !v.usedBy?.some((id: any) => id.toString() === userId) &&
+        // Nếu voucher có cấu hình TTL, bắt buộc phải còn Reservation thì mới hiển thị trong Ví
+        (v.ttlMinutes === 0 || reservedVoucherIds.has(v._id.toString()))
     )
     .map(mapVoucher);
 };
@@ -165,22 +256,33 @@ export const getAllWalletVouchers = async (userId: string) => {
   if (!user || !user.savedVouchers?.length) return [];
 
   const now = new Date();
-  return (user.savedVouchers as any[]).map((v: any) => {
-    let status: "valid" | "used" | "expired" | "exhausted";
-    const usedByUser = v.usedBy?.some((id: any) => id.toString() === userId);
 
-    if (usedByUser) {
-      status = "used";
-    } else if (new Date(v.endDate) < now) {
-      status = "expired";
-    } else if (v.usageLimit > 0 && v.usedCount >= v.usageLimit) {
-      status = "exhausted";
-    } else {
-      status = "valid";
-    }
+  const activeReservations = await VoucherReservation.find({ 
+    userId,
+    $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }, { expiresAt: { $exists: false } }]
+  }).select('voucherId expiresAt').lean();
+  const reservationMap = new Map(activeReservations.map(r => [r.voucherId.toString(), r.expiresAt]));
 
-    return { ...mapVoucher(v), status };
-  });
+  return (user.savedVouchers as any[])
+    .map((v: any) => {
+      let status: "valid" | "used" | "expired" | "exhausted";
+      const usedByUser = v.usedBy?.some((id: any) => id.toString() === userId);
+      const expiresAt = reservationMap.get(v._id.toString());
+      const hasReservation = v.ttlMinutes === 0 || !!expiresAt;
+
+      if (usedByUser) {
+        status = "used";
+      } else if (new Date(v.endDate) < now || !hasReservation) {
+        // Nếu đã hết hạn chương trình hoặc đã hết hạn giữ chỗ (Reservation bị xoá)
+        status = "expired";
+      } else if (v.usageLimit > 0 && v.usedCount >= v.usageLimit) {
+        status = "exhausted";
+      } else {
+        status = "valid";
+      }
+
+      return { ...mapVoucher(v), status, expiresAt };
+    });
 };
 
 export const collectVoucher = async (userId: string, code: string) => {
@@ -192,8 +294,22 @@ export const collectVoucher = async (userId: string, code: string) => {
   if (now > voucher.endDate) throw badRequest("Discount code has expired");
   if (now < voucher.startDate)
     throw badRequest("Discount code is not yet active");
-  if (voucher.usageLimit > 0 && voucher.usedCount >= voucher.usageLimit)
-    throw badRequest("Discount code usage limit reached");
+
+  if (voucher.usageLimit > 0) {
+    const activeReservations = await VoucherReservation.countDocuments({ 
+      voucherId: voucher._id,
+      $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }, { expiresAt: { $exists: false } }]
+    });
+
+    // Giới hạn số lượng Lưu = usageLimit + overbookingLimit
+    const maxCollect = voucher.overbookingLimit === -1
+      ? Infinity
+      : voucher.usageLimit + (voucher.overbookingLimit || 0);
+
+    if (voucher.usedCount + activeReservations >= maxCollect) {
+      throw badRequest("Discount code usage limit reached or fully reserved");
+    }
+  }
 
   // findUserWithVouchers dùng populate — cần lazy load để check alreadySaved
   const { default: User } = await import("../user/models/user.schema.js");
@@ -203,9 +319,25 @@ export const collectVoucher = async (userId: string, code: string) => {
   const alreadySaved = user.savedVouchers?.some(
     (id) => id.toString() === voucher._id.toString(),
   );
-  if (alreadySaved) throw conflict("You have already saved this discount code");
 
-  await voucherRepo.addVoucherToWallet(userId, voucher._id);
+  if (alreadySaved) {
+    throw conflict("You have already saved this discount code. If you did not use it in time, it has been revoked.");
+  } else {
+    // Chỉ thêm vào wallet nếu chưa có
+    await voucherRepo.addVoucherToWallet(userId, voucher._id);
+  }
+
+  // Tạo Reservation với TTL (nếu có ttlMinutes > 0)
+  const expiresAt = voucher.ttlMinutes > 0
+    ? new Date(now.getTime() + voucher.ttlMinutes * 60000)
+    : undefined;
+
+  await VoucherReservation.create({
+    voucherId: voucher._id,
+    userId,
+    expiresAt
+  });
+
   return mapVoucher(voucher);
 };
 
@@ -214,4 +346,5 @@ export const uncollectVoucher = async (userId: string, code: string) => {
   if (!voucher) throw notFound("Discount code not found");
 
   await voucherRepo.removeVoucherFromWallet(userId, voucher._id);
+  await VoucherReservation.deleteOne({ voucherId: voucher._id, userId });
 };

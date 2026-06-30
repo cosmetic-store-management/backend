@@ -8,8 +8,13 @@ import User from "../user/models/user.schema.js";
 
 // ── Voucher CRUD ──────────────────────────────────────────────────────────────
 
-export const findAll = (query: Record<string, any> = {}) =>
-  Voucher.find(query).sort({ createdAt: -1 }).lean();
+export const findAll = (query: Record<string, any> = {}, skip = 0, limit = 0) => {
+  const q = Voucher.find(query).sort({ createdAt: -1 });
+  if (limit > 0) q.skip(skip).limit(limit);
+  return q.lean();
+};
+
+export const countDocuments = (query: Record<string, any> = {}) => Voucher.countDocuments(query);
 
 export const findById = (id: string) => Voucher.findById(id);
 
@@ -24,26 +29,27 @@ export const save = (voucher: any) => voucher.save();
 
 export const findByIdAndDelete = (id: string) => Voucher.findByIdAndDelete(id);
 
-// ── Usage Tracking — Atomic để tránh race condition ───────────────────────────
-
-/**
- * Tăng usedCount và thêm userId vào usedBy (atomic $inc + $addToSet).
- * Dùng findOneAndUpdate thay vì save() để ngăn race condition khi nhiều user
- * cùng apply một voucher.
- */
-export const atomicIncrementUsage = async (code: string, userId?: string, session?: mongoose.ClientSession) => {
+export const atomicIncrementUsage = async (code: string, userId?: string, session?: mongoose.ClientSession, maxAllowed?: number) => {
   const update: any = { $inc: { usedCount: 1 } };
   if (userId)
     update.$addToSet = { usedBy: new mongoose.Types.ObjectId(userId) };
 
-  const result = await Voucher.findOneAndUpdate(
-    {
-      code: code.toUpperCase(),
-      $or: [
+  const query: any = { code: code.toUpperCase() };
+  if (maxAllowed !== -1) {
+    if (maxAllowed !== undefined) {
+      // Overbooking limit constraint
+      query.$expr = { $lt: ["$usedCount", maxAllowed] };
+    } else {
+      // Normal limit constraint
+      query.$or = [
         { usageLimit: 0 },
         { $expr: { $lt: ["$usedCount", "$usageLimit"] } },
-      ],
-    },
+      ];
+    }
+  }
+
+  const result = await Voucher.findOneAndUpdate(
+    query,
     update,
     { session, returnDocument: "after" },
   );

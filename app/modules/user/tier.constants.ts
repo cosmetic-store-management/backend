@@ -36,7 +36,7 @@ export const TIERS: TierConfig[] = [
   },
   {
     key: "gold",
-    label: "Vàng",
+    label: "Gold",
     labelEn: "Gold",
     minSpent: 5_000_000, // ≥ 5 triệu VNĐ
     discount: 0.05, // 5%
@@ -46,7 +46,7 @@ export const TIERS: TierConfig[] = [
   },
   {
     key: "silver",
-    label: "Bạc",
+    label: "Silver",
     labelEn: "Silver",
     minSpent: 1_000_000, // ≥ 1 triệu VNĐ
     discount: 0.02, // 2%
@@ -56,7 +56,7 @@ export const TIERS: TierConfig[] = [
   },
   {
     key: "member",
-    label: "Thành viên",
+    label: "Member",
     labelEn: "Member",
     minSpent: 0,
     discount: 0, // 0%

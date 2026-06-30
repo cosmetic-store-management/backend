@@ -12,6 +12,8 @@ export interface VoucherResponse {
   usageLimit: number;
   usedCount: number;
   isActive: boolean;
+  ttlMinutes?: number;
+  overbookingLimit?: number;
 }
 
 export const mapVoucher = (voucher: VoucherDocument): VoucherResponse => ({
@@ -26,4 +28,6 @@ export const mapVoucher = (voucher: VoucherDocument): VoucherResponse => ({
   usageLimit: voucher.usageLimit,
   usedCount: voucher.usedCount,
   isActive: voucher.isActive,
+  ttlMinutes: voucher.ttlMinutes,
+  overbookingLimit: voucher.overbookingLimit,
 });

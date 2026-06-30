@@ -17,10 +17,30 @@ export const getTimelineFlashSales = async () => {
   return fsList.map(mapFlashSale);
 };
 
-export const getAllFlashSales = async (page = 1, limit = 10) => {
+export const getAllFlashSales = async (filters: any = {}, page = 1, limit = 10) => {
+  const query: any = {};
+  const now = new Date();
+
+  // Status Filter
+  if (filters.status === "active") {
+    query.isActive = true;
+    query.startTime = { $lte: now };
+    query.endTime = { $gte: now };
+  } else if (filters.status === "upcoming") {
+    query.isActive = true;
+    query.startTime = { $gt: now };
+  } else if (filters.status === "ended") {
+    query.$or = [{ isActive: false }, { endTime: { $lt: now } }];
+  }
+
+  // Search Filter
+  if (filters.search) {
+    query.name = { $regex: filters.search, $options: "i" };
+  }
+
   const skip = (page - 1) * limit;
-  const data = await flashSaleRepo.findAll(skip, limit);
-  const total = await flashSaleRepo.countAll();
+  const data = await flashSaleRepo.findAll(query, skip, limit);
+  const total = await flashSaleRepo.countAll(query);
   return {
     data: data.map(mapFlashSale),
     pagination: {

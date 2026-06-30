@@ -38,6 +38,9 @@ async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
   const transporter = getTransporter();
   if (!transporter) return;
 
+  console.log(`[MAIL MOCKED - DISABLED] To: ${payload.to} - Subject: ${payload.subject}`);
+  return;
+
   const mailOptions = {
     from: getFromEmail(),
     to: payload.to,
@@ -47,7 +50,7 @@ async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      await transporter.sendMail(mailOptions);
+      await transporter!.sendMail(mailOptions);
       return; // Success
     } catch (err: any) {
       console.error(
@@ -56,10 +59,9 @@ async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
       );
       if (attempt === maxRetries) {
         console.error(
-          `🚨 Thất bại gửi email sau ${maxRetries} lần thử tới:`,
-          payload.to,
+          `❌ Gửi email thất bại sau ${maxRetries} lần:`,
+          payload.subject,
         );
-        return;
       }
       // Exponential backoff: 1s, 2s, 4s...
       const delay = Math.pow(2, attempt - 1) * 1000;

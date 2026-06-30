@@ -32,7 +32,10 @@ router.get(
   catchAsync(async (req, res) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const result = await flashSaleService.getAllFlashSales(page, limit);
+    const status = req.query.status as string;
+    const search = req.query.search as string;
+
+    const result = await flashSaleService.getAllFlashSales({ status, search }, page, limit);
     return response.success(res, result);
   })
 );

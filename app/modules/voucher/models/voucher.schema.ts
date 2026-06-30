@@ -11,6 +11,8 @@ export interface IVoucher {
   usageLimit: number;
   usedCount: number;
   isActive: boolean;
+  ttlMinutes: number;
+  overbookingLimit: number;
   usedBy: mongoose.Types.ObjectId[];
 }
 
@@ -38,6 +40,8 @@ const voucherSchema = new Schema<VoucherDocument>(
     usageLimit: { type: Number, default: 0, min: 0 }, // 0: unlimited
     usedCount: { type: Number, default: 0, min: 0 },
     isActive: { type: Boolean, default: true },
+    ttlMinutes: { type: Number, default: 0, min: 0 },
+    overbookingLimit: { type: Number, default: 0, min: -1 },
     usedBy: [{ type: Schema.Types.ObjectId, ref: "User" }],
   },
   { timestamps: true, collection: "vouchers", versionKey: false },

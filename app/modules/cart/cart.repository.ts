@@ -5,7 +5,7 @@ export const findByUserId = async (
 ): Promise<CartDocument | null> => {
   return Cart.findOne({ userId }).populate({
     path: "items.variantId",
-    select: "productId name sku price discountPrice imageUrl stock minStock",
+    select: "productId name sku price discountPrice imageUrl stock minStock isActive",
     populate: {
       path: "productId",
       select: "name slug imageUrl categoryId",

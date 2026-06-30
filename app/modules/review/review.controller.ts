@@ -122,7 +122,7 @@ router.delete(
 router.get(
   "/product/:productId",
   catchAsync(async (req, res) => {
-    const { productId } = req.params;
+    const productId = req.params.productId as string;
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 10;
     const rating = req.query.rating

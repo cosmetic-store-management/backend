@@ -14,6 +14,8 @@ export const BaseVoucherSchema = z.object({
   endDate: z.string().datetime("Ngày kết thúc không hợp lệ"),
   usageLimit: z.number().min(0).optional().default(0),
   isActive: z.boolean().optional().default(true),
+  ttlMinutes: z.number().min(0).optional().default(0),
+  overbookingLimit: z.number().min(-1).optional().default(0),
 });
 
 export const CreateVoucherSchema = BaseVoucherSchema.refine(
