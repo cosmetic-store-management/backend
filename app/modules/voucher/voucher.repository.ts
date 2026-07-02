@@ -55,14 +55,14 @@ export const atomicIncrementUsage = async (code: string, userId?: string, sessio
   );
 
   if (!result) {
-    throw new Error("Mã giảm giá đã hết lượt sử dụng hoặc không tồn tại.");
+    throw new Error("Voucher is out of uses or does not exist.");
   }
   return result;
 };
 
 /**
- * Giảm usedCount khi rollback (order thất bại).
- * Guard: chỉ decrement nếu usedCount > 0 để tránh giá trị âm.
+ * Decrease usedCount when rolling back (order failed).
+ * Guard: only decrement if usedCount > 0 to avoid negative values.
  */
 export const atomicDecrementUsage = (code: string, userId?: string, session?: mongoose.ClientSession) => {
   const update: any = { $inc: { usedCount: -1 } };
@@ -75,7 +75,7 @@ export const atomicDecrementUsage = (code: string, userId?: string, session?: mo
 };
 
 /**
- * Ghi đè toàn bộ mảng usedBy — dùng khi admin cần reset danh sách users đã dùng voucher.
+ * Replace the entire usedBy array — used when an admin needs to reset the list of users who used the voucher.
  */
 export const setUsedBy = (
   voucherId: any,
@@ -92,7 +92,7 @@ export const setUsedBy = (
 export const findUserWithVouchers = (userId: string) =>
   User.findById(userId).populate({
     path: "savedVouchers",
-    // Cần populate usedBy để xác định trạng thái "đã dùng" của từng user
+    // Populate usedBy to determine the "used" state for each user
     select: "+usedBy",
   });
 

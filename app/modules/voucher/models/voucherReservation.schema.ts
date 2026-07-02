@@ -22,14 +22,14 @@ const voucherReservationSchema = new Schema<VoucherReservationDocument>(
     },
     expiresAt: {
       type: Date,
-      // TTL Index: Tự động xoá document khi đến thời điểm expiresAt
+      // TTL index: automatically delete the document when expiresAt is reached
       expires: 0, 
     },
   },
   { timestamps: true, collection: "voucher_reservations", versionKey: false },
 );
 
-// Đảm bảo mỗi user chỉ giữ chỗ 1 voucher 1 lần tại một thời điểm
+// Ensure each user can reserve only one voucher at a time
 voucherReservationSchema.index({ voucherId: 1, userId: 1 }, { unique: true });
 
 const VoucherReservation = mongoose.model<VoucherReservationDocument>(

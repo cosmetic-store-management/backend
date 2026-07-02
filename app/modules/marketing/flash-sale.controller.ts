@@ -45,7 +45,7 @@ router.post(
   validate(createFlashSaleSchema),
   catchAsync(async (req, res) => {
     const result = await flashSaleService.createFlashSale(req.body);
-    return response.created(res, { message: "Tạo Flash Sale thành công", result });
+    return response.created(res, { message: "Flash sale created successfully", result });
   })
 );
 
@@ -62,7 +62,7 @@ router.put(
   validate(createFlashSaleSchema),
   catchAsync(async (req, res) => {
     const result = await flashSaleService.updateFlashSale(req.params.id as string, req.body);
-    return response.success(res, { message: "Cập nhật Flash Sale thành công", result });
+    return response.success(res, { message: "Flash sale updated successfully", result });
   })
 );
 

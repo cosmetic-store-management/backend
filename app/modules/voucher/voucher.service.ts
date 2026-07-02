@@ -162,7 +162,7 @@ export const validateVoucher = async (
 
   if (subtotal < voucher.minOrderValue) {
     throw badRequest(
-      `Đơn hàng phải từ ${voucher.minOrderValue.toLocaleString("vi-VN")}đ để áp dụng mã này`,
+      `The order must be at least ${voucher.minOrderValue.toLocaleString("en-US")} ₫ to apply this code`,
     );
   }
 
@@ -188,7 +188,7 @@ export const validateVoucher = async (
 };
 
 /**
- * Atomic increment usedCount — dùng khi order được tạo thành công.
+ * Atomic increment usedCount — used when an order is created successfully.
  * Tránh race condition: $inc + $addToSet trong một findOneAndUpdate.
  */
 export const incrementVoucherUsage = async (code: string, userId?: string, session?: mongoose.ClientSession) => {
@@ -230,7 +230,7 @@ export const getWalletVouchers = async (userId: string) => {
 
   const now = new Date();
 
-  // Lấy danh sách các voucher đang được giữ chỗ bởi user này
+  // Get the list of vouchers currently reserved by this user
   const activeReservations = await VoucherReservation.find({ 
     userId,
     $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }, { expiresAt: { $exists: false } }]
@@ -273,7 +273,7 @@ export const getAllWalletVouchers = async (userId: string) => {
       if (usedByUser) {
         status = "used";
       } else if (new Date(v.endDate) < now || !hasReservation) {
-        // Nếu đã hết hạn chương trình hoặc đã hết hạn giữ chỗ (Reservation bị xoá)
+        // If the program has expired or the reservation has expired (reservation removed)
         status = "expired";
       } else if (v.usageLimit > 0 && v.usedCount >= v.usageLimit) {
         status = "exhausted";
@@ -311,7 +311,7 @@ export const collectVoucher = async (userId: string, code: string) => {
     }
   }
 
-  // findUserWithVouchers dùng populate — cần lazy load để check alreadySaved
+  // findUserWithVouchers uses populate — lazy load is needed to check alreadySaved
   const { default: User } = await import("../user/models/user.schema.js");
   const user = await User.findById(userId);
   if (!user) throw notFound("User not found");
@@ -323,7 +323,7 @@ export const collectVoucher = async (userId: string, code: string) => {
   if (alreadySaved) {
     throw conflict("You have already saved this discount code. If you did not use it in time, it has been revoked.");
   } else {
-    // Chỉ thêm vào wallet nếu chưa có
+    // Only add to the wallet if it is not already there
     await voucherRepo.addVoucherToWallet(userId, voucher._id);
   }
 

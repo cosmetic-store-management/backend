@@ -181,7 +181,7 @@ export const getVariantBatches = async (variantId: string) => {
 
 export const updateBatch = async (batchId: string, data: any) => {
   const batch = await inventoryRepo.updateBatchInfo(batchId, data);
-  if (!batch) throw notFound("Không tìm thấy lô hàng");
+  if (!batch) throw notFound("Batch not found");
   return batch;
 };
 
@@ -198,7 +198,7 @@ export const createGoodsReceipt = async (
   }
 
   const supplier = await inventoryRepo.findSupplierById(supplierId);
-  if (!supplier) throw notFound("Không tìm thấy nhà cung cấp");
+  if (!supplier) throw notFound("Supplier not found");
 
   let totalAmount = 0;
   const receiptItems = [];
@@ -213,17 +213,17 @@ export const createGoodsReceipt = async (
       !importPrice ||
       importPrice <= 0
     ) {
-      throw badRequest("Thông tin sản phẩm nhập kho không hợp lệ");
+      throw badRequest("Invalid inventory item information");
     }
 
     const variant = await inventoryRepo.findVariantById(variantId);
-    if (!variant) throw notFound(`Không tìm thấy biến thể ${variantId}`);
+    if (!variant) throw notFound(`Variant ${variantId} not found`);
 
     const product = await inventoryRepo.findProductById(
       variant.productId.toString(),
     );
     if (!product)
-      throw notFound(`Không tìm thấy sản phẩm của biến thể ${variantId}`);
+      throw notFound(`Product for variant ${variantId} not found`);
 
     totalAmount += importPrice * quantity;
     receiptItems.push({

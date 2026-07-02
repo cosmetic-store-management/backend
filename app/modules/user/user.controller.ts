@@ -71,11 +71,11 @@ router.patch(
       req.user!.name,
       "update",
       "identity",
-      `Cập nhật hồ sơ cá nhân`,
+      `Updated personal profile`,
       req.ip || "127.0.0.1",
     );
     return response.success(res, {
-      message: "Cập nhật thông tin thành công",
+      message: "Profile updated successfully",
       user,
     });
   }),
@@ -88,13 +88,13 @@ router.patch(
   isAuthenticated,
   catchAsync(async (req, res) => {
     const { avatar } = req.body;
-    if (!avatar) throw { status: 400, message: "Thiếu dữ liệu ảnh" };
+    if (!avatar) throw { status: 400, message: "Missing image data" };
     const user = await userService.updateAvatar(
       req.user!._id.toString(),
       avatar,
     );
     return response.success(res, {
-      message: "Cập nhật ảnh đại diện thành công",
+      message: "Profile picture updated successfully",
       user,
     });
   }),
@@ -116,10 +116,10 @@ router.post(
       req.user!.name,
       "update",
       "identity",
-      `Thêm địa chỉ mới`,
+      `Added a new address`,
       req.ip || "127.0.0.1",
     );
-    return response.success(res, { message: "Thêm địa chỉ thành công", user });
+    return response.success(res, { message: "Address added successfully", user });
   }),
 );
 
@@ -140,11 +140,11 @@ router.put(
       req.user!.name,
       "update",
       "identity",
-      `Cập nhật địa chỉ`,
+      `Updated address`,
       req.ip || "127.0.0.1",
     );
     return response.success(res, {
-      message: "Cập nhật địa chỉ thành công",
+      message: "Address updated successfully",
       user,
     });
   }),
@@ -165,10 +165,10 @@ router.delete(
       req.user!.name,
       "delete",
       "identity",
-      `Xóa địa chỉ`,
+      `Deleted address`,
       req.ip || "127.0.0.1",
     );
-    return response.success(res, { message: "Xóa địa chỉ thành công", user });
+    return response.success(res, { message: "Address deleted successfully", user });
   }),
 );
 
@@ -196,8 +196,8 @@ router.post(
     return response.success(res, {
       message:
         result.action === "added"
-          ? "Đã thêm vào danh sách yêu thích"
-          : "Đã xóa khỏi danh sách yêu thích",
+          ? "Added to favorites"
+          : "Removed from favorites",
       result,
     });
   }),
@@ -230,7 +230,7 @@ router.post(
       req.user!._id.toString(),
       req.params.productId as string,
     );
-    return response.success(res, { message: "Đã ghi nhận sản phẩm vừa xem" });
+    return response.success(res, { message: "Recently viewed product recorded" });
   }),
 );
 
@@ -241,7 +241,7 @@ router.delete(
   isAuthenticated,
   catchAsync(async (req, res) => {
     await userService.clearRecentlyViewed(req.user!._id.toString());
-    return response.success(res, { message: "Đã xóa toàn bộ lịch sử xem" });
+    return response.success(res, { message: "All view history cleared" });
   }),
 );
 
@@ -255,7 +255,7 @@ router.delete(
       req.user!._id.toString(),
       req.params.productId as string,
     );
-    return response.success(res, { message: "Đã xóa sản phẩm khỏi lịch sử" });
+    return response.success(res, { message: "Product removed from history" });
   }),
 );
 
@@ -306,11 +306,11 @@ router.post(
       req.user!.name,
       "create",
       "identity",
-      `Tạo tài khoản khách hàng thành viên "${customer.name}"`,
+      `Created customer member account "${customer.name}"`,
       req.ip || "127.0.0.1",
     );
     return response.created(res, {
-      message: "Tạo khách hàng thành công",
+      message: "Customer created successfully",
       customer,
     });
   }),
@@ -329,11 +329,11 @@ router.post(
       req.user!.name,
       "create",
       "identity",
-      `Tạo tài khoản nhân viên "${staff.name}"`,
+      `Created staff account "${staff.name}"`,
       req.ip || "127.0.0.1",
     );
     return response.created(res, {
-      message: "Tạo tài khoản nhân viên thành công",
+      message: "Staff account created successfully",
       staff,
     });
   }),
@@ -366,7 +366,7 @@ router.patch(
       req.user!.name,
       "update",
       "identity",
-      `Chỉnh sửa tài khoản "${user.name}" (${user.role})`,
+      `Edited account "${user.name}" (${user.role})`,
       req.ip || "127.0.0.1",
     );
     return response.success(res, { user });

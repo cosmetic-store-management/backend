@@ -106,5 +106,5 @@ export const deleteFlashSale = async (id: string) => {
   const fs = await flashSaleRepo.findById(id);
   if (!fs) throw notFound("Flash Sale does not exist");
   await flashSaleRepo.deleteById(id);
-  return { message: "Xóa thành công" };
+  return { success: true, message: "Deleted successfully" };
 };

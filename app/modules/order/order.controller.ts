@@ -42,11 +42,11 @@ router.patch(
       req.user!.name,
       "update",
       "sales",
-      `Cập nhật trạng thái đơn hàng "${order.code}" thành "${order.orderStatus}"`,
+      `Updated order status "${order.code}" to "${order.orderStatus}"`,
       req.ip || "127.0.0.1",
     );
     return response.success(res, {
-      message: "Cập nhật đơn hàng thành công",
+      message: "Order updated successfully",
       order,
     });
   }),
@@ -67,11 +67,11 @@ router.patch(
       req.user!.name,
       "update",
       "sales",
-      `Cập nhật chi tiết giao hàng cho đơn "${order.code}"`,
+      `Updated delivery details for order "${order.code}"`,
       req.ip || "127.0.0.1",
     );
     return response.success(res, {
-      message: "Cập nhật chi tiết đơn hàng thành công",
+      message: "Order details updated successfully",
       order,
     });
   }),
@@ -90,11 +90,11 @@ router.patch(
       req.user!.name,
       "update",
       "sales",
-      `Xác nhận đã chuyển khoản hoàn tiền thủ công cho đơn "${order.code}"`,
+      `Confirmed manual refund transfer for order "${order.code}"`,
       req.ip || "127.0.0.1",
     );
     return response.success(res, {
-      message: "Xác nhận hoàn tiền thành công",
+      message: "Refund confirmed successfully",
       order,
     });
   }),
@@ -111,10 +111,10 @@ router.patch(
       req.user!.name,
       "update",
       "sales",
-      `Duyệt yêu cầu trả hàng cho đơn "${order.code}"`,
+      `Approved return request for order "${order.code}"`,
       req.ip || "127.0.0.1",
     );
-    return response.success(res, { message: "Duyệt yêu cầu trả hàng thành công", order });
+    return response.success(res, { message: "Return request approved successfully", order });
   }),
 );
 
@@ -129,16 +129,16 @@ router.patch(
       req.user!.name,
       "update",
       "sales",
-      `Từ chối yêu cầu trả hàng cho đơn "${order.code}". Lý do: ${req.body.rejectReason}`,
+      `Rejected return request for order "${order.code}". Reason: ${req.body.rejectReason}`,
       req.ip || "127.0.0.1",
     );
-    return response.success(res, { message: "Từ chối trả hàng thành công", order });
+    return response.success(res, { message: "Return request rejected successfully", order });
   }),
 );
 
 // ── PUBLIC / CUSTOMER ─────────────────────────────────────────────────────────
 
-// Khách hàng tự hủy đơn (chỉ khi pending)
+// Customer cancels their own order (pending only)
 router.patch(
   "/:id/cancel",
   authenticate,
@@ -148,11 +148,11 @@ router.patch(
       req.params.id as string,
       req.user!,
     );
-    return response.success(res, { message: "Hủy đơn hàng thành công", order });
+    return response.success(res, { message: "Order cancelled successfully", order });
   }),
 );
 
-// Khách hàng yêu cầu trả hàng (khi completed)
+// Customer requests a return (when completed)
 router.patch(
   "/:id/return",
   authenticate,
@@ -165,7 +165,7 @@ router.patch(
       req.body.images,
     );
     return response.success(res, {
-      message: "Yêu cầu trả hàng đã được gửi thành công",
+      message: "Return request submitted successfully",
       order,
     });
   }),

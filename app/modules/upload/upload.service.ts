@@ -68,7 +68,7 @@ export const uploadBuffer = async (
 ) => {
   if (!ALLOWED_MIMES.has(mimeType)) {
     throw badRequest(
-      `Loại file không được hỗ trợ. Chỉ chấp nhận: ${[...ALLOWED_MIMES].join(", ")}`,
+      `Unsupported file type. Allowed types: ${[...ALLOWED_MIMES].join(", ")}`,
     );
   }
 
@@ -77,12 +77,12 @@ export const uploadBuffer = async (
 
   if (buffer.byteLength > maxSize) {
     throw badRequest(
-      `File quá lớn. Kích thước tối đa là ${maxSize / 1024 / 1024}MB`,
+      `File is too large. Maximum size is ${maxSize / 1024 / 1024}MB`,
     );
   }
 
   if (!validateMagicBytes(buffer, mimeType)) {
-    throw badRequest("Nội dung file không hợp lệ hoặc bị giả mạo định dạng");
+    throw badRequest("File content is invalid or the format was spoofed");
   }
 
   const extension = getExtension(mimeType);
@@ -102,7 +102,7 @@ export const uploadBase64 = async (
 ) => {
   const matches = base64.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
   if (!matches || matches.length !== 3) {
-    throw badRequest("Dữ liệu base64 không hợp lệ");
+    throw badRequest("Invalid base64 data");
   }
 
   const mimeType = matches[1].toLowerCase();

@@ -108,8 +108,8 @@ router.post(
       `Tạo sản phẩm "${product.name}"`,
       req.ip || "127.0.0.1",
     );
-    return response.created(res, {
-      message: "Tạo sản phẩm thành công",
+      return response.created(res, {
+        message: "Product created successfully",
       product,
     });
   }),
@@ -133,8 +133,8 @@ router.patch(
       `Cập nhật trạng thái sản phẩm "${product.name}" thành ${product.isActive ? "Bán" : "Discontinued"}`,
       req.ip || "127.0.0.1",
     );
-    return response.success(res, {
-      message: "Cập nhật trạng thái sản phẩm thành công",
+      return response.success(res, {
+        message: "Product status updated successfully",
       product,
     });
   }),
@@ -158,8 +158,8 @@ router.patch(
       `Cập nhật thông tin sản phẩm "${product.name}"`,
       req.ip || "127.0.0.1",
     );
-    return response.success(res, {
-      message: "Cập nhật sản phẩm thành công",
+      return response.success(res, {
+        message: "Product updated successfully",
       product,
     });
   }),
@@ -184,7 +184,7 @@ router.delete(
         req.ip || "127.0.0.1",
       );
     }
-    return response.success(res, { message: "Xóa sản phẩm thành công" });
+      return response.success(res, { message: "Product deleted successfully" });
   }),
 );
 
@@ -207,7 +207,7 @@ router.post(
       `Import hàng loạt ${result.totalProcessed} sản phẩm/biến thể`,
       req.ip || "127.0.0.1",
     );
-    return response.success(res, { message: "Import thành công", result });
+      return response.success(res, { message: "Import successful", result });
   })
 );
 

@@ -37,7 +37,7 @@ router.get(
     return response.success(res, {
       vouchers,
       pagination,
-      message: "Lấy danh sách mã giảm giá thành công",
+      message: "Voucher list fetched successfully",
     });
   }),
 );
@@ -51,7 +51,7 @@ router.post(
     const voucher = await voucherService.createVoucher(req.body);
     return response.created(res, {
       voucher,
-      message: "Tạo mã giảm giá thành công",
+      message: "Voucher created successfully",
     });
   }),
 );
@@ -68,7 +68,7 @@ router.put(
     );
     return response.success(res, {
       voucher,
-      message: "Cập nhật mã giảm giá thành công",
+      message: "Voucher updated successfully",
     });
   }),
 );
@@ -79,7 +79,7 @@ router.delete(
   isManager,
   catchAsync(async (req, res) => {
     await voucherService.deleteVoucher(req.params.id as string);
-    return response.success(res, { message: "Xóa mã giảm giá thành công" });
+    return response.success(res, { message: "Voucher deleted successfully" });
   }),
 );
 
@@ -90,7 +90,7 @@ router.get(
     const { items: vouchers } = await voucherService.getAllVouchers(false);
     return response.success(res, {
       vouchers,
-      message: "Lấy danh sách mã giảm giá khả dụng thành công",
+      message: "Available vouchers fetched successfully",
     });
   }),
 );
@@ -104,7 +104,7 @@ router.get(
     );
     return response.success(res, {
       vouchers,
-      message: "Lấy danh sách kho voucher thành công",
+      message: "Voucher wallet fetched successfully",
     });
   }),
 );
@@ -118,7 +118,7 @@ router.get(
     );
     return response.success(res, {
       vouchers,
-      message: "Lấy toàn bộ kho voucher thành công",
+      message: "Full voucher wallet fetched successfully",
     });
   }),
 );
@@ -135,7 +135,7 @@ router.post(
       30000,
       req.user?._id?.toString(),
     );
-    return response.success(res, { result, message: "Mã giảm giá hợp lệ" });
+    return response.success(res, { result, message: "Voucher is valid" });
   }),
 );
 
@@ -150,7 +150,7 @@ router.post(
     );
     return response.created(res, {
       voucher,
-      message: "Đã lưu mã giảm giá vào kho",
+      message: "Voucher saved to wallet",
     });
   }),
 );
@@ -163,7 +163,7 @@ router.delete(
       req.user!._id.toString(),
       req.params.code as string,
     );
-    return response.success(res, { message: "Đã xóa mã giảm giá khỏi kho" });
+    return response.success(res, { message: "Voucher removed from wallet" });
   }),
 );
 

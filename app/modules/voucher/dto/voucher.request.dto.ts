@@ -3,15 +3,15 @@ import { z } from "zod";
 export const BaseVoucherSchema = z.object({
   code: z
     .string()
-    .min(3, "Mã giảm giá phải có ít nhất 3 ký tự")
+    .min(3, "Voucher code must be at least 3 characters")
     .trim()
     .toUpperCase(),
   discountType: z.enum(["percent", "fixed", "freeship"]),
-  discountValue: z.number().min(0, "Giá trị giảm không được âm"),
+  discountValue: z.number().min(0, "Discount value cannot be negative"),
   minOrderValue: z.number().min(0).optional().default(0),
   maxDiscount: z.number().min(0).optional(),
-  startDate: z.string().datetime("Ngày bắt đầu không hợp lệ"),
-  endDate: z.string().datetime("Ngày kết thúc không hợp lệ"),
+  startDate: z.string().datetime("Invalid start date"),
+  endDate: z.string().datetime("Invalid end date"),
   usageLimit: z.number().min(0).optional().default(0),
   isActive: z.boolean().optional().default(true),
   ttlMinutes: z.number().min(0).optional().default(0),

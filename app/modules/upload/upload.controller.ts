@@ -25,7 +25,7 @@ const upload = multer({
     if (allowed.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`Loại file không được hỗ trợ: ${file.mimetype}`));
+      cb(new Error(`Unsupported file type: ${file.mimetype}`));
     }
   },
 });
@@ -58,7 +58,7 @@ router.post(
   isStaff,
   catchAsync(async (req, res) => {
     const { base64 } = req.body;
-    if (!base64) throw badRequest("Thiếu dữ liệu hình ảnh (base64)");
+    if (!base64) throw badRequest("Missing image data (base64)");
 
     const host =
       req.get("host") || process.env.BACKEND_HOST || "localhost:3001";
@@ -70,7 +70,7 @@ router.post(
     const url = await uploadService.uploadBase64(base64, host, protocol);
 
     return response.created(res, {
-      message: "Tải ảnh lên thành công",
+      message: "Image uploaded successfully",
       url,
     });
   }),
@@ -90,7 +90,7 @@ router.post(
         ) {
           return res.status(400).json({
             success: false,
-            message: "File quá lớn. Kích thước tối đa là 15MB",
+            message: "File is too large. Maximum size is 15MB",
           });
         }
         return res.status(400).json({ success: false, message: err.message });
@@ -99,7 +99,7 @@ router.post(
     });
   },
   catchAsync(async (req, res) => {
-    if (!req.file) throw badRequest("Không có file nào được tải lên");
+    if (!req.file) throw badRequest("No file was uploaded");
 
     const host =
       req.get("host") || process.env.BACKEND_HOST || "localhost:3001";
@@ -116,7 +116,7 @@ router.post(
     );
 
     return response.created(res, {
-      message: "Tải file lên thành công",
+      message: "File uploaded successfully",
       url,
     });
   }),

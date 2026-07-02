@@ -1,20 +1,20 @@
 import { z } from "zod";
 
 export const createFlashSaleSchema = z.object({
-  name: z.string().min(1, "Tên chương trình không được để trống"),
-  startTime: z.string().datetime({ message: "Thời gian bắt đầu không hợp lệ" }),
-  endTime: z.string().datetime({ message: "Thời gian kết thúc không hợp lệ" }),
+  name: z.string().min(1, "Program name is required"),
+  startTime: z.string().datetime({ message: "Invalid start time" }),
+  endTime: z.string().datetime({ message: "Invalid end time" }),
   isActive: z.boolean().optional(),
   items: z
     .array(
       z.object({
-        productId: z.string().min(1, "ID sản phẩm không được để trống"),
-        variantId: z.string().min(1, "ID biến thể không được để trống"),
-        flashPrice: z.number().min(0, "Giá flash sale phải lớn hơn hoặc bằng 0"),
-        quantityLimit: z.number().min(1, "Số lượng giới hạn phải lớn hơn 0"),
+        productId: z.string().min(1, "Product ID is required"),
+        variantId: z.string().min(1, "Variant ID is required"),
+        flashPrice: z.number().min(0, "Flash sale price must be greater than or equal to 0"),
+        quantityLimit: z.number().min(1, "Quantity limit must be greater than 0"),
       })
     )
-    .min(1, "Phải có ít nhất 1 sản phẩm trong Flash Sale"),
+    .min(1, "At least one product is required for a flash sale"),
 });
 
 export type CreateFlashSaleInput = z.infer<typeof createFlashSaleSchema>;

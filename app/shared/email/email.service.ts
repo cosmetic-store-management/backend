@@ -10,7 +10,7 @@ function getTransporter(): nodemailer.Transporter | null {
   const pass = process.env.SMTP_PASS;
 
   if (!user || !pass) {
-    console.warn("⚠️  SMTP_USER hoặc SMTP_PASS chưa được cấu hình — email sẽ không được gửi.");
+    console.warn("⚠️  SMTP_USER or SMTP_PASS is not configured — email will not be sent.");
     return null;
   }
 
@@ -54,12 +54,12 @@ async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
       return; // Success
     } catch (err: any) {
       console.error(
-        `❌ Lỗi gửi email (lần ${attempt}/${maxRetries}) [${payload.subject}]:`,
+        `❌ Email send error (attempt ${attempt}/${maxRetries}) [${payload.subject}]:`,
         err.message,
       );
       if (attempt === maxRetries) {
         console.error(
-          `❌ Gửi email thất bại sau ${maxRetries} lần:`,
+          `❌ Email sending failed after ${maxRetries} attempts:`,
           payload.subject,
         );
       }
@@ -72,7 +72,7 @@ async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
 
 function emailLayout(bodyHtml: string): string {
   return `<!DOCTYPE html>
-<html lang="vi">
+  <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -91,7 +91,7 @@ function emailLayout(bodyHtml: string): string {
                 🌸 GlowUp Cosmetics
               </h1>
               <p style="margin:4px 0 0;font-size:12px;color:rgba(255,255,255,0.75);letter-spacing:1px;text-transform:uppercase;">
-                Làm đẹp chính hãng · An toàn · Hiệu quả
+                Authentic beauty · Safe · Effective
               </p>
             </td>
           </tr>
@@ -107,8 +107,8 @@ function emailLayout(bodyHtml: string): string {
           <tr>
             <td style="background:#f9fafb;padding:20px 32px;border-top:1px solid #e5e7eb;text-align:center;">
               <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6;">
-                © ${new Date().getFullYear()} GlowUp Cosmetics. Mọi quyền được bảo lưu.<br/>
-                123 Nguyễn Văn Cừ, Quận 5, TP. Hồ Chí Minh
+                © ${new Date().getFullYear()} GlowUp Cosmetics. All rights reserved.<br/>
+                123 Nguyen Van Cu, District 5, Ho Chi Minh City
               </p>
             </td>
           </tr>
@@ -140,20 +140,20 @@ export const sendWelcomeEmail = async (
   const storeLink = FRONTEND_URL();
 
   const body = `
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Chào mừng bạn đến với GlowUp Cosmetics!</h2>
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Welcome to GlowUp Cosmetics!</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Chúc mừng bạn đã kích hoạt tài khoản khách hàng thành công. Lần mua hàng tiếp theo, hãy đăng nhập để việc thanh toán thuận tiện hơn.
+      Your customer account has been successfully activated. Next time you shop, sign in for a faster checkout experience.
     </p>
-    ${primaryBtn("Đến cửa hàng của chúng tôi", storeLink)}
+    ${primaryBtn("Visit our store", storeLink)}
     <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;text-align:center;line-height:1.6;">
-      Nếu bạn có bất cứ câu hỏi nào, đừng ngần ngại liên lạc với chúng tôi tại<br/>
+      If you have any questions, feel free to contact us at<br/>
       <a href="mailto:support@glowup.com" style="color:#ef4444;text-decoration:none;">support@glowup.com</a>
     </p>`;
 
   await sendEmailWithRetry({
     from: getFromEmail(),
     to,
-    subject: "GlowUp Cosmetics - Xác nhận tài khoản khách hàng",
+    subject: "GlowUp Cosmetics - Customer account confirmation",
     html: emailLayout(body),
   });
 };
@@ -167,9 +167,9 @@ export const sendOtpVerificationEmail = async (
 
 
   const body = `
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Mã xác thực tài khoản</h2>
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Account verification code</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Mã xác thực (OTP) của bạn là:
+      Your verification code (OTP) is:
     </p>
     <div style="text-align:center;margin:24px 0;">
       <span style="display:inline-block;padding:16px 32px;background:#f3f4f6;color:#111827;border-radius:8px;font-size:24px;font-weight:800;letter-spacing:4px;border:1px dashed #d1d5db;">
@@ -177,14 +177,14 @@ export const sendOtpVerificationEmail = async (
       </span>
     </div>
     <p style="margin:16px 0 0;font-size:12px;color:#9ca3af;text-align:center;line-height:1.6;">
-      Mã này có hiệu lực trong <strong>5 phút</strong>.<br/>
-      Nếu bạn không yêu cầu mã này, hãy bỏ qua email này.
+      This code is valid for <strong>5 minutes</strong>.<br/>
+      If you did not request this code, you can safely ignore this email.
     </p>`;
 
   await sendEmailWithRetry({
     from: getFromEmail(),
     to,
-    subject: `Mã OTP xác thực của bạn: ${otpCode} — GlowUp Cosmetics`,
+    subject: `Your OTP verification code: ${otpCode} — GlowUp Cosmetics`,
     html: emailLayout(body),
   });
 };
@@ -200,21 +200,21 @@ export const sendResetPasswordEmail = async (
   const resetLink = `${FRONTEND_URL()}/reset-password?token=${resetToken}`;
 
   const body = `
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Đặt lại mật khẩu</h2>
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Reset your password</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn.<br/>
-      Nhấn vào nút bên dưới để tạo mật khẩu mới. Link có hiệu lực trong <strong>1 giờ</strong>.
+      We received a request to reset your account password.<br/>
+      Click the button below to create a new password. The link is valid for <strong>1 hour</strong>.
     </p>
-    ${primaryBtn("Đặt lại mật khẩu →", resetLink)}
+    ${primaryBtn("Reset password →", resetLink)}
     <p style="margin:16px 0 0;font-size:12px;color:#9ca3af;text-align:center;line-height:1.6;">
-      Nếu bạn không yêu cầu điều này, hãy bỏ qua email này.<br/>
-      Mật khẩu của bạn sẽ <strong>không</strong> bị thay đổi.
+      If you did not request this, you can ignore this email.<br/>
+      Your password will <strong>not</strong> be changed.
     </p>`;
 
   await sendEmailWithRetry({
     from: getFromEmail(),
     to,
-    subject: "Đặt lại mật khẩu — GlowUp Cosmetics",
+    subject: "Reset your password — GlowUp Cosmetics",
     html: emailLayout(body),
   });
 };
@@ -230,33 +230,33 @@ export const sendOrderSuccessEmail = async (
 
   const body = `
     <div style="background:#f0fdf4;border-left:4px solid #22c55e;border-radius:4px;padding:14px 18px;margin-bottom:24px;">
-      <p style="margin:0;font-size:14px;color:#15803d;font-weight:600;">Thông báo: Xác nhận thanh toán thành công</p>
+      <p style="margin:0;font-size:14px;color:#15803d;font-weight:600;">Notification: Payment confirmed</p>
     </div>
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Đơn hàng đã được xác nhận</h2>
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Order confirmed</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Xin chào quý khách,<br/>
-      Hệ thống đã xác nhận đơn hàng <strong style="color:#db2777;">${orderCode}</strong> của quý khách đã được tiếp nhận và thanh toán thành công (hoặc áp dụng phương thức thanh toán khi nhận hàng). Đơn hàng đang được bộ phận kho xử lý.
+      Hello,<br/>
+      Your order <strong style="color:#db2777;">${orderCode}</strong> has been received and payment was successful (or cash on delivery was selected). Our warehouse team is now processing it.
     </p>
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;overflow:hidden;margin-bottom:24px;">
       <tr>
         <td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
-          <span style="font-size:13px;color:#6b7280;">Mã đơn hàng</span>
+          <span style="font-size:13px;color:#6b7280;">Order code</span>
           <strong style="float:right;color:#111827;font-size:14px;">${orderCode}</strong>
         </td>
       </tr>
       <tr>
         <td style="padding:16px 20px;">
-          <span style="font-size:13px;color:#6b7280;">Tổng thanh toán</span>
-          <strong style="float:right;color:#db2777;font-size:15px;">${totalAmount.toLocaleString("vi-VN")}₫</strong>
+          <span style="font-size:13px;color:#6b7280;">Total payment</span>
+          <strong style="float:right;color:#db2777;font-size:15px;">${totalAmount.toLocaleString("en-US")} ₫</strong>
         </td>
       </tr>
     </table>
-    ${primaryBtn("Xem chi tiết đơn hàng", orderLink)}`;
+    ${primaryBtn("View order details", orderLink)}`;
 
   await sendEmailWithRetry({
     from: getFromEmail(),
     to,
-    subject: `Thông báo xác nhận đơn hàng ${orderCode} — GlowUp Cosmetics`,
+    subject: `Order confirmation ${orderCode} — GlowUp Cosmetics`,
     html: emailLayout(body),
   });
 };
@@ -274,7 +274,7 @@ export const sendOrderShippedEmail = async (
   const trackingRow = trackingCode
     ? `<tr>
         <td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
-          <span style="font-size:13px;color:#6b7280;">Mã vận đơn</span>
+          <span style="font-size:13px;color:#6b7280;">Tracking code</span>
           <strong style="float:right;color:#111827;font-size:14px;">${trackingCode}</strong>
         </td>
        </tr>`
@@ -282,28 +282,27 @@ export const sendOrderShippedEmail = async (
 
   const body = `
     <div style="background:#eff6ff;border-left:4px solid #3b82f6;border-radius:4px;padding:14px 18px;margin-bottom:24px;">
-      <p style="margin:0;font-size:14px;color:#1d4ed8;font-weight:600;">🚚 Đơn hàng đang trên đường đến bạn!</p>
+      <p style="margin:0;font-size:14px;color:#1d4ed8;font-weight:600;">🚚 Your order is on the way!</p>
     </div>
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Đơn hàng đã được giao vận</h2>
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Order shipped</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Đơn hàng <strong style="color:#db2777;">${orderCode}</strong> của bạn đã được bàn giao cho đơn vị vận chuyển
-      và đang trên đường đến địa chỉ của bạn.
+      Your order <strong style="color:#db2777;">${orderCode}</strong> has been handed over to the carrier and is on its way to your address.
     </p>
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:8px;overflow:hidden;margin-bottom:24px;">
       <tr>
         <td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;">
-          <span style="font-size:13px;color:#6b7280;">Mã đơn hàng</span>
+          <span style="font-size:13px;color:#6b7280;">Order code</span>
           <strong style="float:right;color:#111827;font-size:14px;">${orderCode}</strong>
         </td>
       </tr>
       ${trackingRow}
     </table>
-    ${primaryBtn("Theo dõi đơn hàng →", orderLink)}`;
+    ${primaryBtn("Track order →", orderLink)}`;
 
   await sendEmailWithRetry({
     from: getFromEmail(),
     to,
-    subject: `🚚 Đơn hàng #${orderCode} đang được giao — GlowUp Cosmetics`,
+    subject: `🚚 Order #${orderCode} is being delivered — GlowUp Cosmetics`,
     html: emailLayout(body),
   });
 };
@@ -320,27 +319,27 @@ export const sendOrderCancelledEmail = async (
   const shopLink = `${FRONTEND_URL()}/`;
 
   const refundText = isPaid
-    ? `<br/>Hệ thống sẽ tiến hành hoàn tiền cho quý khách trong <strong>1–3 ngày làm việc</strong>.`
+    ? `<br/>Your refund will be processed within <strong>1-3 business days</strong>.`
     : "";
 
   const body = `
     <div style="background:#fff7ed;border-left:4px solid #f97316;border-radius:4px;padding:14px 18px;margin-bottom:24px;">
-      <p style="margin:0;font-size:14px;color:#c2410c;font-weight:600;">🚫 Đơn hàng đã bị hủy</p>
+      <p style="margin:0;font-size:14px;color:#c2410c;font-weight:600;">🚫 Order cancelled</p>
     </div>
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Thông báo hủy đơn hàng</h2>
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Order cancellation notice</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Đơn hàng <strong style="color:#db2777;">${orderCode}</strong> của bạn đã được hủy.${refundText}
+      Your order <strong style="color:#db2777;">${orderCode}</strong> has been cancelled.${refundText}
     </p>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Xin lỗi vì sự bất tiện này. Nếu bạn có thắc mắc, vui lòng liên hệ với chúng tôi qua
+      Sorry for the inconvenience. If you have questions, please contact us at
       <a href="mailto:contact@glowup.com" style="color:#db2777;">contact@glowup.com</a>.
     </p>
-    ${primaryBtn("Tiếp tục mua sắm →", shopLink)}`;
+    ${primaryBtn("Continue shopping →", shopLink)}`;
 
   await sendEmailWithRetry({
     from: getFromEmail(),
     to,
-    subject: `🚫 Đơn hàng #${orderCode} đã bị hủy — GlowUp Cosmetics`,
+    subject: `🚫 Order #${orderCode} cancelled — GlowUp Cosmetics`,
     html: emailLayout(body),
   });
 };
@@ -357,23 +356,23 @@ export const sendOrderReturnedEmail = async (
 
   const body = `
     <div style="background:#f3f4f6;border-left:4px solid #6b7280;border-radius:4px;padding:14px 18px;margin-bottom:24px;">
-      <p style="margin:0;font-size:14px;color:#374151;font-weight:600;">📦 Đơn hàng đã được hoàn trả</p>
+      <p style="margin:0;font-size:14px;color:#374151;font-weight:600;">📦 Order returned</p>
     </div>
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Thông báo hoàn trả đơn hàng</h2>
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Return notice</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Đơn hàng <strong style="color:#db2777;">${orderCode}</strong> của bạn đã được xác nhận hoàn trả.<br/>
-      Hệ thống sẽ tiến hành hoàn tiền (nếu có) cho quý khách trong <strong>1–3 ngày làm việc</strong>.
+      Your order <strong style="color:#db2777;">${orderCode}</strong> has been approved for return.<br/>
+      If applicable, your refund will be processed within <strong>1-3 business days</strong>.
     </p>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Xin cảm ơn bạn đã sử dụng dịch vụ. Nếu bạn có thắc mắc, vui lòng liên hệ với chúng tôi qua
+      Thank you for using our service. If you have questions, please contact us at
       <a href="mailto:contact@glowup.com" style="color:#db2777;">contact@glowup.com</a>.
     </p>
-    ${primaryBtn("Tiếp tục mua sắm →", shopLink)}`;
+    ${primaryBtn("Continue shopping →", shopLink)}`;
 
   await sendEmailWithRetry({
     from: getFromEmail(),
     to,
-    subject: `📦 Xác nhận trả hàng / hoàn tiền cho đơn #${orderCode} — GlowUp Cosmetics`,
+    subject: `📦 Return / refund confirmation for order #${orderCode} — GlowUp Cosmetics`,
     html: emailLayout(body),
   });
 };
@@ -388,23 +387,23 @@ export const sendOrderReturnRejectedEmail = async (
 
   const body = `
     <div style="background:#fff1f2;border-left:4px solid #e11d48;border-radius:4px;padding:14px 18px;margin-bottom:24px;">
-      <p style="margin:0;font-size:14px;color:#9f1239;font-weight:600;">⚠️ Yêu cầu trả hàng bị từ chối</p>
+      <p style="margin:0;font-size:14px;color:#9f1239;font-weight:600;">⚠️ Return request rejected</p>
     </div>
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Thông báo từ chối yêu cầu trả hàng</h2>
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Return request declined</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Rất tiếc, yêu cầu trả hàng cho đơn <strong style="color:#db2777;">${orderCode}</strong> của bạn không được chấp thuận.<br/>
-      Sản phẩm có thể không thỏa mãn điều kiện đổi trả của GlowUp Cosmetics.
+      Unfortunately, the return request for order <strong style="color:#db2777;">${orderCode}</strong> was not approved.<br/>
+      The product may not meet GlowUp Cosmetics' return conditions.
     </p>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Nếu bạn có thắc mắc hoặc cần khiếu nại, vui lòng liên hệ trực tiếp với chúng tôi qua
+      If you have questions or need to file a complaint, please contact us directly at
       <a href="mailto:contact@glowup.com" style="color:#db2777;">contact@glowup.com</a>.
     </p>
-    ${primaryBtn("Xem chính sách đổi trả →", shopLink)}`;
+    ${primaryBtn("View return policy →", shopLink)}`;
 
   await sendEmailWithRetry({
     from: getFromEmail(),
     to,
-    subject: `⚠️ Yêu cầu trả hàng cho đơn #${orderCode} bị từ chối — GlowUp Cosmetics`,
+    subject: `⚠️ Return request for order #${orderCode} rejected — GlowUp Cosmetics`,
     html: emailLayout(body),
   });
 };
@@ -419,21 +418,21 @@ export const sendOrderCompletedEmail = async (
 
   const body = `
     <div style="background:#f0fdf4;border-left:4px solid #22c55e;border-radius:4px;padding:14px 18px;margin-bottom:24px;">
-      <p style="margin:0;font-size:14px;color:#15803d;font-weight:600;">✅ Đơn hàng đã giao thành công</p>
+      <p style="margin:0;font-size:14px;color:#15803d;font-weight:600;">✅ Order delivered successfully</p>
     </div>
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Thông báo giao hàng thành công</h2>
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Delivery success notice</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Đơn hàng <strong style="color:#db2777;">${orderCode}</strong> của bạn đã được giao thành công. Cảm ơn bạn đã mua sắm tại GlowUp Cosmetics!
+      Your order <strong style="color:#db2777;">${orderCode}</strong> was delivered successfully. Thank you for shopping at GlowUp Cosmetics!
     </p>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Đừng quên để lại đánh giá về sản phẩm để nhận thêm nhiều ưu đãi nhé.
+      Don't forget to leave a review to unlock more offers.
     </p>
-    ${primaryBtn("Xem lại đơn hàng và đánh giá →", shopLink + "account/orders")}`;
+    ${primaryBtn("Review your order →", shopLink + "account/orders")}`;
 
   await sendEmailWithRetry({
     from: getFromEmail(),
     to,
-    subject: `✅ Đơn hàng #${orderCode} đã giao thành công — GlowUp Cosmetics`,
+    subject: `✅ Order #${orderCode} delivered successfully — GlowUp Cosmetics`,
     html: emailLayout(body),
   });
 };

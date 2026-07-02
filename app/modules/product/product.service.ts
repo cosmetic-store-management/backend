@@ -319,7 +319,7 @@ export const getPublicProductDetail = async (slugOrId: string) => {
   if (!product) throw notFound("Product not found");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if ((product.categoryId as any)?.isActive === false)
-    throw notFound("Không tìm thấy sản phẩm do danh mục đã ngừng hoạt động");
+    throw notFound("Product not found because its category is inactive");
   return mapProduct(product);
 };
 
@@ -328,7 +328,7 @@ export const getRecommendedProducts = async (
   limit: number = 10,
 ) => {
   if (!mongoose.Types.ObjectId.isValid(productId))
-    throw badRequest("ID sản phẩm không hợp lệ");
+    throw badRequest("Invalid product ID");
   const pId = new mongoose.Types.ObjectId(productId);
 
   const product = await productRepo.findById(productId);

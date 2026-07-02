@@ -15,11 +15,11 @@ export const CreateProductSchema = z.object({
       z
         .object({
           id: z.string().optional(),
-          name: z.string().min(1, "Tên biến thể không được để trống"),
+            name: z.string().min(1, "Variant name is required"),
           sku: z.string().optional(),
-          price: z.number().min(0, "Giá không hợp lệ"),
-          discountPrice: z.number().min(0).nullable().optional().default(null),
+            price: z.number().min(0, "Invalid price"),
           stock: z.number().int().min(0, "Số lượng không hợp lệ"),
+            discountPrice: z.number().min(0).nullable().optional().default(null),
           minStock: z.number().int().optional().default(10),
           weight: z.number().int().optional().default(200),
           imageUrl: z.string().optional().default(""),
@@ -32,7 +32,7 @@ export const CreateProductSchema = z.object({
         .refine(
           (data) => !data.discountPrice || data.discountPrice < data.price,
           {
-            message: "Giá khuyến mãi phải nhỏ hơn giá gốc",
+              message: "Discount price must be lower than the original price",
             path: ["discountPrice"],
           },
         ),

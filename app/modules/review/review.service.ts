@@ -36,7 +36,7 @@ export const updateProductStats = async (
 
 export const createReview = async (userId: string, data: CreateReviewInput) => {
   if (!mongoose.Types.ObjectId.isValid(data.productId)) {
-    throw badRequest("Mã sản phẩm không hợp lệ");
+    throw badRequest("Invalid product code");
   }
 
   const pId = new mongoose.Types.ObjectId(data.productId);
@@ -44,7 +44,7 @@ export const createReview = async (userId: string, data: CreateReviewInput) => {
 
   // 1. Kiểm tra sản phẩm tồn tại
   const productExists = await Product.findById(pId).lean();
-  if (!productExists) throw notFound("Sản phẩm không tồn tại trong hệ thống");
+  if (!productExists) throw notFound("Product does not exist in the system");
 
   // 2. Anti-spam: mỗi user chỉ review 1 lần / product
   const existingReview = await reviewRepo.findOne({
@@ -53,7 +53,7 @@ export const createReview = async (userId: string, data: CreateReviewInput) => {
   });
   if (existingReview) {
     throw badRequest(
-      "Bạn đã đánh giá sản phẩm này rồi. Mỗi người chỉ được đánh giá 1 lần.",
+      "You have already reviewed this product. Each person can only review once.",
     );
   }
 
@@ -74,7 +74,7 @@ export const createReview = async (userId: string, data: CreateReviewInput) => {
 
   if (!isVerifiedPurchase) {
     throw forbidden(
-      "Bạn chỉ có thể đánh giá sản phẩm sau khi đã mua và nhận hàng thành công.",
+      "You can only review a product after purchasing and successfully receiving it.",
     );
   }
 
@@ -99,7 +99,7 @@ export const getReviewsByProductId = async (
   hasImage?: boolean,
 ) => {
   if (!mongoose.Types.ObjectId.isValid(productId)) {
-    throw badRequest("Mã sản phẩm không hợp lệ");
+    throw badRequest("Invalid product code");
   }
 
   const parsedLimit = Math.max(Number(limit) || 10, 1);
@@ -186,7 +186,7 @@ export const deleteReviewAdmin = async (reviewId: string) => {
   }
 
   const result = await reviewRepo.findByIdAndDelete(reviewId);
-  if (!result) throw badRequest("Không tìm thấy đánh giá cần xóa");
+  if (!result) throw badRequest("Review to delete was not found");
 
   await updateProductStats(result.productId as mongoose.Types.ObjectId);
   return result;
@@ -200,7 +200,7 @@ export const replyReviewAdmin = async (reviewId: string, replyText: string) => {
   const updateData = text ? { adminReply: text } : { $unset: { adminReply: "" } };
 
   const result = await reviewRepo.findByIdAndUpdate(reviewId, updateData as any);
-  if (!result) throw badRequest("Không tìm thấy đánh giá");
+  if (!result) throw badRequest("Review not found");
 
   return result;
 };
@@ -224,7 +224,7 @@ export const updateReviewByUser = async (
   });
   if (!review) {
     throw forbidden(
-      "Bạn không có quyền sửa đánh giá này hoặc đánh giá không tồn tại",
+      "You do not have permission to edit this review or the review does not exist",
     );
   }
 
@@ -248,7 +248,7 @@ export const deleteReviewByUser = async (userId: string, reviewId: string) => {
   });
   if (!result) {
     throw forbidden(
-      "Bạn không có quyền xóa đánh giá này hoặc đánh giá không tồn tại",
+      "You do not have permission to delete this review or the review does not exist",
     );
   }
 
