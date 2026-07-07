@@ -16,6 +16,7 @@ node_modules/
 # Testing
 /coverage
 /.nyc_output
+/tests
 
 # Build
 /dist/
