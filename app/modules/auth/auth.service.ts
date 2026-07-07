@@ -176,6 +176,14 @@ export const login = async (data: LoginInput) => {
     
   if (!user) throw unauthorized("Incorrect phone number, email, or password");
 
+  if (data.email && !["owner", "manager", "staff"].includes(user.role)) {
+    throw unauthorized("Incorrect phone number, email, or password");
+  }
+
+  if (data.phone && user.role !== "customer") {
+    throw unauthorized("Incorrect phone number, email, or password");
+  }
+
   if (!user.password) {
     throw unauthorized(
       "Your account does not have a password. Please Register again or choose Forgot Password to use the Web.",

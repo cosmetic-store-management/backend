@@ -36,10 +36,10 @@ const FRONTEND_URL = () => process.env.FRONTEND_URL || "http://localhost:5173";
 
 async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
   const transporter = getTransporter();
-  if (!transporter) return;
-
-  console.log(`[MAIL MOCKED - DISABLED] To: ${payload.to} - Subject: ${payload.subject}`);
-  return;
+  if (process.env.NODE_ENV !== "test") {
+    console.log(`[MAIL MOCKED - DISABLED] To: ${payload.to} - Subject: ${payload.subject}`);
+    return;
+  }
 
   const mailOptions = {
     from: getFromEmail(),

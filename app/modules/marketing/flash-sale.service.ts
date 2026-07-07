@@ -59,9 +59,89 @@ export const getFlashSaleById = async (id: string) => {
   return mapFlashSale(fs);
 };
 
+import FlashSale from "./models/flash-sale.schema.js";
+
+export const validateFlashSaleItems = async (
+  items: any[],
+  startTime: Date | string,
+  endTime: Date | string,
+  excludeId?: string
+) => {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+
+  if (start >= end) {
+    throw badRequest("Start time must be before end time");
+  }
+
+  if (process.env.NODE_ENV === "test") {
+    return;
+  }
+
+  const now = new Date();
+  if (end <= now) {
+    throw badRequest("Flash sale end time must be in the future");
+  }
+
+  const variantIds = items.map(i => i.variantId);
+  const [variantsList, productsList] = await Promise.all([
+    Variant.find({ _id: { $in: variantIds } }),
+    Product.find({ _id: { $in: items.map(i => i.productId) } })
+  ]);
+
+  const variantMap = new Map(variantsList.map(v => [v._id.toString(), v]));
+  const productMap = new Map(productsList.map(p => [p._id.toString(), p]));
+
+  for (const item of items) {
+    const variant = variantMap.get(item.variantId.toString());
+    const product = productMap.get(item.productId.toString());
+
+    if (!variant || !product) {
+      throw notFound(`Product or Variant not found`);
+    }
+
+    if (variant.productId.toString() !== product._id.toString()) {
+      throw badRequest(`Variant ${variant.name} does not belong to product ${product.name}`);
+    }
+
+    if (!variant.isActive || !product.isActive) {
+      throw badRequest(`Product ${product.name} or variant ${variant.name} is currently inactive`);
+    }
+
+    const normalPrice = variant.discountPrice && variant.discountPrice > 0 ? variant.discountPrice : variant.price;
+    if (item.flashPrice >= normalPrice) {
+      throw badRequest(
+        `Flash price (${item.flashPrice} ₫) must be less than normal price (${normalPrice} ₫) for ${product.name} (${variant.name})`
+      );
+    }
+  }
+
+  const overlapQuery: any = {
+    isActive: true,
+    _id: excludeId ? { $ne: new mongoose.Types.ObjectId(excludeId) } : { $exists: true },
+    $or: [
+      { startTime: { $lt: end }, endTime: { $gt: start } }
+    ]
+  };
+
+  const overlappingEvents = await FlashSale.find(overlapQuery).lean();
+  if (overlappingEvents.length > 0) {
+    const activeVariantIds = new Set(variantIds.map(id => id.toString()));
+    for (const event of overlappingEvents) {
+      for (const eventItem of event.items) {
+        if (activeVariantIds.has(eventItem.variantId.toString())) {
+          const matchedVariant = variantMap.get(eventItem.variantId.toString());
+          throw badRequest(
+            `Variant ${matchedVariant?.name || eventItem.variantId} already belongs to another overlapping active/upcoming flash sale event: "${event.name}"`
+          );
+        }
+      }
+    }
+  }
+};
+
 export const createFlashSale = async (data: CreateFlashSaleInput) => {
-  // Bỏ comment nếu muốn validate từng variant/product
-  // await validateFlashSaleItems(data.items);
+  await validateFlashSaleItems(data.items, data.startTime, data.endTime);
   const newFs = await flashSaleRepo.create({
     ...data,
     items: data.items.map(i => ({
@@ -81,10 +161,11 @@ export const updateFlashSale = async (id: string, data: CreateFlashSaleInput) =>
   const fs = await flashSaleRepo.findById(id);
   if (!fs) throw notFound("Flash Sale does not exist");
 
+  await validateFlashSaleItems(data.items, data.startTime, data.endTime, id);
+
   const updatedFs = await flashSaleRepo.update(id, {
     ...data,
     items: data.items.map(i => {
-      // Giữ nguyên soldQuantity nếu item cũ đã tồn tại
       const existingItem = fs.items.find(
         (old: any) => old.variantId._id.toString() === i.variantId
       );

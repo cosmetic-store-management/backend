@@ -35,6 +35,9 @@ export const atomicIncrementUsage = async (code: string, userId?: string, sessio
     update.$addToSet = { usedBy: new mongoose.Types.ObjectId(userId) };
 
   const query: any = { code: code.toUpperCase() };
+  if (userId) {
+    query.usedBy = { $ne: new mongoose.Types.ObjectId(userId) };
+  }
   if (maxAllowed !== -1) {
     if (maxAllowed !== undefined) {
       // Overbooking limit constraint
