@@ -42,70 +42,17 @@ router.post("/public/verify-otp", authLimiter, validate(VerifyOtpSchema), catchA
 // POST /api/auth/register
 router.post("/register", authLimiter, validate(RegisterSchema), catchAsync(async (req, res) => {
     const result = await authService.register(req.body);
-    return response.created(res, { message: "Đăng ký thành công", ...result });
+    return response.created(res, { message: "Registered successfully", ...result });
 }));
-// POST /api/auth/admin/login
-router.post("/admin/login", authLimiter, validate(LoginSchema), catchAsync(async (req, res) => {
-    const result = await authService.loginAdmin(req.body);
-    await auditService.logAction(result.user.id, result.user.name, "login", "identity", "Đăng nhập hệ thống quản trị", req.ip || req.socket.remoteAddress || "127.0.0.1");
+// POST /api/auth/login
+router.post("/login", authLimiter, validate(LoginSchema), catchAsync(async (req, res) => {
+    const result = await authService.login(req.body);
+    // Ghi log hành động nếu là tài khoản quản trị
+    if (["owner", "manager", "staff"].includes(result.user.role)) {
+        await auditService.logAction(result.user.id, result.user.name, "login", "identity", "System login", req.ip || req.socket.remoteAddress || "127.0.0.1");
+    }
     return response.success(res, {
-        message: "Đăng nhập quản trị thành công",
-        ...result,
-    });
-}));
-/**
- * @swagger
- * /auth/public/login:
- *   post:
- *     summary: Khách hàng đăng nhập
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - email
- *               - password
- *             properties:
- *               email:
- *                 type: string
- *                 example: user@example.com
- *               password:
- *                 type: string
- *                 example: password123
- *     responses:
- *       200:
- *         description: Đăng nhập thành công
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Đăng nhập thành công
- *                 data:
- *                   type: object
- *                   properties:
- *                     accessToken:
- *                       type: string
- *                     refreshToken:
- *                       type: string
- *                     user:
- *                       type: object
- *       400:
- *         description: Thông tin đăng nhập không hợp lệ
- */
-// POST /api/auth/public/login
-router.post("/public/login", authLimiter, validate(LoginSchema), catchAsync(async (req, res) => {
-    const result = await authService.loginPublic(req.body);
-    return response.success(res, {
-        message: "Đăng nhập thành công",
+        message: "Logged in successfully",
         ...result,
     });
 }));
@@ -113,10 +60,10 @@ router.post("/public/login", authLimiter, validate(LoginSchema), catchAsync(asyn
 router.post("/refresh", catchAsync(async (req, res) => {
     const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
     if (!refreshToken)
-        throw badRequest("Thiếu refresh token");
+        throw badRequest("Missing refresh token");
     const result = await authService.refreshAccessToken(refreshToken);
     return response.success(res, {
-        message: "Làm mới token thành công",
+        message: "Token refreshed successfully",
         ...result,
     });
 }));
@@ -124,7 +71,7 @@ router.post("/refresh", catchAsync(async (req, res) => {
 router.post("/logout", authenticate, catchAsync(async (req, res) => {
     const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
     await authService.logout(req.user._id.toString(), refreshToken);
-    return response.success(res, { message: "Đăng xuất thành công" });
+    return response.success(res, { message: "Logged out successfully" });
 }));
 // GET /api/auth/me
 router.get("/me", authenticate, catchAsync(async (req, res) => {
@@ -134,7 +81,7 @@ router.get("/me", authenticate, catchAsync(async (req, res) => {
 // POST /api/auth/change-password
 router.post("/change-password", authenticate, validate(ChangePasswordSchema), catchAsync(async (req, res) => {
     await authService.changePassword(req.user._id.toString(), req.body);
-    return response.success(res, { message: "Đổi mật khẩu thành công" });
+    return response.success(res, { message: "Password changed successfully" });
 }));
 // POST /api/auth/forgot-password
 router.post("/forgot-password", authLimiter, validate(ForgotPasswordSchema), catchAsync(async (req, res) => {
@@ -145,7 +92,7 @@ router.post("/forgot-password", authLimiter, validate(ForgotPasswordSchema), cat
 router.post("/reset-password", authLimiter, validate(ResetPasswordSchema), catchAsync(async (req, res) => {
     await authService.resetPassword(req.body);
     return response.success(res, {
-        message: "Đặt lại mật khẩu thành công, vui lòng đăng nhập lại",
+        message: "Password reset successfully, please log in again",
     });
 }));
 export default router;

@@ -1,34 +1,34 @@
 import jwt from "jsonwebtoken";
-import User from "../models/user/user.schema.js";
+import User from "../modules/user/models/user.schema.js";
 import { unauthorized, forbidden } from "../shared/errors/httpErrors.js";
 /**
- * authenticate — Xác thực JWT, gắn req.user nếu hợp lệ.
+ * authenticate — Validate JWT and attach req.user when valid.
  */
 export const authenticate = async (req, _res, next) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader?.startsWith("Bearer "))
-            throw unauthorized("Bạn chưa đăng nhập");
+            throw unauthorized("You are not logged in");
         const token = authHeader.split(" ")[1];
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const user = await User.findById(decoded.id).select("-password");
         if (!user)
-            throw unauthorized("Người dùng không tồn tại");
+            throw unauthorized("User does not exist");
         if (!user.isActive)
-            throw forbidden("Tài khoản của bạn đã bị khóa");
+            throw forbidden("Your account has been locked");
         req.user = user;
         next();
     }
     catch (error) {
         if (error.name === "JsonWebTokenError")
-            return next(unauthorized("Token không hợp lệ"));
+            return next(unauthorized("Invalid token"));
         if (error.name === "TokenExpiredError")
-            return next(unauthorized("Token đã hết hạn"));
+            return next(unauthorized("Token has expired"));
         next(error);
     }
 };
 /**
- * optionalAuthenticate — Trích xuất req.user nếu có token hợp lệ, nếu không có hoặc token hết hạn thì bỏ qua và tiếp tục.
+ * optionalAuthenticate — Extract req.user if a valid token exists; otherwise continue.
  */
 export const optionalAuthenticate = async (req, _res, next) => {
     try {
@@ -44,38 +44,38 @@ export const optionalAuthenticate = async (req, _res, next) => {
         next();
     }
     catch (error) {
-        // Nếu token lỗi hoặc hết hạn, coi như không đăng nhập
+        // If the token is invalid or expired, treat the request as unauthenticated.
         next();
     }
 };
 /**
- * authorize(...roles) — Kiểm tra role. Phải dùng SAU authenticate.
+ * authorize(...roles) — Check role. Must be used after authenticate.
  */
 export const authorize = (...roles) => (req, _res, next) => {
     if (!req.user)
-        return next(unauthorized("Bạn chưa đăng nhập"));
+        return next(unauthorized("You are not logged in"));
     if (!roles.includes(req.user.role))
-        return next(forbidden("Bạn không có quyền thực hiện hành động này"));
+        return next(forbidden("You do not have permission to perform this action"));
     next();
 };
 /**
- * requirePermission — Kiểm tra quyền cụ thể (ACL). Phải dùng SAU authenticate.
- * Owner và Manager mặc định pass qua mọi check permission.
+ * requirePermission — Check a specific permission (ACL). Must be used after authenticate.
+ * Owner and manager bypass all permission checks by default.
  */
 export const requirePermission = (permission) => (req, _res, next) => {
     if (!req.user)
-        return next(unauthorized("Bạn chưa đăng nhập"));
-    if (req.user.role === "owner" || req.user.role === "manager")
+        return next(unauthorized("You are not logged in"));
+    if (req.user.role === "owner")
         return next();
     if (req.user.role === "customer")
-        return next(forbidden("Khách hàng không có quyền truy cập hệ thống quản trị"));
+        return next(forbidden("Customers do not have access to the admin system"));
     if (!req.user.permissions?.includes(permission)) {
-        return next(forbidden(`Bạn không có quyền: ${permission}`));
+        return next(forbidden(`You do not have permission: ${permission}`));
     }
     next();
 };
 /**
- * optionalAuth — Gắn req.user nếu có token hợp lệ, bỏ qua nếu không.
+ * optionalAuth — Attach req.user when a valid token exists; otherwise skip.
  */
 export const optionalAuth = async (req, _res, next) => {
     try {
@@ -90,18 +90,18 @@ export const optionalAuth = async (req, _res, next) => {
         }
     }
     catch {
-        // token lỗi → bỏ qua
+        // Invalid token -> ignore and continue.
     }
     next();
 };
 // ── Role helpers ──────────────────────────────────────────────────────────────
-// Dùng trực tiếp trong routes thay vì gọi authorize() với string thủ công.
-/** Chỉ owner */
+// Use directly in routes instead of calling authorize() with manual strings.
+/** Owner only */
 export const isOwner = authorize("owner");
-/** Owner hoặc manager */
+/** Owner or manager */
 export const isManager = authorize("owner", "manager");
-/** Quản lý nội bộ (owner, manager, staff) */
+/** Internal management (owner, manager, staff) */
 export const isStaff = authorize("owner", "manager", "staff");
-/** Đã đăng nhập — bất kỳ role nào */
+/** Logged in — any role */
 export const isAuthenticated = authorize("owner", "manager", "staff", "customer");
 // Alias giữ backward compat (có thể xóa sau khi refactor controllers)

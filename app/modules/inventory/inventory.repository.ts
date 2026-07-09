@@ -31,7 +31,11 @@ export const findVariantsByQuery = async (
     Variant.find(query)
       .populate({
         path: "productId",
-        populate: { path: "brandId", select: "name slug imageUrl country" },
+        populate: {
+          path: "brandId",
+          select: "name slug imageUrl country supplierId",
+          populate: { path: "supplierId" },
+        },
       })
       .sort({ _id: -1 })
       .skip(skip)
@@ -54,16 +58,25 @@ export const findProductById = (id: string) => Product.findById(id);
 
 export const saveVariant = (variant: any) => variant.save();
 
-export const atomicUpdateStock = (
+export const atomicUpdateStock = async (
   id: string | mongoose.Types.ObjectId,
   quantity: number,
   session?: mongoose.ClientSession,
-) =>
-  Variant.findByIdAndUpdate(
+) => {
+  const updated = await Variant.findByIdAndUpdate(
     id,
     { $inc: { stock: quantity } },
     { returnDocument: "after", session },
   );
+
+  if (updated && quantity < 0) {
+    import("./inventory.service.js")
+      .then(service => service.checkAndTriggerLowStockAlert(updated))
+      .catch(err => console.error("Error triggering low stock alert:", err));
+  }
+
+  return updated;
+};
 
 /** Tìm tất cả ID product match tên tìm kiếm */
 export const findProductIdsByName = async (
@@ -90,6 +103,7 @@ export const findTransactions = async (page: number, limit: number, type?: strin
         path: "variantId",
         populate: { path: "productId", select: "name" },
       })
+      .populate("creatorId", "name")
       .sort({ _id: -1 })
       .skip(skip)
       .limit(limit)

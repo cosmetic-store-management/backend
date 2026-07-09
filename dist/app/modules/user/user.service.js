@@ -1,18 +1,18 @@
 import mongoose from "mongoose";
-import Order from "../../models/order/order.schema.js";
+import Order from "../order/models/order.schema.js";
 import { getTierBySpending, getNextTier, TIERS, } from "./tier.constants.js";
 import * as userRepo from "./user.repository.js";
 import * as authRepo from "../auth/auth.repository.js";
 import { mapUser } from "./dto/user.response.dto.js";
 import { notFound, conflict, forbidden, } from "../../shared/errors/httpErrors.js";
-import User from "../../models/user/user.schema.js";
+import User from "./models/user.schema.js";
 import bcrypt from "bcryptjs";
-import PointHistory from "../../models/user/point-history.schema.js";
+import PointHistory from "./models/point-history.schema.js";
 import { mapProduct } from "../product/dto/product.response.dto.js";
 import { attachVariants } from "../product/product.repository.js";
 /**
- * Tính thông tin hạng thành viên cho một user cụ thể.
- * Aggregate từ đơn hàng có status = "completed".
+ * Calculate membership tier information for a specific user.
+ * Aggregate from orders with status = "completed".
  */
 export const getMyTierInfo = async (userId) => {
     const [result] = await Order.aggregate([
@@ -34,14 +34,14 @@ export const getMyTierInfo = async (userId) => {
     const orderCount = result?.orderCount ?? 0;
     const current = getTierBySpending(totalSpent);
     const next = getNextTier(current.key);
-    // Tính progress đến tier tiếp theo
+    // Calculate progress toward the next tier
     let progressPercent = 100;
     let spentToNext = null;
     if (next) {
         spentToNext = next.minSpent - totalSpent;
         progressPercent = Math.min(100, Math.round((totalSpent / next.minSpent) * 100));
     }
-    // Tier summary list (thấp → cao, để hiển thị bảng)
+    // Tier summary list (low -> high, for table display)
     const tiers = [...TIERS].reverse().map((t) => ({
         key: t.key,
         label: t.label,
@@ -68,53 +68,64 @@ export const getMyTierInfo = async (userId) => {
 };
 // ── Source: user-profile.service.ts ──────────────────────────────
 export const updateCurrentUser = async (userId, data) => {
-    const user = await userRepo.findById(userId);
-    if (!user)
-        throw notFound("Không tìm thấy user");
-    if (data.name !== undefined)
-        user.name = data.name;
-    if (data.phone !== undefined && data.phone !== user.phone) {
-        // Bug #2 Fix: kiểm tra phone unique trước khi update
-        const phoneOwner = await userRepo.findByPhone(data.phone);
-        if (phoneOwner && phoneOwner._id.toString() !== userId) {
-            throw conflict("Số điện thoại này đã được sử dụng bởi tài khoản khác");
-        }
-        user.phone = data.phone;
-    }
-    if (data.email !== undefined && data.email !== user.email) {
-        if (data.email) {
-            const emailOwner = await userRepo.findByEmail(data.email);
-            if (emailOwner && emailOwner._id.toString() !== userId) {
-                throw conflict("Email này đã được sử dụng bởi tài khoản khác");
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const user = await userRepo.findById(userId).session(session);
+        if (!user)
+            throw notFound("User not found");
+        if (data.name !== undefined)
+            user.name = data.name;
+        if (data.phone !== undefined && data.phone !== user.phone) {
+            const phoneOwner = await User.findOne({ phone: data.phone, isDeleted: { $ne: true } }).session(session);
+            if (phoneOwner && phoneOwner._id.toString() !== userId) {
+                throw conflict("This phone number is already used by another account");
             }
-            // Check if OTP was verified
-            const otpRecord = await authRepo.findOtpByEmail(data.email);
-            if (!otpRecord || !otpRecord.isVerified) {
-                throw forbidden("Bạn phải xác thực Email bằng mã OTP trước khi cập nhật");
-            }
-            await authRepo.deleteOtp(data.email);
+            user.phone = data.phone;
         }
-        user.email = data.email;
+        if (data.email !== undefined && data.email !== user.email) {
+            if (data.email) {
+                const emailOwner = await User.findOne({ email: data.email, isDeleted: { $ne: true } }).session(session);
+                if (emailOwner && emailOwner._id.toString() !== userId) {
+                    throw conflict("This email is already used by another account");
+                }
+                // Check whether the OTP was verified
+                const otpRecord = await authRepo.findOtpByEmail(data.email);
+                if (!otpRecord || !otpRecord.isVerified) {
+                    throw forbidden("You must verify your email with an OTP before updating");
+                }
+                await authRepo.deleteOtp(data.email);
+            }
+            user.email = data.email;
+        }
+        if (data.dob !== undefined)
+            user.dob = new Date(data.dob);
+        if (data.gender !== undefined)
+            user.gender = data.gender;
+        await user.save({ session });
+        await session.commitTransaction();
+        return mapUser(user);
     }
-    if (data.dob !== undefined)
-        user.dob = new Date(data.dob);
-    if (data.gender !== undefined)
-        user.gender = data.gender;
-    await userRepo.save(user);
-    return mapUser(user);
+    catch (error) {
+        await session.abortTransaction();
+        throw error;
+    }
+    finally {
+        await session.endSession();
+    }
 };
 export const updateAvatar = async (userId, avatarDataUrl) => {
     const user = await userRepo.findById(userId);
     if (!user)
-        throw notFound("Không tìm thấy user");
-    // Validate: chỉ chấp nhận JPEG/PNG data URL, tối đa 1MB
+        throw notFound("User not found");
+    // Validate: only accept JPEG/PNG data URLs, maximum 1MB
     if (!avatarDataUrl.startsWith("data:image/")) {
-        throw { status: 400, message: "Định dạng ảnh không hợp lệ" };
+        throw { status: 400, message: "Invalid image format" };
     }
     const base64Data = avatarDataUrl.split(",")[1] || "";
     const sizeBytes = (base64Data.length * 3) / 4;
     if (sizeBytes > 1.5 * 1024 * 1024) {
-        throw { status: 400, message: "Ảnh vượt quá dung lượng cho phép (1.5 MB)" };
+        throw { status: 400, message: "Image exceeds the allowed size (1.5 MB)" };
     }
     user.avatar = avatarDataUrl;
     await userRepo.save(user);
@@ -124,7 +135,10 @@ export const updateAvatar = async (userId, avatarDataUrl) => {
 export const addAddress = async (userId, data) => {
     const user = await userRepo.findById(userId);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
+    if (!user.addresses) {
+        user.addresses = [];
+    }
     if (data.isDefault) {
         user.addresses.forEach((a) => (a.isDefault = false));
     }
@@ -140,10 +154,13 @@ export const addAddress = async (userId, data) => {
 export const updateAddress = async (userId, addressId, data) => {
     const user = await userRepo.findById(userId);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
+    if (!user.addresses) {
+        user.addresses = [];
+    }
     const address = user.addresses.find((a) => a._id?.toString() === addressId);
     if (!address)
-        throw notFound("Không tìm thấy địa chỉ");
+        throw notFound("Address not found");
     if (data.isDefault) {
         user.addresses.forEach((a) => (a.isDefault = false));
     }
@@ -159,13 +176,13 @@ export const updateAddress = async (userId, addressId, data) => {
 export const deleteAddress = async (userId, addressId) => {
     const user = await userRepo.findById(userId);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     const addrIndex = user.addresses.findIndex((a) => a._id?.toString() === addressId);
     if (addrIndex === -1)
-        throw notFound("Không tìm thấy địa chỉ");
+        throw notFound("Address not found");
     const isDefault = user.addresses[addrIndex].isDefault;
     user.addresses.splice(addrIndex, 1);
-    // Nếu xóa địa chỉ mặc định, tự động gán cái đầu tiên làm mặc định
+    // If the default address is deleted, automatically mark the first one as default
     if (isDefault && user.addresses.length > 0) {
         user.addresses[0].isDefault = true;
     }
@@ -176,12 +193,12 @@ export const deleteAddress = async (userId, addressId) => {
 const checkHierarchy = (requester, target) => {
     if (requester.role === "manager") {
         if (target.role === "owner" || target.role === "manager") {
-            throw forbidden("Bạn không có quyền can thiệp vào tài khoản cấp cao hoặc đồng cấp");
+            throw forbidden("You do not have permission to modify higher or equal level accounts");
         }
     }
 };
-export const getStaffUsers = async (cursor = null, limit = 20, search, status, role) => {
-    const result = await userRepo.findStaffs(cursor, limit, search, status, role);
+export const getStaffUsers = async (page = 1, limit = 20, search, status, role, hiringStatus, workingShift) => {
+    const result = await userRepo.findStaffs(page, limit, search, status, role, hiringStatus, workingShift);
     return {
         ...result,
         users: result.users.map(mapUser),
@@ -190,13 +207,13 @@ export const getStaffUsers = async (cursor = null, limit = 20, search, status, r
 export const getUserById = async (id) => {
     const user = await userRepo.findById(id);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     return mapUser(user);
 };
 export const updateUserByAdmin = async (id, data, requester) => {
     const user = await userRepo.findById(id);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     checkHierarchy(requester, user);
     if (data.name !== undefined)
         user.name = data.name;
@@ -204,6 +221,24 @@ export const updateUserByAdmin = async (id, data, requester) => {
         user.phone = data.phone;
     if (data.email !== undefined)
         user.email = data.email;
+    if (data.citizenId !== undefined)
+        user.citizenId = data.citizenId;
+    if (data.startDate !== undefined)
+        user.startDate = data.startDate;
+    if (data.bankInfo !== undefined)
+        user.bankInfo = data.bankInfo;
+    if (data.emergencyContact !== undefined)
+        user.emergencyContact = data.emergencyContact;
+    if (data.homeAddress !== undefined)
+        user.homeAddress = data.homeAddress;
+    if (data.status !== undefined)
+        user.status = data.status;
+    if (data.contractType !== undefined)
+        user.contractType = data.contractType;
+    if (data.workingShift !== undefined)
+        user.workingShift = data.workingShift;
+    if (data.salaryInfo !== undefined)
+        user.salaryInfo = data.salaryInfo;
     if (data.province !== undefined ||
         data.district !== undefined ||
         data.ward !== undefined ||
@@ -240,7 +275,7 @@ export const updateUserByAdmin = async (id, data, requester) => {
 export const updateInternalNotes = async (id, internalNotes) => {
     const user = await userRepo.findById(id);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     user.internalNotes = internalNotes;
     await userRepo.save(user);
     return mapUser(user);
@@ -248,7 +283,7 @@ export const updateInternalNotes = async (id, internalNotes) => {
 export const updateStaffInternalNotes = async (id, internalNotes, requester) => {
     const user = await userRepo.findById(id);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     checkHierarchy(requester, user);
     user.internalNotes = internalNotes;
     await userRepo.save(user);
@@ -257,9 +292,9 @@ export const updateStaffInternalNotes = async (id, internalNotes, requester) => 
 export const updateUserRole = async (id, role, permissions, requester) => {
     const user = await userRepo.findById(id);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     if (user.role === "owner")
-        throw conflict("Không thể thay đổi quyền của Owner");
+        throw conflict("Cannot change the permissions of the Owner");
     checkHierarchy(requester, user);
     let newRole = role;
     if (requester.role === "manager" && role === "manager") {
@@ -275,9 +310,9 @@ export const updateUserRole = async (id, role, permissions, requester) => {
 export const updateUserStatus = async (id, isActive, requester) => {
     const user = await userRepo.findById(id);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     if (user.role === "owner")
-        throw conflict("Không thể khóa tài khoản Chủ cửa hàng (Owner)");
+        throw conflict("Cannot lock the Owner account");
     checkHierarchy(requester, user);
     user.isActive = isActive;
     await userRepo.save(user);
@@ -286,11 +321,11 @@ export const updateUserStatus = async (id, isActive, requester) => {
 export const resetUserPassword = async (id, requester) => {
     const user = await userRepo.findById(id);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     if (user.role === "owner")
-        throw conflict("Không thể thao tác trên tài khoản Chủ cửa hàng");
+        throw conflict("Cannot operate on the Owner account");
     checkHierarchy(requester, user);
-    // Đọc từ env để không hardcode mật khẩu trong source code
+    // Read from env so the password is not hardcoded in source code
     const defaultPassword = process.env.DEFAULT_STAFF_PASSWORD || "GlowUp@123456";
     user.password = await bcrypt.hash(defaultPassword, 12);
     await userRepo.save(user);
@@ -299,18 +334,18 @@ export const resetUserPassword = async (id, requester) => {
 export const deleteUserById = async (id, requester) => {
     const user = await userRepo.findById(id);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     if (user.role === "owner")
-        throw conflict("Không thể xóa tài khoản Chủ cửa hàng");
+        throw conflict("Cannot delete the Owner account");
     checkHierarchy(requester, user);
-    // Kiểm tra đơn hàng đang xử lý nếu là khách hàng
+    // Check processing orders if the user is a customer
     if (user.role === "customer") {
         const activeOrder = await Order.findOne({
             userId: id,
             orderStatus: { $in: ["pending", "processing", "shipping", "return_pending"] },
         });
         if (activeOrder) {
-            throw conflict("Không thể xóa. Khách hàng này đang có đơn hàng chưa hoàn tất hoặc đang chờ hoàn trả.");
+            throw conflict("Cannot delete. This customer has uncompleted or pending return orders.");
         }
     }
     // Thực thi Ẩn danh hóa (Data Anonymization)
@@ -326,24 +361,39 @@ export const deleteUserById = async (id, requester) => {
     user.avatar = undefined;
     user.addresses = [];
     user.refreshTokens = [];
-    user.internalNotes = `Đã bị xóa bởi hệ thống lúc ${new Date().toISOString()}`;
+    user.internalNotes = `Deleted by the system at ${new Date().toISOString()}`;
     user.isActive = false;
     await userRepo.save(user);
 };
 export const createStaff = async (data, requester) => {
     const existingPhone = await userRepo.findByPhone(data.phone);
     if (existingPhone)
-        throw conflict("Số điện thoại đã tồn tại");
+        throw conflict("Phone number already exists");
     if (data.email) {
         const existingEmail = await userRepo.findByEmail(data.email);
         if (existingEmail)
-            throw conflict("Email đã tồn tại");
+            throw conflict("Email already exists");
     }
     let finalRole = data.role || "staff";
     if (requester.role === "manager") {
-        finalRole = "staff"; // Manager chỉ được tạo Staff
+        finalRole = "staff"; // Managers can only create staff accounts
     }
     const hashedPassword = await bcrypt.hash(data.password || "123456", 12);
+    // Generate employeeId
+    const lastStaff = await User.findOne({
+        employeeId: { $regex: /^NV[0-9]{4}$/ }
+    })
+        .sort({ employeeId: -1 })
+        .select("employeeId")
+        .lean();
+    let nextNum = 1;
+    if (lastStaff && lastStaff.employeeId) {
+        const match = lastStaff.employeeId.match(/^NV([0-9]{4})$/);
+        if (match) {
+            nextNum = parseInt(match[1]) + 1;
+        }
+    }
+    const employeeId = `NV${String(nextNum).padStart(4, "0")}`;
     const newUser = await userRepo.create({
         name: data.name,
         email: data.email || undefined,
@@ -351,6 +401,16 @@ export const createStaff = async (data, requester) => {
         password: hashedPassword,
         role: finalRole,
         permissions: data.permissions || [],
+        citizenId: data.citizenId || undefined,
+        startDate: data.startDate || undefined,
+        bankInfo: data.bankInfo || undefined,
+        emergencyContact: data.emergencyContact || undefined,
+        homeAddress: data.homeAddress || undefined,
+        employeeId,
+        status: data.status || "working",
+        contractType: data.contractType || "fulltime",
+        workingShift: data.workingShift || "full",
+        salaryInfo: data.salaryInfo || { baseSalary: 0, allowance: 0, commissionRate: 0 },
     });
     return mapUser(newUser);
 };
@@ -529,7 +589,7 @@ export const getCustomers = async (page = 1, limit = 20, search, tier, status, s
                 };
             }
             else {
-                // Diamond (tier cao nhất) — không có giới hạn trên
+                // Diamond (highest tier) — no upper limit
                 postMatch.totalSpent = { $gte: tierDef.minSpent };
             }
         }
@@ -645,7 +705,7 @@ export const getCustomers = async (page = 1, limit = 20, search, tier, status, s
 export const createManualCustomer = async (data) => {
     const existing = await userRepo.findByPhone(data.phone);
     if (existing)
-        throw conflict("Số điện thoại đã tồn tại");
+        throw conflict("Phone number already exists");
     const hashedPassword = data.password
         ? await bcrypt.hash(data.password, 12)
         : undefined;
@@ -662,10 +722,10 @@ export const createManualCustomer = async (data) => {
 export const adjustUserPoints = async (id, pointsChanged, reason, performedBy) => {
     const user = await userRepo.findById(id);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     const newPoints = user.points + pointsChanged;
     if (newPoints < 0)
-        throw conflict("Điểm không thể là số âm");
+        throw conflict("Points cannot be negative");
     user.points = newPoints;
     await userRepo.save(user);
     await PointHistory.create({
@@ -680,7 +740,7 @@ export const adjustUserPoints = async (id, pointsChanged, reason, performedBy) =
 export const getFavorites = async (userId) => {
     const user = await userRepo.findById(userId);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     await user.populate({
         path: "favorites",
         populate: [
@@ -696,7 +756,7 @@ export const getFavorites = async (userId) => {
 export const toggleFavorite = async (userId, productId) => {
     const user = await userRepo.findById(userId);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     const productObjectId = new mongoose.Types.ObjectId(productId);
     const favorites = user.favorites || [];
     const index = favorites.findIndex((id) => id.toString() === productId);
@@ -714,7 +774,7 @@ export const toggleFavorite = async (userId, productId) => {
 export const getRecentlyViewed = async (userId, page = 1, limit = 12) => {
     const user = await userRepo.findById(userId);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     await user.populate({
         path: "recentlyViewed",
         populate: [
@@ -739,7 +799,7 @@ export const getRecentlyViewed = async (userId, page = 1, limit = 12) => {
 export const recordRecentlyViewed = async (userId, productId) => {
     const user = await userRepo.findById(userId);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     const productObjectId = new mongoose.Types.ObjectId(productId);
     const viewed = user.recentlyViewed || [];
     const index = viewed.findIndex((id) => id.toString() === productId);
@@ -758,7 +818,7 @@ export const recordRecentlyViewed = async (userId, productId) => {
 export const removeFromViewed = async (userId, productId) => {
     const user = await userRepo.findById(userId);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     const viewed = user.recentlyViewed || [];
     const index = viewed.findIndex((id) => id.toString() === productId);
     if (index !== -1) {
@@ -772,8 +832,22 @@ export const removeFromViewed = async (userId, productId) => {
 export const clearRecentlyViewed = async (userId) => {
     const user = await userRepo.findById(userId);
     if (!user)
-        throw notFound("Không tìm thấy user");
+        throw notFound("User not found");
     user.recentlyViewed = [];
     await userRepo.save(user);
+    return { success: true };
+};
+// DELETE user (Admin only)
+export const deleteUser = async (targetUserId, currentUser) => {
+    if (targetUserId === currentUser._id.toString()) {
+        throw forbidden("You cannot delete yourself");
+    }
+    const targetUser = await userRepo.findById(targetUserId);
+    if (!targetUser)
+        throw notFound("User not found");
+    if (targetUser.role === "owner") {
+        throw forbidden("Cannot delete the store owner account");
+    }
+    await User.findByIdAndDelete(targetUserId);
     return { success: true };
 };

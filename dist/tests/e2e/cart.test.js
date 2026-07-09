@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { app } from "../../server.js";
-import User from "../../app/models/user/user.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
 import { connectTestDB, disconnectTestDB } from "../integration/helpers/db-helper.js";
 describe("Cart E2E Flow", () => {
     let token;
@@ -17,7 +17,7 @@ describe("Cart E2E Flow", () => {
             confirmPassword: "password123"
         });
         // 2. Login to get token
-        const loginRes = await request(app).post("/api/auth/public/login").send({
+        const loginRes = await request(app).post("/api/auth/login").send({
             phone: "0999888777",
             password: "password123"
         });

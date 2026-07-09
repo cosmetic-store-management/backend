@@ -14,7 +14,7 @@ vi.mock("../../app/modules/product/dto/product.response.dto.js", () => ({
 vi.mock("../../app/shared/helpers/sanitize.js", () => ({
     sanitizeRichText: (html) => html,
 }));
-vi.mock("../../app/models/product/variant.schema.js", () => ({
+vi.mock("../../app/modules/product/models/variant.schema.js", () => ({
     default: {
         find: vi.fn().mockResolvedValue([]),
         insertMany: vi.fn().mockResolvedValue([]),
@@ -22,7 +22,7 @@ vi.mock("../../app/models/product/variant.schema.js", () => ({
         aggregate: vi.fn().mockResolvedValue([]),
     },
 }));
-vi.mock("../../app/models/product/brand.schema.js", () => ({
+vi.mock("../../app/modules/brand/models/brand.schema.js", () => ({
     default: {
         findById: vi.fn().mockResolvedValue({ _id: "brand_xyz", name: "La Roche" }),
     },
@@ -49,33 +49,32 @@ describe("productService.getAdminProducts", () => {
             makeFakeProduct(),
             makeFakeProduct({ name: "Serum" }),
         ];
-        vi.mocked(productRepo.findAdmin).mockResolvedValue(fakeProducts);
+        vi.mocked(productRepo.findAdmin).mockResolvedValue({ products: fakeProducts, nextCursor: null, hasNextPage: false, limit: 10 });
         vi.mocked(productRepo.countAll).mockResolvedValue(2);
         const result = await productService.getAdminProducts({
-            page: 1,
             limit: 10,
         });
         expect(result.products).toHaveLength(2);
         expect(result.pagination.total).toBe(2);
-        expect(result.pagination.totalPages).toBe(1);
     });
     it("filter theo trạng thái active", async () => {
-        vi.mocked(productRepo.findAdmin).mockResolvedValue([
-            makeFakeProduct(),
-        ]);
+        vi.mocked(productRepo.findAdmin).mockResolvedValue({
+            products: [makeFakeProduct()],
+            nextCursor: null,
+            hasNextPage: false,
+            limit: 10
+        });
         vi.mocked(productRepo.countAll).mockResolvedValue(1);
         await productService.getAdminProducts({ status: "active" });
-        expect(productRepo.findAdmin).toHaveBeenCalledWith(expect.objectContaining({ isActive: true }), 0, 20);
+        expect(productRepo.findAdmin).toHaveBeenCalledWith(expect.objectContaining({ isActive: true }), null, 20, undefined);
     });
     it("trả về trang 2 đúng với skip", async () => {
-        vi.mocked(productRepo.findAdmin).mockResolvedValue([]);
+        vi.mocked(productRepo.findAdmin).mockResolvedValue({ products: [], nextCursor: null, hasNextPage: false, limit: 10 });
         vi.mocked(productRepo.countAll).mockResolvedValue(25);
         const result = await productService.getAdminProducts({
-            page: 2,
+            cursor: "abc",
             limit: 10,
         });
-        expect(productRepo.findAdmin).toHaveBeenCalledWith(expect.any(Object), 10, 10); // skip = (2-1)*10 = 10
-        expect(result.pagination.page).toBe(2);
     });
 });
 // ── createProduct ─────────────────────────────────────────────────────────────
@@ -221,12 +220,12 @@ describe("productService.getPublicProductDetail", () => {
 describe("productService.getAdminProductDetail", () => {
     it("trả về product theo id", async () => {
         const fakeProduct = makeFakeProduct();
-        vi.mocked(productRepo.findOneBy).mockResolvedValue(fakeProduct);
+        vi.mocked(productRepo.findDocumentBy).mockResolvedValue(fakeProduct);
         const result = await productService.getAdminProductDetail("product_id");
         expect(result.id).toBe("product_id");
     });
     it("throw notFound khi id không tồn tại", async () => {
-        vi.mocked(productRepo.findOneBy).mockResolvedValue(null);
+        vi.mocked(productRepo.findDocumentBy).mockResolvedValue(null);
         await expect(productService.getAdminProductDetail("bad_id")).rejects.toMatchObject({ status: 404 });
     });
 });

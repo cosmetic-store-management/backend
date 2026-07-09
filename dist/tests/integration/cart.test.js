@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { app } from "../../server.js";
-import User from "../../app/models/user/user.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
 import jwt from "jsonwebtoken";
 import { connectTestDB, disconnectTestDB } from "./helpers/db-helper.js";
 describe("Cart Integration Tests", () => {

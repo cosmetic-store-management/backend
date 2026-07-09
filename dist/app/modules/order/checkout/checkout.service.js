@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
-import Order from "../../../models/order/order.schema.js";
-import User from "../../../models/user/user.schema.js";
-import Product from "../../../models/product/product.schema.js";
-import PointHistory from "../../../models/user/point-history.schema.js";
-import InventoryTransaction from "../../../models/inventory/inventory-transaction.schema.js";
+import Order from "../models/order.schema.js";
+import User from "../../user/models/user.schema.js";
+import Product from "../../product/models/product.schema.js";
+import PointHistory from "../../user/models/point-history.schema.js";
+import InventoryTransaction from "../../inventory/models/inventory-transaction.schema.js";
 import * as inventoryRepo from "../../inventory/inventory.repository.js";
 import { mapOrder } from "../dto/order.response.dto.js";
 import { badRequest, notFound } from "../../../shared/errors/httpErrors.js";
@@ -48,12 +48,12 @@ export const previewOrder = async (user, data) => {
     const variantMap = new Map(variantsList.map(v => [v._id.toString(), v]));
     for (const item of data.items) {
         if (!mongoose.Types.ObjectId.isValid(item.productId))
-            throw badRequest("productId không hợp lệ");
+            throw badRequest("Invalid productId");
         if (!item.variantId || !mongoose.Types.ObjectId.isValid(item.variantId))
-            throw badRequest("variantId không hợp lệ");
+            throw badRequest("Invalid variantId");
         const variant = variantMap.get(item.variantId);
         if (!variant || variant.productId.toString() !== item.productId)
-            throw notFound("Phân loại hàng không hợp lệ");
+            throw notFound("Invalid product variant");
         if (!variant.isActive)
             throw badRequest(`Phân loại ${variant.name} hiện không khả dụng`);
         let unitPrice = variant.discountPrice && variant.discountPrice > 0
@@ -102,7 +102,7 @@ export const previewOrder = async (user, data) => {
     }
     else if (data.voucherCode) {
         try {
-            const voucherRes = await validateVoucher(data.voucherCode, subtotal, shippingFee, user?._id.toString());
+            const voucherRes = await validateVoucher(data.voucherCode, subtotal, shippingFee, user?._id.toString(), data.channel || "online");
             if (voucherRes.discountType === "freeship") {
                 freeshipDiscountAmount = voucherRes.discountAmount;
             }
@@ -134,6 +134,7 @@ export const previewOrder = async (user, data) => {
         shippingFee,
         tierDiscountAmount,
         voucherDiscountAmount,
+        freeshipDiscountAmount,
         finalVoucherCode,
         totalDiscount,
         userPoints,
@@ -186,24 +187,24 @@ export const createOrder = async (user, data) => {
     const variantMap = new Map(variantsList.map(v => [v._id.toString(), v]));
     for (const item of data.items) {
         if (!mongoose.Types.ObjectId.isValid(item.productId))
-            throw badRequest("productId không hợp lệ");
+            throw badRequest("Invalid productId");
         if (!item.variantId || !mongoose.Types.ObjectId.isValid(item.variantId))
-            throw badRequest("variantId không hợp lệ");
+            throw badRequest("Invalid variantId");
         const product = productMap.get(item.productId);
         if (!product)
-            throw notFound("Có sản phẩm không tồn tại");
+            throw notFound("Some products do not exist");
         if (!product.isActive)
-            throw badRequest(`Sản phẩm ${product.name} hiện không khả dụng`);
+            throw badRequest(`Product ${product.name} is currently unavailable`);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (product.categoryId?.isActive === false)
             throw badRequest(`Danh mục của sản phẩm ${product.name} hiện không khả dụng`);
         const variant = variantMap.get(item.variantId);
         if (!variant || variant.productId.toString() !== item.productId)
-            throw notFound("Phân loại hàng không hợp lệ");
+            throw notFound("Invalid product variant");
         if (!variant.isActive)
-            throw badRequest(`Phân loại ${variant.name} của sản phẩm ${product.name} hiện không khả dụng`);
+            throw badRequest(`Variant ${variant.name} of product ${product.name} is currently unavailable`);
         if (variant.stock < item.quantity)
-            throw badRequest(`Sản phẩm ${product.name} (${variant.name}) không đủ tồn kho`);
+            throw badRequest(`Product ${product.name} (${variant.name}) has insufficient stock`);
         let unitPrice = variant.discountPrice && variant.discountPrice > 0
             ? variant.discountPrice
             : variant.price;
@@ -249,7 +250,7 @@ export const createOrder = async (user, data) => {
     let finalVoucherCode = "";
     if (data.voucherCode) {
         try {
-            const voucherRes = await validateVoucher(data.voucherCode, subtotal, shippingFee, user._id.toString());
+            const voucherRes = await validateVoucher(data.voucherCode, subtotal, shippingFee, user._id.toString(), "online");
             if (voucherRes.discountType === "freeship") {
                 freeshipDiscountAmount = voucherRes.discountAmount;
             }
@@ -293,7 +294,7 @@ export const createOrder = async (user, data) => {
         }
         // Tạo đơn hàng
         newOrder = await orderRepo.createOrder({
-            code: generateOrderCode(),
+            code: generateOrderCode("ONL"),
             receiverName,
             phone,
             province,
@@ -365,17 +366,23 @@ export const createOrder = async (user, data) => {
     finally {
         await session.endSession();
     }
-    // Gửi email bất đồng bộ, không đợi kết quả để tránh block response
-    // Chỉ gửi email ngay lúc này đối với các phương thức không phải qua cổng thanh toán online (ví dụ COD, Transfer)
-    // Đối với Stripe, email sẽ được gửi qua Webhook khi thanh toán thành công
-    if (user.email) {
+    if (user.email && ["cod", "cash"].includes(data.paymentMethod)) {
         sendOrderSuccessEmail(user.email, newOrder.code, finalTotalAmount).catch(console.error);
     }
     const mappedOrder = mapOrder(newOrder, orderItems);
     return mappedOrder;
 };
-// ── Source: order-pos.service.ts ──────────────────────────────────────────────
 export const createPOSOrder = async (operator, data) => {
+    // Generate POS Receipt Number
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, ""); // e.g., 20260708
+    const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
+    const endOfDay = new Date(new Date().setHours(23, 59, 59, 999));
+    const countToday = await Order.countDocuments({
+        channel: "pos",
+        createdAt: { $gte: startOfDay, $lte: endOfDay },
+    });
+    const receiptNumber = `HD-POS-${dateStr}-${String(countToday + 1).padStart(4, "0")}`;
     if (data.items && Array.isArray(data.items)) {
         data.items = data.items.reduce((acc, item) => {
             const existing = acc.find((i) => i.variantId === item.variantId);
@@ -396,7 +403,6 @@ export const createPOSOrder = async (operator, data) => {
             phone: customerPhone,
             role: "customer",
         });
-        // Implicit Customer Creation
         if (!customerUser) {
             customerUser = await User.create({
                 name: customerName || `Khách hàng`,
@@ -419,21 +425,21 @@ export const createPOSOrder = async (operator, data) => {
     const variantMap = new Map(variantsList.map(v => [v._id.toString(), v]));
     for (const item of data.items) {
         if (!mongoose.Types.ObjectId.isValid(item.productId))
-            throw badRequest("productId không hợp lệ");
+            throw badRequest("Invalid productId");
         if (!item.variantId || !mongoose.Types.ObjectId.isValid(item.variantId))
-            throw badRequest("variantId không hợp lệ");
+            throw badRequest("Invalid variantId");
         const product = productMap.get(item.productId);
         if (!product)
-            throw notFound("Có sản phẩm không tồn tại");
+            throw notFound("Some products do not exist");
         if (!product.isActive)
-            throw badRequest(`Sản phẩm ${product.name} hiện không khả dụng`);
+            throw badRequest(`Product ${product.name} is currently unavailable`);
         const variant = variantMap.get(item.variantId);
         if (!variant || variant.productId.toString() !== item.productId)
-            throw notFound("Phân loại hàng không hợp lệ");
+            throw notFound("Invalid product variant");
         if (!variant.isActive)
-            throw badRequest(`Phân loại ${variant.name} của sản phẩm ${product.name} hiện không khả dụng`);
+            throw badRequest(`Variant ${variant.name} of product ${product.name} is currently unavailable`);
         if (variant.stock < item.quantity)
-            throw badRequest(`Sản phẩm ${product.name} (${variant.name}) không đủ tồn kho`);
+            throw badRequest(`Product ${product.name} (${variant.name}) has insufficient stock`);
         const unitPrice = variant.discountPrice && variant.discountPrice > 0
             ? variant.discountPrice
             : variant.price;
@@ -457,7 +463,7 @@ export const createPOSOrder = async (operator, data) => {
         const customerTotalSpent = await getUserTotalSpent(customerUser._id.toString());
         tierDiscountAmount = calculateTierDiscount(customerTotalSpent, subtotal);
     }
-    const orderCode = `POS-${generateOrderCode().replace("GLU-", "")}`;
+    const orderCode = generateOrderCode("OFF");
     const providedDiscount = typeof data.discountAmount === "number" && data.discountAmount > 0
         ? data.discountAmount
         : 0;
@@ -514,6 +520,7 @@ export const createPOSOrder = async (operator, data) => {
             userId: customerUser ? customerUser._id : null,
             channel: "pos",
             creatorId: operator._id,
+            receiptNumber,
             paymentStatus: "paid",
             earnedPoints: Math.floor(finalTotalAmount / orderSettings.pointsEarnRate),
             items: normalizedItems,
@@ -553,7 +560,7 @@ export const createPOSOrder = async (operator, data) => {
         const sortedProductsToLog = [...normalizedItems].sort((a, b) => a.productId.toString().localeCompare(b.productId.toString()));
         for (const item of sortedProductsToLog) {
             await InventoryTransaction.create([{
-                    code: `TX-POS-${Math.floor(100000 + Math.random() * 900000)}`,
+                    code: `TXOUT${Math.floor(100000 + Math.random() * 900000)}`,
                     productId: item.productId,
                     variantId: item.variantId,
                     type: "out",

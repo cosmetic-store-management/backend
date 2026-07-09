@@ -3,7 +3,6 @@ export const CreateProductSchema = z.object({
     name: z.string().min(1, "Tên sản phẩm không được để trống").trim(),
     brand: z.string().trim().optional().default(""), // legacy — auto-filled from brandId
     brandId: z.string().min(1, "Thương hiệu không được để trống"),
-    shopId: z.string().nullable().optional(), // Multi-tenant
     description: z.string().trim().optional().default(""),
     imageUrl: z.string().trim().optional().default(""),
     imageUrls: z.array(z.string()).optional().default([]),
@@ -14,11 +13,11 @@ export const CreateProductSchema = z.object({
         .array(z
         .object({
         id: z.string().optional(),
-        name: z.string().min(1, "Tên biến thể không được để trống"),
+        name: z.string().min(1, "Variant name is required"),
         sku: z.string().optional(),
-        price: z.number().min(0, "Giá không hợp lệ"),
-        discountPrice: z.number().min(0).nullable().optional().default(null),
+        price: z.number().min(0, "Invalid price"),
         stock: z.number().int().min(0, "Số lượng không hợp lệ"),
+        discountPrice: z.number().min(0).nullable().optional().default(null),
         minStock: z.number().int().optional().default(10),
         weight: z.number().int().optional().default(200),
         imageUrl: z.string().optional().default(""),
@@ -29,12 +28,11 @@ export const CreateProductSchema = z.object({
         isActive: z.boolean().optional().default(true),
     })
         .refine((data) => !data.discountPrice || data.discountPrice < data.price, {
-        message: "Giá khuyến mãi phải nhỏ hơn giá gốc",
+        message: "Discount price must be lower than the original price",
         path: ["discountPrice"],
-    }))
-        .min(1, "Sản phẩm phải có ít nhất 1 phân loại hàng"),
+    })),
 });
-export const UpdateProductSchema = CreateProductSchema.partial().refine((data) => Object.keys(data).length > 0, "Vui lòng cung cấp ít nhất một thông tin cần cập nhật");
+export const UpdateProductSchema = CreateProductSchema.partial().refine((data) => Object.keys(data).length > 0, "Please provide at least one field to update");
 export const UpdateProductStatusSchema = z.object({
     isActive: z.boolean(),
 });

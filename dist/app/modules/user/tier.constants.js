@@ -12,7 +12,7 @@
 export const TIERS = [
     {
         key: "diamond",
-        label: "Kim cương",
+        label: "Diamond",
         labelEn: "Diamond",
         minSpent: 10_000_000, // ≥ 10 triệu VNĐ
         discount: 0.1, // 10%
@@ -22,7 +22,7 @@ export const TIERS = [
     },
     {
         key: "gold",
-        label: "Vàng",
+        label: "Gold",
         labelEn: "Gold",
         minSpent: 5_000_000, // ≥ 5 triệu VNĐ
         discount: 0.05, // 5%
@@ -32,7 +32,7 @@ export const TIERS = [
     },
     {
         key: "silver",
-        label: "Bạc",
+        label: "Silver",
         labelEn: "Silver",
         minSpent: 1_000_000, // ≥ 1 triệu VNĐ
         discount: 0.02, // 2%
@@ -42,7 +42,7 @@ export const TIERS = [
     },
     {
         key: "member",
-        label: "Thành viên",
+        label: "Member",
         labelEn: "Member",
         minSpent: 0,
         discount: 0, // 0%

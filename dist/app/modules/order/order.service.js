@@ -1,13 +1,15 @@
+import Order from "./models/order.schema.js";
+import PaymentTransaction from "./models/payment-transaction.schema.js";
 import * as orderRepo from "./order.repository.js";
-import { mapOrder } from "./dto/order.response.dto.js";
+import { mapOrder, mapPublicOrder } from "./dto/order.response.dto.js";
 import * as inventoryRepo from "../inventory/inventory.repository.js";
 import { notFound, forbidden, badRequest, } from "../../shared/errors/httpErrors.js";
-import User from "../../models/user/user.schema.js";
+import User from "../user/models/user.schema.js";
 import mongoose from "mongoose";
 import { decrementVoucherUsage, } from "../voucher/voucher.service.js";
 import { refundPayment } from "./payment/payment.service.js";
-import PointHistory from "../../models/user/point-history.schema.js";
-import Product from "../../models/product/product.schema.js";
+import PointHistory from "../user/models/point-history.schema.js";
+import Product from "../product/models/product.schema.js";
 import { POINTS_EARN_RATE, MAX_POINTS_PCT, ALLOWED_TRANSITIONS, getOrderSettings, } from "./checkout/checkout.helper.js";
 import { sendOrderCancelledEmail, sendOrderShippedEmail, sendOrderReturnedEmail, sendOrderReturnRejectedEmail, sendOrderCompletedEmail } from "../../shared/email/email.service.js";
 // Re-export helpers for backward compatibility
@@ -37,14 +39,11 @@ export const restoreStock = async (items, session) => {
         }
     }
 };
-export const getOrdersForAdmin = async ({ orderStatus, channel, userId, search, cursor, limit = 20, paymentStatus, dateFrom, dateTo, shopId, }) => {
+export const getOrdersForAdmin = async ({ orderStatus, channel, userId, search, page = 1, limit = 20, paymentStatus, dateFrom, dateTo, }) => {
     const parsedLimit = Math.max(Number(limit) || 20, 1);
+    const parsedPage = Math.max(Number(page) || 1, 1);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query = {};
-    if (shopId !== undefined) {
-        const { default: mongoose } = await import("mongoose");
-        query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
-    }
     if (orderStatus)
         query.orderStatus = orderStatus;
     if (channel)
@@ -60,10 +59,8 @@ export const getOrdersForAdmin = async ({ orderStatus, channel, userId, search, 
             { phone: { $regex: search, $options: "i" } },
         ];
     }
-    // Ẩn các đơn hàng bỏ dở (abandoned checkout) khỏi danh sách chung để không làm rác dữ liệu
-    // Đơn hàng bỏ dở là đơn bị cron tự động hủy do quá hạn
     if (!orderStatus && !search) {
-        query.note = { $ne: "Hệ thống tự động hủy do quá hạn thanh toán" };
+        query.note = { $ne: "System auto-cancelled due to payment timeout" };
     }
     // Filter theo ngày đặt (createdAt)
     if (dateFrom || dateTo) {
@@ -77,7 +74,7 @@ export const getOrdersForAdmin = async ({ orderStatus, channel, userId, search, 
         }
     }
     const [result, total] = await Promise.all([
-        orderRepo.findOrders(query, cursor || null, parsedLimit),
+        orderRepo.findOrders(query, parsedPage, parsedLimit),
         orderRepo.countOrders(query),
     ]);
     const mappedOrders = await attachItemsToOrders(result.orders);
@@ -86,8 +83,8 @@ export const getOrdersForAdmin = async ({ orderStatus, channel, userId, search, 
         pagination: {
             limit: parsedLimit,
             total,
-            nextCursor: result.nextCursor,
-            hasNextPage: result.hasNextPage,
+            page: result.page,
+            totalPages: result.totalPages,
         },
     };
 };
@@ -98,33 +95,31 @@ export const getMyOrders = async (userId) => {
 export const getOrder = async (orderId, requestUser) => {
     const order = await orderRepo.findOrderById(orderId);
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     const isAdmin = requestUser.role === "owner" || requestUser.role === "staff";
     const isOwner = String(order.userId) === String(requestUser._id);
     if (!isAdmin && !isOwner)
-        throw forbidden("Bạn không có quyền truy cập đơn hàng này");
+        throw forbidden("You do not have permission to access this order");
     const items = order.items || [];
     return mapOrder(order, items);
 };
 export const trackOrder = async (orderCode) => {
     const order = await orderRepo.findOne({ code: orderCode.toUpperCase() });
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     const items = order.items || [];
-    return mapOrder(order, items);
+    return mapPublicOrder(order, items);
 };
 // ── Source: order-management.service.ts ──────────────────────────────
-export const updateOrderStatus = async (orderId, data, requestUser, shopId) => {
+export const updateOrderStatus = async (orderId, data, requestUser) => {
     const query = { _id: orderId };
-    if (shopId)
-        query.shopId = new mongoose.Types.ObjectId(shopId);
     let order = await orderRepo.findOne(query);
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng hoặc đơn hàng không thuộc hệ thống của bạn");
+        throw notFound("Order not found or the order does not belong to your system");
     if (data.orderStatus !== undefined &&
         data.orderStatus !== order.orderStatus &&
         !ALLOWED_TRANSITIONS[order.orderStatus]?.includes(data.orderStatus)) {
-        throw badRequest("Không thể chuyển trạng thái đơn hàng như yêu cầu");
+        throw badRequest("Unable to change the order status as requested");
     }
     const previousStatus = order.orderStatus;
     if (data.orderStatus) {
@@ -139,13 +134,13 @@ export const updateOrderStatus = async (orderId, data, requestUser, shopId) => {
     if (data.receiverName !== undefined) {
         const normalized = data.receiverName.trim();
         if (!normalized)
-            throw badRequest("Tên người nhận không được để trống");
+            throw badRequest("Recipient name is required");
         order.receiverName = normalized;
     }
     if (data.phone !== undefined) {
         const normalized = data.phone.trim();
         if (!normalized)
-            throw badRequest("Số điện thoại không được để trống");
+            throw badRequest("Phone number is required");
         order.phone = normalized;
     }
     const session = await mongoose.startSession();
@@ -160,7 +155,7 @@ export const updateOrderStatus = async (orderId, data, requestUser, shopId) => {
         };
         const updatedOrder = await orderRepo.findOneAndUpdateOrder({ _id: order._id, orderStatus: previousStatus }, { $set: updateObj }, { session, new: true });
         if (!updatedOrder) {
-            throw badRequest("Đơn hàng đã được xử lý bởi một tiến trình khác. Vui lòng thử lại.");
+            throw badRequest("The order was already processed by another process. Please try again.");
         }
         order = updatedOrder;
         const items = order.items || [];
@@ -186,7 +181,7 @@ export const updateOrderStatus = async (orderId, data, requestUser, shopId) => {
                         await PointHistory.create([{
                                 userId: userDoc._id,
                                 pointsChanged: order.usedPoints,
-                                reason: `Hoàn điểm do đơn hàng #${order.code} bị ${data.orderStatus === "cancelled" ? "hủy" : "trả lại"}`,
+                                reason: `Points refunded because order #${order.code} was ${data.orderStatus === "cancelled" ? "cancelled" : "returned"}`,
                                 performedBy: requestUser?._id,
                             }], { session });
                         order.usedPoints = 0;
@@ -199,7 +194,7 @@ export const updateOrderStatus = async (orderId, data, requestUser, shopId) => {
                         await PointHistory.create([{
                                 userId: userDoc._id,
                                 pointsChanged: -order.earnedPoints,
-                                reason: `Thu hồi điểm do đơn hàng #${order.code} bị ${data.orderStatus === "cancelled" ? "hủy" : "trả lại"}`,
+                                reason: `Points revoked because order #${order.code} was ${data.orderStatus === "cancelled" ? "cancelled" : "returned"}`,
                                 performedBy: requestUser?._id,
                             }], { session });
                         order.earnedPoints = 0;
@@ -292,21 +287,21 @@ export const updateOrderStatus = async (orderId, data, requestUser, shopId) => {
 };
 export const requestReturnOrder = async (orderId, requestUser, reason, images) => {
     if (!reason || reason.trim() === "") {
-        throw badRequest("Vui lòng nhập lý do trả hàng");
+        throw badRequest("Please enter a return reason");
     }
     const order = await orderRepo.findOrderById(orderId);
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     if (order.userId?.toString() !== requestUser._id.toString())
-        throw forbidden("Không có quyền thực hiện");
+        throw forbidden("You do not have permission to perform this action");
     if (order.orderStatus !== "completed") {
-        throw badRequest("Chỉ có thể yêu cầu trả hàng cho đơn hàng đã hoàn tất");
+        throw badRequest("You can only request a return for a completed order");
     }
     // Fallback completedAt to updatedAt if not available
     const completionDate = order.completedAt || order.updatedAt;
     const daysSinceCompletion = (Date.now() - new Date(completionDate).getTime()) / (1000 * 60 * 60 * 24);
     if (daysSinceCompletion > 15) {
-        throw badRequest("Đã quá thời hạn 15 ngày để yêu cầu trả hàng");
+        throw badRequest("The 15-day return request window has expired");
     }
     order.orderStatus = "return_pending";
     order.returnReason = reason.trim();
@@ -315,19 +310,80 @@ export const requestReturnOrder = async (orderId, requestUser, reason, images) =
     await order.save();
     return mapOrder(order, order.items || []);
 };
-export const approveReturnOrder = async (orderId, requestUser) => {
+export const approveReturnOrder = async (orderId, _requestUser) => {
     const order = await orderRepo.findOrderById(orderId);
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     if (order.orderStatus !== "return_pending") {
-        throw badRequest("Đơn hàng không ở trạng thái yêu cầu trả hàng");
+        throw badRequest("The order is not in return request status");
     }
-    // Chuyển trạng thái sang returned và refund_pending
-    order.orderStatus = "returned";
-    if (order.paymentStatus === "paid") {
-        order.paymentStatus = "refund_pending";
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        // Chuyển trạng thái sang returned và refund_pending
+        order.orderStatus = "returned";
+        if (order.paymentStatus === "paid") {
+            order.paymentStatus = "refund_pending";
+        }
+        // Khôi phục kho
+        const items = order.items || [];
+        await restoreStock(items, session);
+        // Xử lý Điểm
+        if (order.userId) {
+            const userDoc = await User.findById(order.userId);
+            if (userDoc) {
+                const incQuery = {};
+                let changed = false;
+                // Refund the points the customer used
+                const usedPoints = order.usedPoints || 0;
+                if (usedPoints > 0) {
+                    incQuery.points = (incQuery.points || 0) + usedPoints;
+                    await PointHistory.create([{
+                            userId: userDoc._id,
+                            pointsChanged: usedPoints,
+                            reason: `Points refunded because order #${order.code} was returned successfully`,
+                            performedBy: _requestUser?._id,
+                        }], { session });
+                    order.usedPoints = 0;
+                    changed = true;
+                }
+                // Revoke the points the customer earned
+                const earnedPoints = order.earnedPoints || 0;
+                if (earnedPoints > 0) {
+                    incQuery.points = (incQuery.points || 0) - earnedPoints;
+                    await PointHistory.create([{
+                            userId: userDoc._id,
+                            pointsChanged: -earnedPoints,
+                            reason: `Points revoked because order #${order.code} was returned`,
+                            performedBy: _requestUser?._id,
+                        }], { session });
+                    order.earnedPoints = 0;
+                    changed = true;
+                }
+                if (changed) {
+                    await User.findByIdAndUpdate(userDoc._id, [{ $set: { points: { $max: [0, { $add: ["$points", incQuery.points || 0] }] } } }], { session });
+                }
+            }
+        }
+        // Giảm soldCount của sản phẩm vì hàng đã bị trả
+        const sortedProducts = [...items].sort((a, b) => (a.productId || "").toString().localeCompare((b.productId || "").toString()));
+        for (const item of sortedProducts) {
+            if (item.productId) {
+                await Product.findByIdAndUpdate(item.productId, {
+                    $inc: { soldCount: -item.quantity },
+                }, { session });
+            }
+        }
+        await orderRepo.saveOrder(order, session);
+        await session.commitTransaction();
     }
-    await order.save();
+    catch (error) {
+        await session.abortTransaction();
+        throw badRequest(error.message || "Failed to approve return request");
+    }
+    finally {
+        await session.endSession();
+    }
     // Gửi email
     if (order.userId) {
         const emailUser = await User.findById(order.userId).select("email");
@@ -337,15 +393,15 @@ export const approveReturnOrder = async (orderId, requestUser) => {
     }
     return mapOrder(order, order.items || []);
 };
-export const rejectReturnOrder = async (orderId, requestUser, rejectReason) => {
+export const rejectReturnOrder = async (orderId, _requestUser, rejectReason) => {
     if (!rejectReason || rejectReason.trim() === "") {
-        throw badRequest("Vui lòng nhập lý do từ chối");
+        throw badRequest("Please enter a rejection reason");
     }
     const order = await orderRepo.findOrderById(orderId);
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     if (order.orderStatus !== "return_pending") {
-        throw badRequest("Đơn hàng không ở trạng thái yêu cầu trả hàng");
+        throw badRequest("The order is not in return request status");
     }
     // Khôi phục lại trạng thái completed
     order.orderStatus = "completed";
@@ -363,19 +419,19 @@ export const rejectReturnOrder = async (orderId, requestUser, rejectReason) => {
 export const cancelOrder = async (orderId, requestUser) => {
     let order = await orderRepo.findOrderById(orderId);
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     const isAdmin = ["owner", "manager", "staff"].includes(requestUser.role);
     const isOwner = String(order.userId) === String(requestUser._id);
     if (!isAdmin && !isOwner)
-        throw forbidden("Bạn không có quyền thao tác đơn hàng này");
+        throw forbidden("You do not have permission to manage this order");
     if (order.orderStatus !== "pending")
-        throw badRequest("Chỉ có thể hủy đơn hàng đang chờ xử lý");
+        throw badRequest("Only pending orders can be cancelled");
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
         const updatedOrder = await orderRepo.findOneAndUpdateOrder({ _id: order._id, orderStatus: "pending" }, { $set: { orderStatus: "cancelled" } }, { session, new: true });
         if (!updatedOrder) {
-            throw badRequest("Đơn hàng đã được xử lý hoặc không còn ở trạng thái chờ.");
+            throw badRequest("The order has already been processed or is no longer pending.");
         }
         order = updatedOrder;
         const items = order.items || [];
@@ -390,7 +446,7 @@ export const cancelOrder = async (orderId, requestUser) => {
                 await PointHistory.create([{
                         userId: userDoc._id,
                         pointsChanged: order.usedPoints,
-                        reason: `Hoàn điểm do đơn hàng #${order.code} bị hủy`,
+                        reason: `Points refunded because order #${order.code} was cancelled`,
                         performedBy: requestUser?._id,
                     }], { session });
                 order.usedPoints = 0;
@@ -401,7 +457,7 @@ export const cancelOrder = async (orderId, requestUser) => {
     }
     catch (error) {
         await session.abortTransaction();
-        throw badRequest(error.message || "Lỗi khi hủy đơn hàng");
+        throw badRequest(error.message || "Failed to cancel the order");
     }
     finally {
         await session.endSession();
@@ -421,9 +477,9 @@ export const cancelOrder = async (orderId, requestUser) => {
 export const cancelPendingOrder = async (orderCode, reason = "Khách hàng hủy thanh toán") => {
     let order = await orderRepo.findOne({ code: orderCode.toUpperCase() });
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     if (order.orderStatus !== "pending")
-        throw badRequest("Chỉ có thể hủy đơn hàng đang chờ xử lý");
+        throw badRequest("Only pending orders can be cancelled");
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
@@ -431,7 +487,7 @@ export const cancelPendingOrder = async (orderCode, reason = "Khách hàng hủy
         const note = order.note ? order.note : reason;
         const updatedOrder = await orderRepo.findOneAndUpdateOrder({ _id: order._id, orderStatus: "pending" }, { $set: { orderStatus: "cancelled", note } }, { session, new: true });
         if (!updatedOrder) {
-            throw badRequest("Đơn hàng đã được xử lý hoặc không còn ở trạng thái chờ.");
+            throw badRequest("The order has already been processed or is no longer pending.");
         }
         order = updatedOrder;
         const items = order.items || [];
@@ -446,7 +502,7 @@ export const cancelPendingOrder = async (orderCode, reason = "Khách hàng hủy
                 await PointHistory.create([{
                         userId: userDoc._id,
                         pointsChanged: order.usedPoints,
-                        reason: `Hoàn điểm do đơn hàng #${order.code} bị hủy (${reason})`,
+                        reason: `Points refunded because order #${order.code} was cancelled (${reason})`,
                         // performedBy is null or user id
                     }], { session });
                 order.usedPoints = 0;
@@ -457,7 +513,7 @@ export const cancelPendingOrder = async (orderCode, reason = "Khách hàng hủy
     }
     catch (error) {
         await session.abortTransaction();
-        throw badRequest(error.message || "Lỗi khi hủy đơn hàng chờ thanh toán");
+        throw badRequest(error.message || "Failed to cancel the pending payment order");
     }
     finally {
         await session.endSession();
@@ -470,24 +526,62 @@ export const cancelPendingOrder = async (orderCode, reason = "Khách hàng hủy
     }
     return mapOrder(order, order.items || []);
 };
+export const abandonPendingOrder = async (orderCode) => {
+    const order = await orderRepo.findOne({ code: orderCode.toUpperCase() });
+    if (!order)
+        throw notFound("Order not found");
+    if (order.orderStatus !== "pending")
+        throw badRequest("Only pending orders can be cancelled");
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const items = order.items || [];
+        await restoreStock(items, session);
+        if (order.voucherCode) {
+            await decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
+        }
+        if ((order.usedPoints || 0) > 0 && order.userId) {
+            const userDoc = await User.findById(order.userId);
+            if (userDoc) {
+                await User.findByIdAndUpdate(userDoc._id, { $inc: { points: order.usedPoints } }, { session });
+                await PointHistory.create([{
+                        userId: userDoc._id,
+                        pointsChanged: order.usedPoints,
+                        reason: `Hoàn điểm do hủy mã QR thanh toán đơn hàng #${order.code}`,
+                    }], { session });
+            }
+        }
+        // Hard delete the abandoned order so it doesn't pollute the system
+        await Order.findByIdAndDelete(order._id, { session });
+        await session.commitTransaction();
+    }
+    catch (error) {
+        await session.abortTransaction();
+        throw badRequest(error.message || "Failed to cancel the payment QR order");
+    }
+    finally {
+        await session.endSession();
+    }
+    return { success: true, message: "Payment QR has been cancelled" };
+};
 export const updateOrderDetailsAdmin = async (orderId, data) => {
     const order = await orderRepo.findOne({ _id: orderId });
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     if (["completed", "cancelled", "returned"].includes(order.orderStatus)) {
-        throw badRequest("Không thể sửa thông tin đơn hàng đã đóng");
+        throw badRequest("Cannot edit a closed order");
     }
     const updatedOrder = await orderRepo.findOneAndUpdateOrder({ _id: orderId }, { $set: data }, { new: true });
     if (!updatedOrder)
-        throw badRequest("Lỗi khi cập nhật đơn hàng");
+        throw badRequest("Failed to update the order");
     return mapOrder(updatedOrder, updatedOrder.items || []);
 };
 export const refundOrderAdmin = async (orderId) => {
     const order = await orderRepo.findOne({ _id: orderId });
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     if (order.paymentStatus !== "refund_pending") {
-        throw badRequest("Đơn hàng này không ở trạng thái chờ hoàn tiền");
+        throw badRequest("This order is not in refund pending status");
     }
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -499,21 +593,134 @@ export const refundOrderAdmin = async (orderId) => {
         }
         const updatedOrder = await orderRepo.findOneAndUpdateOrder({ _id: orderId, paymentStatus: "refund_pending" }, { $set: updateObj }, { session, new: true });
         if (!updatedOrder) {
-            throw badRequest("Lỗi khi hoàn tiền, trạng thái đơn hàng có thể đã thay đổi");
-        }
-        if (!["cancelled", "returned", "return_pending"].includes(order.orderStatus)) {
-            const items = updatedOrder.items || [];
-            await restoreStock(items, session);
+            throw badRequest("Failed to refund the order; its status may have changed");
         }
         await session.commitTransaction();
         return mapOrder(updatedOrder, updatedOrder.items || []);
     }
     catch (error) {
         await session.abortTransaction();
-        throw badRequest(error.message || "Lỗi khi hoàn tiền đơn hàng");
+        throw badRequest(error.message || "Failed to refund the order");
     }
     finally {
         await session.endSession();
     }
+};
+export const processPOSReturn = async (orderId, requester, returnItems) => {
+    const order = await orderRepo.findOrderById(orderId);
+    if (!order)
+        throw notFound("Order not found");
+    if (order.orderStatus === "returned") {
+        throw badRequest("This order has already been returned");
+    }
+    let itemsToReturn = [];
+    let refundAmount = 0;
+    if (returnItems && returnItems.length > 0) {
+        for (const retItem of returnItems) {
+            const originalItem = order.items.find((i) => i.productId.toString() === retItem.productId && i.variantId.toString() === retItem.variantId);
+            if (!originalItem) {
+                throw badRequest(`Product variant ${retItem.variantId} was not part of the original order`);
+            }
+            if (retItem.quantity > originalItem.quantity) {
+                throw badRequest(`Cannot return more than the originally purchased quantity (${originalItem.quantity})`);
+            }
+            const itemPrice = originalItem.price;
+            const ratio = (itemPrice * retItem.quantity) / order.subtotal;
+            const itemRefund = Math.round(itemPrice * retItem.quantity - (order.discountAmount + order.tierDiscountAmount) * ratio);
+            refundAmount += itemRefund;
+            itemsToReturn.push({
+                productId: originalItem.productId,
+                variantId: originalItem.variantId,
+                productName: originalItem.productName,
+                variantName: originalItem.variantName,
+                price: originalItem.price,
+                quantity: retItem.quantity,
+                costPriceTotal: originalItem.quantity > 0 ? (originalItem.costPriceTotal / originalItem.quantity) * retItem.quantity : 0,
+            });
+        }
+        order.orderStatus = "returned";
+    }
+    else {
+        itemsToReturn = order.items;
+        refundAmount = order.totalAmount;
+        order.orderStatus = "returned";
+    }
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        order.paymentStatus = "refunded";
+        await restoreStock(itemsToReturn, session);
+        if (order.userId) {
+            const userDoc = await User.findById(order.userId);
+            if (userDoc) {
+                const incQuery = {};
+                let changed = false;
+                const usedPoints = order.usedPoints || 0;
+                if (usedPoints > 0) {
+                    const pointsRefund = returnItems && returnItems.length > 0
+                        ? Math.round(usedPoints * (refundAmount / order.totalAmount))
+                        : usedPoints;
+                    if (pointsRefund > 0) {
+                        incQuery.points = (incQuery.points || 0) + pointsRefund;
+                        await PointHistory.create([{
+                                userId: userDoc._id,
+                                pointsChanged: pointsRefund,
+                                reason: `Points refunded because POS order #${order.code} was returned`,
+                                performedBy: requester._id,
+                            }], { session });
+                        order.usedPoints = Math.max(0, usedPoints - pointsRefund);
+                        changed = true;
+                    }
+                }
+                const earnedPoints = order.earnedPoints || 0;
+                if (earnedPoints > 0) {
+                    const pointsRevoke = returnItems && returnItems.length > 0
+                        ? Math.round(earnedPoints * (refundAmount / order.totalAmount))
+                        : earnedPoints;
+                    if (pointsRevoke > 0) {
+                        incQuery.points = (incQuery.points || 0) - pointsRevoke;
+                        await PointHistory.create([{
+                                userId: userDoc._id,
+                                pointsChanged: -pointsRevoke,
+                                reason: `Points revoked because POS order #${order.code} was returned`,
+                                performedBy: requester._id,
+                            }], { session });
+                        order.earnedPoints = Math.max(0, earnedPoints - pointsRevoke);
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    await User.findByIdAndUpdate(userDoc._id, [{ $set: { points: { $max: [0, { $add: ["$points", incQuery.points || 0] }] } } }], { session });
+                }
+            }
+        }
+        for (const item of itemsToReturn) {
+            if (item.productId) {
+                await Product.findByIdAndUpdate(item.productId, {
+                    $inc: { soldCount: -item.quantity },
+                }, { session });
+            }
+        }
+        await PaymentTransaction.create([{
+                orderId: order._id,
+                paymentMethod: order.paymentMethod,
+                providerTransactionId: `REFUND-POS-${Date.now()}`,
+                amount: refundAmount,
+                currency: "VND",
+                type: "refund",
+                status: "success",
+                metaData: { refundedBy: requester.name },
+            }], { session });
+        await orderRepo.saveOrder(order, session);
+        await session.commitTransaction();
+    }
+    catch (error) {
+        await session.abortTransaction();
+        throw badRequest(error.message || "Failed to process POS return");
+    }
+    finally {
+        await session.endSession();
+    }
+    return mapOrder(order, order.items);
 };
 export { getUserTotalSpent, previewOrder, createOrder, createPOSOrder, } from "./checkout/checkout.service.js";

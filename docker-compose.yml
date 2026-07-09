@@ -10,8 +10,8 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "5000:${PORT:-5000}"
-      - "3001:${PORT:-5000}"
+      - "127.0.0.1:5000:${PORT:-5000}"
+      - "127.0.0.1:3001:${PORT:-5000}"
     env_file:
       - .env
     volumes:

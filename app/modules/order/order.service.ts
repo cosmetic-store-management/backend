@@ -1,4 +1,5 @@
 import Order, { OrderDocument } from "./models/order.schema.js";
+import PaymentTransaction from "./models/payment-transaction.schema.js";
 import * as orderRepo from "./order.repository.js";
 import { mapOrder, mapPublicOrder } from "./dto/order.response.dto.js";
 
@@ -507,11 +508,11 @@ export const approveReturnOrder = async (orderId: string, _requestUser: UserDocu
         }
 
         if (changed) {
-          await User.findByIdAndUpdate(
-            userDoc._id,
-            [{ $set: { points: { $max: [0, { $add: ["$points", incQuery.points || 0] }] } } }],
-            { session }
-          );
+          const userDocToUpdate = await User.findById(userDoc._id).session(session);
+          if (userDocToUpdate) {
+            userDocToUpdate.points = Math.max(0, (userDocToUpdate.points || 0) + (incQuery.points || 0));
+            await userDocToUpdate.save({ session });
+          }
         }
       }
     }
@@ -823,6 +824,153 @@ export const refundOrderAdmin = async (
   } finally {
     await session.endSession();
   }
+};
+
+export const processPOSReturn = async (
+  orderId: string,
+  requester: UserDocument,
+  returnItems?: Array<{ productId: string; variantId: string; quantity: number }>,
+  returnReason?: string,
+) => {
+  const order = await orderRepo.findOrderById(orderId);
+  if (!order) throw notFound("Order not found");
+
+  if (order.orderStatus === "returned") {
+    throw badRequest("This order has already been returned");
+  }
+
+  let itemsToReturn: any[] = [];
+  let refundAmount = 0;
+
+  if (returnItems && returnItems.length > 0) {
+    for (const retItem of returnItems) {
+      const originalItem = order.items.find(
+        (i) => i.productId.toString() === retItem.productId && i.variantId.toString() === retItem.variantId
+      );
+      if (!originalItem) {
+        throw badRequest(`Product variant ${retItem.variantId} was not part of the original order`);
+      }
+      if (retItem.quantity > originalItem.quantity) {
+        throw badRequest(`Cannot return more than the originally purchased quantity (${originalItem.quantity})`);
+      }
+      
+      const itemPrice = originalItem.price;
+      const ratio = (itemPrice * retItem.quantity) / order.subtotal;
+      const itemRefund = Math.round(itemPrice * retItem.quantity - (order.discountAmount + order.tierDiscountAmount) * ratio);
+      
+      refundAmount += itemRefund;
+      itemsToReturn.push({
+        productId: originalItem.productId,
+        variantId: originalItem.variantId,
+        productName: originalItem.productName,
+        variantName: originalItem.variantName,
+        price: originalItem.price,
+        quantity: retItem.quantity,
+        costPriceTotal: originalItem.quantity > 0 ? (originalItem.costPriceTotal / originalItem.quantity) * retItem.quantity : 0,
+      });
+    }
+    order.orderStatus = "returned";
+  } else {
+    itemsToReturn = order.items;
+    refundAmount = order.totalAmount;
+    order.orderStatus = "returned";
+  }
+
+  if (returnReason && returnReason.trim()) {
+    order.returnReason = returnReason.trim();
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    order.paymentStatus = "refunded";
+
+    await restoreStock(itemsToReturn, session);
+
+    if (order.userId) {
+      const userDoc = await User.findById(order.userId);
+      if (userDoc) {
+        const incQuery: any = {};
+        let changed = false;
+
+        const usedPoints = order.usedPoints || 0;
+        if (usedPoints > 0) {
+          const pointsRefund = returnItems && returnItems.length > 0 
+            ? Math.round(usedPoints * (refundAmount / order.totalAmount))
+            : usedPoints;
+            
+          if (pointsRefund > 0) {
+            incQuery.points = (incQuery.points || 0) + pointsRefund;
+            await PointHistory.create([{
+              userId: userDoc._id,
+              pointsChanged: pointsRefund,
+              reason: `Points refunded because POS order #${order.code} was returned`,
+              performedBy: requester._id,
+            }], { session });
+            order.usedPoints = Math.max(0, usedPoints - pointsRefund);
+            changed = true;
+          }
+        }
+
+        const earnedPoints = order.earnedPoints || 0;
+        if (earnedPoints > 0) {
+          const pointsRevoke = returnItems && returnItems.length > 0
+            ? Math.round(earnedPoints * (refundAmount / order.totalAmount))
+            : earnedPoints;
+
+          if (pointsRevoke > 0) {
+            incQuery.points = (incQuery.points || 0) - pointsRevoke;
+            await PointHistory.create([{
+              userId: userDoc._id,
+              pointsChanged: -pointsRevoke,
+              reason: `Points revoked because POS order #${order.code} was returned`,
+              performedBy: requester._id,
+            }], { session });
+            order.earnedPoints = Math.max(0, earnedPoints - pointsRevoke);
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          const userDocToUpdate = await User.findById(userDoc._id).session(session);
+          if (userDocToUpdate) {
+            userDocToUpdate.points = Math.max(0, (userDocToUpdate.points || 0) + (incQuery.points || 0));
+            await userDocToUpdate.save({ session });
+          }
+        }
+      }
+    }
+
+    for (const item of itemsToReturn) {
+      if (item.productId) {
+        await Product.findByIdAndUpdate(item.productId, {
+          $inc: { soldCount: -item.quantity },
+        }, { session });
+      }
+    }
+
+    await PaymentTransaction.create([{
+      orderId: order._id,
+      paymentMethod: order.paymentMethod,
+      providerTransactionId: `REFUND-POS-${Date.now()}`,
+      amount: refundAmount,
+      currency: "VND",
+      type: "refund",
+      status: "success",
+      metaData: { refundedBy: requester.name },
+    }], { session });
+
+    await orderRepo.saveOrder(order, session);
+    await session.commitTransaction();
+  } catch (error: any) {
+    await session.abortTransaction();
+    throw badRequest(error.message || "Failed to process POS return");
+  } finally {
+    await session.endSession();
+  }
+
+  return mapOrder(order, order.items);
 };
 
 export {

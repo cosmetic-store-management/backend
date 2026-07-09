@@ -12,7 +12,7 @@ function calcChange(current, previous) {
 }
 function buildDateFilter(startDate, endDate) {
     const filter = {
-        note: { $ne: "Hệ thống tự động hủy do quá hạn thanh toán" }
+        note: { $ne: "System auto-cancelled due to payment timeout" }
     };
     if (startDate || endDate) {
         filter.createdAt = {};
@@ -41,7 +41,7 @@ function getPreviousPeriod(startDate, endDate) {
 }
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export const getDashboardStats = async (startDate, endDate, creatorId) => {
-    const dateFilter = buildDateFilter(startDate, endDate, creatorId);
+    const dateFilter = buildDateFilter(startDate, endDate);
     const { prevStart, prevEnd } = getPreviousPeriod(startDate, endDate);
     // --- Kỳ hiện tại ---
     const [revenueResult, totalOrdersCount, soldProductsResult, totalCustomersCount, recentOrdersRaw, topProductsAgg, lowStockRaw,] = await Promise.all([
@@ -124,6 +124,17 @@ export const getDashboardStats = async (startDate, endDate, creatorId) => {
     const profitMarginPct = typeof settings?.profitMargin === "number"
         ? settings.profitMargin / 100
         : DEFAULT_PROFIT_MARGIN;
+    const channelRaw = await reportRepo.aggregateChannelStats(dateFilter);
+    const channelStats = {
+        online: { revenue: 0, orders: 0, profit: 0 },
+        pos: { revenue: 0, orders: 0, profit: 0 }
+    };
+    channelRaw.forEach((c) => {
+        const ch = c._id === "pos" ? "pos" : "online";
+        channelStats[ch].revenue = c.totalRevenue || 0;
+        channelStats[ch].orders = c.count || 0;
+        channelStats[ch].profit = (c.totalRevenue || 0) - (c.totalCost || 0);
+    });
     return {
         stats: {
             totalRevenue,
@@ -137,6 +148,7 @@ export const getDashboardStats = async (startDate, endDate, creatorId) => {
             profitMarginPct: totalRevenue > 0 ? Math.round(((totalRevenue - totalCost) / totalRevenue) * 100) : 0, // trả về margin thực tế
             averageOrderValue: totalOrdersCount > 0 ? Math.round(totalRevenue / totalOrdersCount) : 0,
         },
+        channelStats,
         recentOrders,
         topProducts,
         lowStockItems,

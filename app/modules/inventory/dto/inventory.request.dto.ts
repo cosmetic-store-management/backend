@@ -4,13 +4,22 @@ import { z } from "zod";
 
 export const CreateSupplierSchema = z.object({
   name: z.string().trim().min(1, "Tên nhà cung cấp là bắt buộc"),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^[0-9]{9,11}$/, "Số điện thoại không hợp lệ"),
-  email: z.string().trim().email("Invalid email").optional(),
+  phone: z.string().trim().min(1, "Số điện thoại là bắt buộc"),
+  email: z.string().trim().email("Email không hợp lệ").or(z.literal("")).optional(),
   address: z.string().trim().optional(),
+  taxCode: z.string().trim().optional(),
+  contactPerson: z.string().trim().optional(),
+  contactPhone: z.string().trim().optional(),
+  contactEmail: z.string().trim().email("Email không hợp lệ").or(z.literal("")).optional(),
+  contactPosition: z.string().trim().optional(),
+  isActive: z.boolean().optional().default(true),
+  notes: z.string().trim().optional(),
 });
+
+export const UpdateSupplierSchema = CreateSupplierSchema.partial().refine(
+  (data) => Object.keys(data).length > 0,
+  "Vui lòng cung cấp ít nhất một trường để cập nhật",
+);
 
 // ── Goods Receipt ─────────────────────────────────────────────────────────────
 

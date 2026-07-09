@@ -2,24 +2,26 @@ import { z } from "zod";
 export const BaseVoucherSchema = z.object({
     code: z
         .string()
-        .min(3, "Mã giảm giá phải có ít nhất 3 ký tự")
+        .min(3, "Voucher code must be at least 3 characters")
         .trim()
         .toUpperCase(),
     discountType: z.enum(["percent", "fixed", "freeship"]),
-    discountValue: z.number().min(0, "Giá trị giảm không được âm"),
+    discountValue: z.number().min(0, "Discount value cannot be negative"),
     minOrderValue: z.number().min(0).optional().default(0),
     maxDiscount: z.number().min(0).optional(),
-    startDate: z.string().datetime("Ngày bắt đầu không hợp lệ"),
-    endDate: z.string().datetime("Ngày kết thúc không hợp lệ"),
+    startDate: z.string().datetime("Invalid start date"),
+    endDate: z.string().datetime("Invalid end date"),
     usageLimit: z.number().min(0).optional().default(0),
     isActive: z.boolean().optional().default(true),
+    ttlMinutes: z.number().min(0).optional().default(0),
+    overbookingLimit: z.number().min(-1).optional().default(0),
 });
 export const CreateVoucherSchema = BaseVoucherSchema.refine((data) => {
     const start = new Date(data.startDate);
     const end = new Date(data.endDate);
     return start < end;
 }, {
-    message: "Ngày kết thúc phải sau ngày bắt đầu",
+    message: "End date must be after start date",
     path: ["endDate"],
 }).refine((data) => {
     if (data.discountType === "percent" && data.discountValue > 100) {
@@ -27,7 +29,7 @@ export const CreateVoucherSchema = BaseVoucherSchema.refine((data) => {
     }
     return true;
 }, {
-    message: "Giá trị giảm không được vượt quá 100%",
+    message: "Discount value cannot exceed 100%",
     path: ["discountValue"],
 });
 export const UpdateVoucherSchema = BaseVoucherSchema.partial()
@@ -39,7 +41,7 @@ export const UpdateVoucherSchema = BaseVoucherSchema.partial()
     }
     return true;
 }, {
-    message: "Ngày kết thúc phải sau ngày bắt đầu",
+    message: "End date must be after start date",
     path: ["endDate"],
 })
     .refine((data) => {
@@ -50,7 +52,7 @@ export const UpdateVoucherSchema = BaseVoucherSchema.partial()
     }
     return true;
 }, {
-    message: "Giá trị giảm không được vượt quá 100%",
+    message: "Discount value cannot exceed 100%",
     path: ["discountValue"],
 });
 export const ValidateVoucherSchema = z.object({

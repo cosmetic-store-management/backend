@@ -4,11 +4,16 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { connectTestDB, disconnectTestDB, clearCollections, } from "./helpers/db-helper.js";
 import * as orderService from "../../app/modules/order/order.service.js";
-import Order from "../../app/models/order/order.schema.js";
-import User from "../../app/models/user/user.schema.js";
-import Variant from "../../app/models/product/variant.schema.js";
-import Product from "../../app/models/product/product.schema.js";
-import Category from "../../app/models/product/category.schema.js";
+import Order from "../../app/modules/order/models/order.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
+import Variant from "../../app/modules/product/models/variant.schema.js";
+import Product from "../../app/modules/product/models/product.schema.js";
+import Category from "../../app/modules/category/models/category.schema.js";
+import PointHistory from "../../app/modules/user/models/point-history.schema.js";
+import Batch from "../../app/modules/inventory/models/batch.schema.js";
+import Voucher from "../../app/modules/voucher/models/voucher.schema.js";
+import VoucherReservation from "../../app/modules/voucher/models/voucherReservation.schema.js";
+import PaymentTransaction from "../../app/modules/order/models/payment-transaction.schema.js";
 import mongoose from "mongoose";
 let userId;
 let variantId;
@@ -16,6 +21,30 @@ let productId;
 let staffUser;
 beforeAll(async () => {
     await connectTestDB();
+    await Promise.all([
+        Order.createCollection(),
+        User.createCollection(),
+        Variant.createCollection(),
+        Product.createCollection(),
+        Category.createCollection(),
+        PointHistory.createCollection(),
+        Batch.createCollection(),
+        Voucher.createCollection(),
+        VoucherReservation.createCollection(),
+        PaymentTransaction.createCollection(),
+    ]);
+    await Promise.all([
+        Order.init(),
+        User.init(),
+        Variant.init(),
+        Product.init(),
+        Category.init(),
+        PointHistory.init(),
+        Batch.init(),
+        Voucher.init(),
+        VoucherReservation.init(),
+        PaymentTransaction.init(),
+    ]);
 });
 afterAll(async () => {
     await disconnectTestDB();

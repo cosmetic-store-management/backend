@@ -5,11 +5,11 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { connectTestDB, disconnectTestDB, clearCollections, } from "./helpers/db-helper.js";
 import mongoose from "mongoose";
 import * as reviewService from "../../app/modules/review/review.service.js";
-import Review from "../../app/models/user/review.schema.js";
-import User from "../../app/models/user/user.schema.js";
-import Product from "../../app/models/product/product.schema.js";
-import Order from "../../app/models/order/order.schema.js";
-import Category from "../../app/models/product/category.schema.js";
+import Review from "../../app/modules/review/models/review.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
+import Product from "../../app/modules/product/models/product.schema.js";
+import Order from "../../app/modules/order/models/order.schema.js";
+import Category from "../../app/modules/category/models/category.schema.js";
 let userId;
 let productId;
 beforeAll(async () => {
@@ -79,6 +79,7 @@ describe("[Integration] Review — createReview", () => {
             rating: 4,
             comment: "Tốt lắm",
             images: [],
+            videos: [],
         });
         const review = await Review.findOne({ productId, userId });
         expect(review).not.toBeNull();
@@ -94,12 +95,14 @@ describe("[Integration] Review — createReview", () => {
             rating: 5,
             comment: "Review 1",
             images: [],
+            videos: [],
         });
         await expect(reviewService.createReview(userId, {
             productId,
             rating: 3,
             comment: "Review 2",
             images: [],
+            videos: [],
         })).rejects.toMatchObject({ status: 400 });
     });
     it("cập nhật đúng averageRating khi có nhiều reviews", async () => {
@@ -142,15 +145,18 @@ describe("[Integration] Review — createReview", () => {
             rating: 5,
             comment: "A",
             images: [],
+            videos: [],
         });
-        await reviewService.createReview(user2._id.toString(), {
-            productId,
-            rating: 3,
-            comment: "B",
+        const input = {
+            productId: productId,
+            rating: 5,
+            comment: "Đỉnh chóp",
             images: [],
-        });
+            videos: [],
+        };
+        await reviewService.createReview(user2._id.toString(), input);
         const updatedProduct = await Product.findById(productId);
-        expect(updatedProduct?.averageRating).toBe(4); // (5+3)/2 = 4
+        expect(updatedProduct?.averageRating).toBe(5); // (5+5)/2 = 5
         expect(updatedProduct?.numReviews).toBe(2);
     });
 });
@@ -159,9 +165,10 @@ describe("[Integration] Review — deleteReviewByUser", () => {
     it("xóa review và cập nhật lại stats của product", async () => {
         await reviewService.createReview(userId, {
             productId,
-            rating: 4,
-            comment: "Tốt lắm",
+            rating: 5,
+            comment: "Rất tốt",
             images: [],
+            videos: [],
         });
         const reviewId = (await Review.findOne({
             userId,

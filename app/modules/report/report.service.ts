@@ -160,6 +160,18 @@ export const getDashboardStats = async (
       ? settings.profitMargin / 100
       : DEFAULT_PROFIT_MARGIN;
 
+  const channelRaw = await reportRepo.aggregateChannelStats(dateFilter);
+  const channelStats = {
+    online: { revenue: 0, orders: 0, profit: 0 },
+    pos: { revenue: 0, orders: 0, profit: 0 }
+  };
+  channelRaw.forEach((c: any) => {
+    const ch = c._id === "pos" ? "pos" : "online";
+    channelStats[ch].revenue = c.totalRevenue || 0;
+    channelStats[ch].orders = c.count || 0;
+    channelStats[ch].profit = (c.totalRevenue || 0) - (c.totalCost || 0);
+  });
+
   return {
     stats: {
       totalRevenue,
@@ -174,6 +186,7 @@ export const getDashboardStats = async (
       averageOrderValue:
         totalOrdersCount > 0 ? Math.round(totalRevenue / totalOrdersCount) : 0,
     },
+    channelStats,
     recentOrders,
     topProducts,
     lowStockItems,

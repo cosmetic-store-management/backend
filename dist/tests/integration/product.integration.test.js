@@ -4,10 +4,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { connectTestDB, disconnectTestDB, clearCollections, } from "./helpers/db-helper.js";
 import * as productService from "../../app/modules/product/product.service.js";
-import Product from "../../app/models/product/product.schema.js";
-import Category from "../../app/models/product/category.schema.js";
-import Brand from "../../app/models/product/brand.schema.js";
-import Variant from "../../app/models/product/variant.schema.js";
+import Product from "../../app/modules/product/models/product.schema.js";
+import Category from "../../app/modules/category/models/category.schema.js";
+import Brand from "../../app/modules/brand/models/brand.schema.js";
+import Variant from "../../app/modules/product/models/variant.schema.js";
 let categoryId;
 let brandId;
 beforeAll(async () => {
@@ -85,16 +85,14 @@ describe("[Integration] Product — getAdminProducts", () => {
     });
     it("trả về danh sách đúng số lượng", async () => {
         const result = await productService.getAdminProducts({
-            page: 1,
             limit: 10,
         });
         expect(result.products.length).toBe(2);
         expect(result.pagination.total).toBe(2);
     });
     it("phân trang hoạt động đúng", async () => {
-        const p1 = await productService.getAdminProducts({ page: 1, limit: 1 });
+        const p1 = await productService.getAdminProducts({ limit: 1 });
         expect(p1.products.length).toBe(1);
-        expect(p1.pagination.totalPages).toBe(2);
     });
 });
 // ── deleteProduct ─────────────────────────────────────────────────────────────

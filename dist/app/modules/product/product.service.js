@@ -1,9 +1,9 @@
 import mongoose from "mongoose";
 import * as productRepo from "./product.repository.js";
-import Variant from "../../models/product/variant.schema.js";
-import Brand from "../../models/product/brand.schema.js";
-import Category from "../../models/product/category.schema.js";
-import Product from "../../models/product/product.schema.js";
+import Variant from "./models/variant.schema.js";
+import Brand from "../brand/models/brand.schema.js";
+import Category from "../category/models/category.schema.js";
+import Product from "./models/product.schema.js";
 import { mapProduct } from "./dto/product.response.dto.js";
 import { badRequest, notFound, conflict, } from "../../shared/errors/httpErrors.js";
 import { sanitizeRichText } from "../../shared/helpers/sanitize.js";
@@ -255,22 +255,22 @@ export const getPublicProductDetail = async (slugOrId) => {
         product = await productRepo.findBySlug(slugOrId);
     }
     if (!product)
-        throw notFound("Không tìm thấy sản phẩm");
+        throw notFound("Product not found");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (product.categoryId?.isActive === false)
-        throw notFound("Không tìm thấy sản phẩm do danh mục đã ngừng hoạt động");
+        throw notFound("Product not found because its category is inactive");
     return mapProduct(product);
 };
 export const getRecommendedProducts = async (productId, limit = 10) => {
     if (!mongoose.Types.ObjectId.isValid(productId))
-        throw badRequest("ID sản phẩm không hợp lệ");
+        throw badRequest("Invalid product ID");
     const pId = new mongoose.Types.ObjectId(productId);
     const product = await productRepo.findById(productId);
     if (!product)
-        throw notFound("Không tìm thấy sản phẩm");
-    const { default: Order } = await import("../../models/order/order.schema.js");
+        throw notFound("Product not found");
+    const { default: Order } = await import("../order/models/order.schema.js");
     // 1. Collaborative Filtering: "Customers who bought this also bought"
-    const orders = await Order.find({ "items.productId": pId })
+    const orders = await Order.find({ "items.productId": { $in: [pId, pId.toString()] } })
         .select("items.productId")
         .lean();
     const frequencyMap = {};
@@ -314,13 +314,10 @@ export const getRecommendedProducts = async (productId, limit = 10) => {
     }
     return recommendedProducts.map(mapProduct);
 };
-export const getAdminProducts = async ({ search, category, brandId, status, minStock, maxStock, cursor, limit = 20, shopId, }) => {
+export const getAdminProducts = async ({ search, category, brandId, status, minStock, maxStock, cursor, limit = 20, page, }) => {
     const parsedLimit = Math.max(Number(limit) || 20, 1);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query = {};
-    if (shopId !== undefined) {
-        query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
-    }
     if (search)
         query.name = { $regex: search.trim(), $options: "i" };
     if (status === "active")
@@ -354,8 +351,8 @@ export const getAdminProducts = async ({ search, category, brandId, status, minS
                 pagination: {
                     limit: parsedLimit,
                     total: 0,
-                    nextCursor: null,
-                    hasNextPage: false,
+                    page: 1,
+                    totalPages: 1,
                 },
             };
         query.$or = [
@@ -364,7 +361,7 @@ export const getAdminProducts = async ({ search, category, brandId, status, minS
         ];
     }
     const [result, total] = await Promise.all([
-        productRepo.findAdmin(query, cursor || null, parsedLimit),
+        productRepo.findAdmin(query, cursor || null, parsedLimit, page ? Number(page) : undefined),
         productRepo.countAll(query),
     ]);
     return {
@@ -372,34 +369,31 @@ export const getAdminProducts = async ({ search, category, brandId, status, minS
         pagination: {
             limit: parsedLimit,
             total,
-            nextCursor: result.nextCursor,
-            hasNextPage: result.hasNextPage,
+            page: page ? Number(page) : 1,
+            totalPages: Math.ceil(total / parsedLimit),
         },
     };
 };
-export const getAdminProductDetail = async (id, shopId) => {
+export const getAdminProductDetail = async (id) => {
     const query = { _id: id };
-    if (shopId !== undefined) {
-        query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
-    }
-    const product = await productRepo.findOneBy(query);
+    const product = await productRepo.findDocumentBy(query);
     if (!product)
-        throw notFound("Không tìm thấy sản phẩm");
+        throw notFound("Product not found");
     return mapProduct(product);
 };
 export const createProduct = async (data) => {
     const category = await productRepo.findCategoryById(data.categoryId);
     if (!category)
-        throw badRequest("Danh mục không tồn tại");
-    const { default: Brand } = await import("../../models/product/brand.schema.js");
+        throw badRequest("Category does not exist");
+    const { default: Brand } = await import("../brand/models/brand.schema.js");
     const brandDoc = await Brand.findById(data.brandId);
     if (!brandDoc)
-        throw badRequest("Thương hiệu không tồn tại");
+        throw badRequest("Brand does not exist");
     // Validate secondary categories if provided
     if (data.categoryIds && data.categoryIds.length > 0) {
         const validCategories = await Promise.all(data.categoryIds.map((id) => productRepo.findCategoryById(id)));
         if (validCategories.some((c) => !c))
-            throw badRequest("Một hoặc nhiều danh mục phụ không tồn tại");
+            throw badRequest("One or more subcategories do not exist");
     }
     const slug = slugify(data.name);
     const existing = await productRepo.findOneBy({
@@ -407,7 +401,7 @@ export const createProduct = async (data) => {
         categoryId: data.categoryId,
     });
     if (existing)
-        throw conflict("Slug sản phẩm đã tồn tại trong danh mục này");
+        throw conflict("Product slug already exists in this category");
     const newProduct = await productRepo.create({
         ...data,
         slug,
@@ -433,12 +427,12 @@ export const createProduct = async (data) => {
 export const updateProduct = async (id, data) => {
     const product = await productRepo.findDocumentById(id);
     if (!product)
-        throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền cập nhật");
+        throw notFound("Product not found or you do not have permission to update");
     let nextCategoryId = product.categoryId;
     if (data.categoryId !== undefined) {
         const category = await productRepo.findCategoryById(data.categoryId);
         if (!category)
-            throw badRequest("Danh mục không tồn tại");
+            throw badRequest("Category does not exist");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         product.categoryId = data.categoryId;
         nextCategoryId = data.categoryId;
@@ -448,7 +442,7 @@ export const updateProduct = async (id, data) => {
         if (data.categoryIds.length > 0) {
             const validCategories = await Promise.all(data.categoryIds.map((cid) => productRepo.findCategoryById(cid)));
             if (validCategories.some((c) => !c))
-                throw badRequest("Một hoặc nhiều danh mục phụ không tồn tại");
+                throw badRequest("One or more subcategories do not exist");
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         product.categoryIds = data.categoryIds;
@@ -461,15 +455,15 @@ export const updateProduct = async (id, data) => {
             _id: { $ne: product._id },
         });
         if (existing)
-            throw conflict("Slug sản phẩm đã tồn tại trong danh mục này");
+            throw conflict("Product slug already exists in this category");
         product.name = data.name;
         product.slug = nextSlug;
     }
     if (data.brandId !== undefined) {
-        const { default: Brand } = await import("../../models/product/brand.schema.js");
+        const { default: Brand } = await import("../brand/models/brand.schema.js");
         const brandDoc = await Brand.findById(data.brandId);
         if (!brandDoc)
-            throw badRequest("Thương hiệu không tồn tại");
+            throw badRequest("Brand does not exist");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         product.brandId = data.brandId;
     }
@@ -483,7 +477,7 @@ export const updateProduct = async (id, data) => {
         product.isActive = data.isActive;
     await productRepo.save(product);
     if (data.variants && data.variants.length > 0) {
-        const { default: Brand } = await import("../../models/product/brand.schema.js");
+        const { default: Brand } = await import("../brand/models/brand.schema.js");
         const brandDoc = await Brand.findById(product.brandId);
         const variantIdsToKeep = data.variants
             .filter((v) => v.id)
@@ -511,36 +505,30 @@ export const updateProduct = async (id, data) => {
     const updated = await productRepo.findById(product._id.toString());
     return mapProduct(updated);
 };
-export const updateProductStatus = async (id, isActive, shopId) => {
+export const updateProductStatus = async (id, isActive) => {
     const query = { _id: id };
-    if (shopId !== undefined) {
-        query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
-    }
     const product = await productRepo.findDocumentBy(query);
     if (!product)
-        throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền cập nhật");
+        throw notFound("Product not found or you do not have permission to update");
     product.isActive = isActive;
     await productRepo.save(product);
     const updated = await productRepo.findById(product._id.toString());
     return mapProduct(updated);
 };
-export const deleteProduct = async (id, shopId) => {
+export const deleteProduct = async (id) => {
     const query = { _id: id };
-    if (shopId !== undefined) {
-        query.shopId = shopId ? new mongoose.Types.ObjectId(shopId) : null;
-    }
     const product = await productRepo.findOneBy(query);
     if (!product)
         throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền xóa");
     await productRepo.findByIdAndDelete(id);
-    const { default: Variant } = await import("../../models/product/variant.schema.js");
+    const { default: Variant } = await import("./models/variant.schema.js");
     await Variant.deleteMany({ productId: id });
 };
-export const batchImportProducts = async (productsData, shopId) => {
+export const batchImportProducts = async (productsData) => {
     let totalProcessed = 0;
     const productGroups = new Map();
     for (const row of productsData) {
-        const slug = row["Slug"] || slugify(row["Tên sản phẩm"]);
+        const slug = row["Slug"] || slugify(row["Product name"]);
         if (!slug)
             continue;
         if (!productGroups.has(slug)) {
@@ -550,24 +538,24 @@ export const batchImportProducts = async (productsData, shopId) => {
     }
     for (const [slug, rows] of productGroups.entries()) {
         const firstRow = rows[0];
-        let brandId = null;
-        if (firstRow["Thương hiệu"]) {
-            let brand = await Brand.findOne({ name: new RegExp(`^${firstRow["Thương hiệu"]}$`, 'i') });
+        let brandId;
+        if (firstRow["Brand"]) {
+            let brand = await Brand.findOne({ name: new RegExp(`^${firstRow["Brand"]}$`, 'i') });
             if (!brand) {
-                brand = await Brand.create({ name: firstRow["Thương hiệu"], slug: slugify(firstRow["Thương hiệu"]) });
+                brand = await Brand.create({ name: firstRow["Brand"], slug: slugify(firstRow["Brand"]) });
             }
             brandId = brand._id;
         }
-        let categoryId = null;
-        if (firstRow["Danh mục"]) {
-            let cat = await Category.findOne({ name: new RegExp(`^${firstRow["Danh mục"]}$`, 'i') });
+        let categoryId;
+        if (firstRow["Category"]) {
+            let cat = await Category.findOne({ name: new RegExp(`^${firstRow["Category"]}$`, 'i') });
             if (!cat) {
-                cat = await Category.create({ name: firstRow["Danh mục"], slug: slugify(firstRow["Danh mục"]), level: 1 });
+                cat = await Category.create({ name: firstRow["Category"], slug: slugify(firstRow["Category"]) });
             }
             categoryId = cat._id;
         }
         const productData = {
-            name: firstRow["Tên sản phẩm"],
+            name: firstRow["Product name"],
             slug: slug,
             brandId: brandId,
             categoryId: categoryId,
@@ -595,9 +583,9 @@ export const batchImportProducts = async (productsData, shopId) => {
                 name: vName,
                 sku: vSku,
                 price: Number(row["Giá bán"]) || 0,
-                discountPrice: row["Giá khuyến mãi"] ? Number(row["Giá khuyến mãi"]) : undefined,
+                discountPrice: row["Discount price"] ? Number(row["Discount price"]) : undefined,
                 stock: Number(row["Tồn kho"]) || 0,
-                isActive: row["Trạng thái (Biến thể)"] !== "Ngừng bán",
+                isActive: row["Trạng thái (Biến thể)"] !== "Discontinued",
             };
             if (existingVariantsMap.has(vKey)) {
                 await Variant.findByIdAndUpdate(existingVariantsMap.get(vKey)._id, variantData);

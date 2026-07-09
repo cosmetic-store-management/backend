@@ -26,12 +26,82 @@ export const createSupplier = async (data: any) => {
   return inventoryRepo.createSupplier(data);
 };
 
+export const updateSupplier = async (id: string, data: any) => {
+  const supplier = await inventoryRepo.findSupplierById(id);
+  if (!supplier) throw notFound("Supplier not found");
+
+  if (data.name !== undefined) {
+    if (!data.name.trim()) throw badRequest("Tên nhà cung cấp không được để trống");
+    supplier.name = data.name.trim();
+  }
+  if (data.phone !== undefined) {
+    if (!data.phone.trim()) throw badRequest("Số điện thoại không được để trống");
+    supplier.phone = data.phone.trim();
+  }
+  if (data.email !== undefined) supplier.email = data.email.trim();
+  if (data.address !== undefined) supplier.address = data.address.trim();
+  if (data.taxCode !== undefined) supplier.taxCode = data.taxCode.trim();
+  if (data.contactPerson !== undefined) supplier.contactPerson = data.contactPerson.trim();
+  if (data.contactPhone !== undefined) supplier.contactPhone = data.contactPhone.trim();
+  if (data.contactEmail !== undefined) supplier.contactEmail = data.contactEmail.trim();
+  if (data.contactPosition !== undefined) supplier.contactPosition = data.contactPosition.trim();
+  if (data.notes !== undefined) supplier.notes = data.notes.trim();
+
+  if (data.isActive !== undefined) {
+    const nextStatus = !!data.isActive;
+    if (!nextStatus) {
+      const { default: Brand } = await import("../brand/models/brand.schema.js");
+      const activeBrandsCount = await Brand.countDocuments({ supplierId: id, isActive: true });
+      if (activeBrandsCount > 0) {
+        throw badRequest(`Không thể tắt hoạt động nhà cung cấp này vì đang liên kết với ${activeBrandsCount} thương hiệu đang hoạt động.`);
+      }
+    }
+    supplier.isActive = nextStatus;
+  }
+
+  await supplier.save();
+
+  const { default: Brand } = await import("../brand/models/brand.schema.js");
+  await Brand.updateMany(
+    { supplierId: id },
+    {
+      $set: {
+        supplierName: supplier.name,
+        contactPhone: supplier.contactPhone || supplier.phone,
+        contactEmail: supplier.contactEmail || supplier.email,
+      },
+    },
+  );
+
+  return supplier;
+};
+
+export const deleteSupplier = async (id: string) => {
+  const supplier = await inventoryRepo.findSupplierById(id);
+  if (!supplier) throw notFound("Supplier not found");
+
+  const { default: Brand } = await import("../brand/models/brand.schema.js");
+  const linkedBrandsCount = await Brand.countDocuments({ supplierId: id });
+  if (linkedBrandsCount > 0) {
+    throw badRequest(`Không thể xóa nhà cung cấp này vì đang liên kết với ${linkedBrandsCount} thương hiệu.`);
+  }
+
+  const { default: GoodsReceipt } = await import("./models/goods-receipt.schema.js");
+  const linkedReceiptsCount = await GoodsReceipt.countDocuments({ supplierId: id });
+  if (linkedReceiptsCount > 0) {
+    throw badRequest(`Không thể xóa nhà cung cấp này vì đã phát sinh ${linkedReceiptsCount} đơn nhập hàng.`);
+  }
+
+  await supplier.deleteOne();
+};
+
 // ── STOCK ─────────────────────────────────────────────────────────────────────
 
 export const getStockList = async (
   search?: string,
   page = 1,
   limit = 10,
+  stockStatus?: string,
 ): Promise<{
   stock: StockItemResponse[];
   pagination: {
@@ -50,6 +120,14 @@ export const getStockList = async (
       { sku: { $regex: search.trim(), $options: "i" } },
       { productId: { $in: productIds } },
     ];
+  }
+
+  if (stockStatus === "low") {
+    query.$expr = { $lte: ["$stock", "$minStock"] };
+  } else if (stockStatus === "out") {
+    query.stock = 0;
+  } else if (stockStatus === "in") {
+    query.$expr = { $gt: ["$stock", "$minStock"] };
   }
 
   const [result, totalItems] = await Promise.all([
@@ -102,7 +180,9 @@ export const getStockList = async (
       brandId: brand?._id?.toString() ?? "",
       brandName: brand?.name ?? prod?.brand ?? "",
       brandImage: brand?.imageUrl ?? "",
-      supplier: brand?.name ?? prod?.brand ?? "",
+      supplier: brand?.supplierId && typeof brand.supplierId === "object" && "name" in brand.supplierId
+        ? (brand.supplierId as any).name
+        : (brand?.name ?? prod?.brand ?? ""),
       lastUpdated: (v as any).updatedAt
         ? new Date((v as any).updatedAt)
             .toISOString()
@@ -110,6 +190,15 @@ export const getStockList = async (
             .substring(0, ISO_DATETIME_LENGTH)
         : "",
       expiringBatchesCount: expiringBatchesMap.get(v._id.toString()) || 0,
+      supplierInfo: brand?.supplierId && typeof brand.supplierId === "object" && "name" in brand.supplierId
+        ? {
+            id: (brand.supplierId as any)._id?.toString() || (brand.supplierId as any).id?.toString(),
+            name: (brand.supplierId as any).name,
+            phone: (brand.supplierId as any).phone,
+            email: (brand.supplierId as any).email || "",
+            address: (brand.supplierId as any).address || "",
+          }
+        : undefined,
     };
   });
 
@@ -199,6 +288,9 @@ export const createGoodsReceipt = async (
 
   const supplier = await inventoryRepo.findSupplierById(supplierId);
   if (!supplier) throw notFound("Supplier not found");
+  if (!supplier.isActive) {
+    throw badRequest("Nhà cung cấp này đang tạm ngưng hoạt động, không thể nhập hàng.");
+  }
 
   let totalAmount = 0;
   const receiptItems = [];
@@ -272,7 +364,7 @@ export const createGoodsReceipt = async (
 
         await inventoryRepo.createTransaction(
           {
-            code: `TX-GR-${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
+            code: `TXIN${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
             productId: item.productId,
             variantId: item.variantId,
             type: "in",
@@ -368,7 +460,7 @@ export const adjustStock = async (
 
     await inventoryRepo.createTransaction(
       {
-        code: `TX-ADJ-${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
+        code: `TXADJ${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
         productId: variant.productId,
         variantId: variant._id,
         type: "adjustment",
@@ -401,4 +493,30 @@ export const updateMinStock = async (operator: any, data: any) => {
   await variant.save();
 
   return variant;
+};
+
+import { sendLowStockAlertEmail } from "../../shared/email/email.service.js";
+import User from "../user/models/user.schema.js";
+
+export const checkAndTriggerLowStockAlert = async (variant: any) => {
+  if (!variant || variant.stock > variant.minStock) return;
+
+  try {
+    // Find active store owners and managers to notify
+    const managers = await User.find({
+      role: { $in: ["owner", "manager"] },
+      isActive: true,
+      isDeleted: { $ne: true }
+    }).select("email").lean();
+
+    const emails = managers.map(m => m.email).filter(Boolean) as string[];
+    if (emails.length === 0) return;
+
+    for (const email of emails) {
+      await sendLowStockAlertEmail(email, variant.name, variant.stock, variant.minStock);
+    }
+    console.log(`[Low Stock Alert] Emailed low stock alert for variant ${variant.name} (Stock: ${variant.stock}/${variant.minStock})`);
+  } catch (error) {
+    console.error("[Low Stock Alert] Failed to trigger low-stock alert:", error);
+  }
 };

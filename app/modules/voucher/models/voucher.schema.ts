@@ -14,6 +14,7 @@ export interface IVoucher {
   ttlMinutes: number;
   overbookingLimit: number;
   usedBy: mongoose.Types.ObjectId[];
+  channelRule?: "online-only" | "offline-only" | "all";
 }
 
 export type VoucherDocument = Document & IVoucher;
@@ -43,6 +44,11 @@ const voucherSchema = new Schema<VoucherDocument>(
     ttlMinutes: { type: Number, default: 0, min: 0 },
     overbookingLimit: { type: Number, default: 0, min: -1 },
     usedBy: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    channelRule: {
+      type: String,
+      enum: ["online-only", "offline-only", "all"],
+      default: "all",
+    },
   },
   { timestamps: true, collection: "vouchers", versionKey: false },
 );

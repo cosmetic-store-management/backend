@@ -17,7 +17,7 @@ router.get("/", catchAsync(async (_req, res) => {
 router.get("/:id", catchAsync(async (req, res) => {
     const brand = await brandService.getBrandDetail(req.params.id);
     if (!brand.isActive)
-        throw new Error("Thương hiệu ngừng hoạt động");
+        throw new Error("Brand is inactive");
     return response.success(res, { brand });
 }));
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ router.post("/admin", authenticate, requirePermission("products.manage"), valida
     const brand = await brandService.createBrand(req.body);
     await logAction(req.user._id.toString(), req.user.name, "create", "catalog", `Tạo thương hiệu "${brand.name}"`, req.ip || "127.0.0.1");
     return response.created(res, {
-        message: "Tạo thương hiệu thành công",
+        message: "Brand created successfully",
         brand,
     });
 }));

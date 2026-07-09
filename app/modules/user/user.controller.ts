@@ -32,6 +32,8 @@ router.get(
     const search = req.query.search as string;
     const status = req.query.status as string;
     const role = req.query.role as string;
+    const hiringStatus = req.query.hiringStatus as string;
+    const workingShift = req.query.workingShift as string;
 
     const result = await userService.getStaffUsers(
       page,
@@ -39,6 +41,8 @@ router.get(
       search,
       status,
       role,
+      hiringStatus,
+      workingShift,
     );
     return response.success(res, result);
   }),
@@ -542,5 +546,7 @@ router.delete(
     return response.success(res, { message: "Đã xóa tài khoản thành công" });
   }),
 );
+
+
 
 export default router;

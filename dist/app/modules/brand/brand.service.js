@@ -15,7 +15,7 @@ const slugify = (text) => text
 const getBrandProductCounts = async (brandIds) => {
     if (!brandIds.length)
         return {};
-    const { default: Product } = await import("../../models/product/product.schema.js");
+    const { default: Product } = await import("../product/models/product.schema.js");
     const { Types } = await import("mongoose");
     const results = await Product.aggregate([
         {
@@ -29,7 +29,7 @@ const getBrandProductCounts = async (brandIds) => {
 };
 // ── PUBLIC ────────────────────────────────────────────────────────────────────
 export const getPublicBrands = async () => {
-    const result = await brandRepo.findAll({ isActive: true }, null, 500);
+    const result = await brandRepo.findAll({ isActive: true }, 1, 500);
     const brands = result.brands;
     const brandIds = brands.map((b) => b._id.toString());
     const countMap = await getBrandProductCounts(brandIds);
@@ -38,8 +38,9 @@ export const getPublicBrands = async () => {
         .filter((b) => b.productCount > 0)
         .sort((a, b) => b.productCount - a.productCount);
 };
-export const getAdminBrands = async ({ search, status, cursor, limit = 50, }) => {
+export const getAdminBrands = async ({ search, status, country, page = 1, limit = 50, }) => {
     const parsedLimit = Math.max(Number(limit) || 50, 1);
+    const parsedPage = Math.max(Number(page) || 1, 1);
     const query = {};
     if (search)
         query.name = { $regex: search.trim(), $options: "i" };
@@ -47,8 +48,10 @@ export const getAdminBrands = async ({ search, status, cursor, limit = 50, }) =>
         query.isActive = true;
     else if (status === "inactive")
         query.isActive = false;
+    if (country)
+        query.country = { $regex: `^${country.trim()}$`, $options: "i" };
     const [result, total] = await Promise.all([
-        brandRepo.findAll(query, cursor || null, parsedLimit),
+        brandRepo.findAll(query, parsedPage, parsedLimit),
         brandRepo.countAll(query),
     ]);
     const brands = result.brands;
@@ -60,15 +63,15 @@ export const getAdminBrands = async ({ search, status, cursor, limit = 50, }) =>
         pagination: {
             limit: parsedLimit,
             total,
-            nextCursor: result.nextCursor,
-            hasNextPage: result.hasNextPage,
+            page: result.page,
+            totalPages: result.totalPages,
         },
     };
 };
 export const getBrandDetail = async (id) => {
     const brand = await brandRepo.findById(id);
     if (!brand)
-        throw notFound("Không tìm thấy thương hiệu");
+        throw notFound("Brand not found");
     const countMap = await getBrandProductCounts([id]);
     return mapBrand(brand, countMap[id] ?? 0);
 };
@@ -76,14 +79,14 @@ export const createBrand = async (data) => {
     const slug = slugify(data.name);
     const existing = await brandRepo.findBySlug(slug);
     if (existing)
-        throw conflict("Tên/Slug thương hiệu đã tồn tại");
+        throw conflict("Brand Name/Slug already exists");
     const newBrand = await brandRepo.create({ ...data, slug });
     return mapBrand(newBrand, 0);
 };
 export const updateBrand = async (id, data) => {
     const brand = await brandRepo.findById(id);
     if (!brand)
-        throw notFound("Không tìm thấy thương hiệu");
+        throw notFound("Brand not found");
     if (data.name !== undefined) {
         const nextSlug = slugify(data.name);
         const existing = await brandRepo.findOneBy({
@@ -91,7 +94,7 @@ export const updateBrand = async (id, data) => {
             _id: { $ne: brand._id },
         });
         if (existing)
-            throw conflict("Tên/Slug thương hiệu đã tồn tại");
+            throw conflict("Brand Name/Slug already exists");
         brand.name = data.name;
         brand.slug = nextSlug;
     }
@@ -103,6 +106,18 @@ export const updateBrand = async (id, data) => {
         brand.imageUrl = data.imageUrl;
     if (data.country !== undefined)
         brand.country = data.country;
+    if (data.website !== undefined)
+        brand.website = data.website;
+    if (data.contactPhone !== undefined)
+        brand.contactPhone = data.contactPhone;
+    if (data.contactEmail !== undefined)
+        brand.contactEmail = data.contactEmail;
+    if (data.supplierName !== undefined)
+        brand.supplierName = data.supplierName;
+    if (data.minimumOrderValue !== undefined)
+        brand.minimumOrderValue = data.minimumOrderValue;
+    if (data.leadTimeDays !== undefined)
+        brand.leadTimeDays = data.leadTimeDays;
     await brandRepo.save(brand);
     const countMap = await getBrandProductCounts([id]);
     return mapBrand(brand, countMap[id] ?? 0);
@@ -110,7 +125,7 @@ export const updateBrand = async (id, data) => {
 export const updateBrandStatus = async (id, isActive) => {
     const brand = await brandRepo.findById(id);
     if (!brand)
-        throw notFound("Không tìm thấy thương hiệu");
+        throw notFound("Brand not found");
     brand.isActive = isActive;
     await brandRepo.save(brand);
     const countMap = await getBrandProductCounts([id]);
@@ -119,10 +134,10 @@ export const updateBrandStatus = async (id, isActive) => {
 export const deleteBrand = async (id) => {
     const brand = await brandRepo.findById(id);
     if (!brand)
-        throw notFound("Không tìm thấy thương hiệu");
-    const { default: Product } = await import("../../models/product/product.schema.js");
+        throw notFound("Brand not found");
+    const { default: Product } = await import("../product/models/product.schema.js");
     const productCount = await Product.countDocuments({ brandId: id });
     if (productCount > 0)
-        throw conflict(`Không thể xoá thương hiệu đang có ${productCount} sản phẩm. Vui lòng xoá hoặc chuyển sản phẩm sang thương hiệu khác trước.`);
+        throw conflict(`Cannot delete a brand that has ${productCount} products. Please delete or move the products to another brand first.`);
     await brandRepo.deleteById(id);
 };

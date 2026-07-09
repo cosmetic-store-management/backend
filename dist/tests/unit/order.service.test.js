@@ -13,7 +13,7 @@ vi.mock("../../app/modules/voucher/voucher.service.js", () => ({
     validateVoucher: vi.fn(),
     incrementVoucherUsage: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../../app/models/user/user.schema.js", () => ({
+vi.mock("../../app/modules/user/models/user.schema.js", () => ({
     default: {
         findById: vi.fn().mockReturnValue({
             select: vi.fn().mockResolvedValue(null),
@@ -22,17 +22,17 @@ vi.mock("../../app/models/user/user.schema.js", () => ({
         findByIdAndUpdate: vi.fn().mockResolvedValue(null),
     },
 }));
-vi.mock("../../app/models/order/order.schema.js", () => ({
+vi.mock("../../app/modules/order/models/order.schema.js", () => ({
     default: {},
     OrderDocument: {},
 }));
-vi.mock("../../app/models/user/point-history.schema.js", () => ({
+vi.mock("../../app/modules/user/models/point-history.schema.js", () => ({
     default: { create: vi.fn().mockResolvedValue(undefined) },
 }));
-vi.mock("../../app/models/product/product.schema.js", () => ({
+vi.mock("../../app/modules/product/models/product.schema.js", () => ({
     default: { findByIdAndUpdate: vi.fn().mockResolvedValue(null) },
 }));
-vi.mock("../../app/models/inventory/inventory-transaction.schema.js", () => ({
+vi.mock("../../app/modules/inventory/models/inventory-transaction.schema.js", () => ({
     default: {},
 }));
 vi.mock("../../app/shared/email/email.service.js", () => ({
@@ -87,7 +87,7 @@ vi.spyOn(mongoose, "startSession").mockResolvedValue({
 });
 import * as orderRepo from "../../app/modules/order/order.repository.js";
 import * as orderService from "../../app/modules/order/order.service.js";
-import User from "../../app/models/user/user.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
 import { decrementVoucherUsage } from "../../app/modules/voucher/voucher.service.js";
 const FAKE_USER_ID = new mongoose.Types.ObjectId().toHexString();
 const FAKE_ORDER_ID = "order_xyz";
@@ -245,7 +245,7 @@ describe("orderService.requestReturnOrder", () => {
             _id: { toString: () => FAKE_USER_ID },
             role: "customer",
         };
-        await expect(orderService.requestReturnOrder(FAKE_ORDER_ID, customer, "Lỗi")).rejects.toMatchObject({ status: 400, message: "Chỉ có thể yêu cầu trả hàng cho đơn hàng đã hoàn tất" });
+        await expect(orderService.requestReturnOrder(FAKE_ORDER_ID, customer, "Lỗi")).rejects.toMatchObject({ status: 400, message: "You can only request a return for a completed order" });
     });
     it("thất bại: throw badRequest nếu quá 14 ngày", async () => {
         const pastDate = new Date();
@@ -259,7 +259,7 @@ describe("orderService.requestReturnOrder", () => {
             _id: { toString: () => FAKE_USER_ID },
             role: "customer",
         };
-        await expect(orderService.requestReturnOrder(FAKE_ORDER_ID, customer, "Lỗi")).rejects.toMatchObject({ status: 400, message: "Đã quá thời hạn 15 ngày để yêu cầu trả hàng" });
+        await expect(orderService.requestReturnOrder(FAKE_ORDER_ID, customer, "Lỗi")).rejects.toMatchObject({ status: 400, message: "The 15-day return request window has expired" });
     });
 });
 // ── updateOrderStatus (Reject Return) ─────────────────────────────────────────

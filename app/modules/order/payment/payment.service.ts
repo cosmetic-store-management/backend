@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import crypto from "crypto";
 import Order from "../models/order.schema.js";
 import User from "../../user/models/user.schema.js";
 import PaymentTransaction from "../models/payment-transaction.schema.js";
@@ -287,6 +288,18 @@ export const handleSepayWebhook = async (payload: any, authHeader: string) => {
 
         await session.commitTransaction();
         console.log(`[SePay Webhook] Payment confirmed successfully for order ${orderCode}!`);
+
+        if (order.userId) {
+          User.findById(order.userId)
+            .select("email")
+            .lean()
+            .then(u => {
+              if (u && u.email) {
+                sendOrderSuccessEmail(u.email, updatedOrder.code, updatedOrder.totalAmount)
+                  .catch(err => console.error("Error sending order success email:", err));
+              }
+            });
+        }
       } else {
         await session.commitTransaction(); // It may already have been updated
       }
@@ -433,4 +446,139 @@ export const refundPayment = async (orderId: string, session?: mongoose.ClientSe
       await order.save();
     }
   }
+};
+
+export const handlePayosWebhook = async (payload: any, signatureHeader: string) => {
+  const { code, desc, data, signature } = payload;
+  
+  if (!data) {
+    throw badRequest("PayOS Payload is missing data");
+  }
+
+  // 1. Check signature if Checksum Key is configured
+  const webhookSetting = await Setting.findOne({ key: "global_settings" });
+  const checksumKey = process.env.PAYOS_CHECKSUM_KEY || webhookSetting?.value?.payosChecksumKey;
+
+  if (checksumKey) {
+    // Sort keys alphabetically
+    const sortedKeys = Object.keys(data).sort();
+    const queryParts = sortedKeys.map(key => {
+      let value = data[key];
+      if (value === null || value === undefined) {
+        value = "";
+      }
+      return `${key}=${value}`;
+    });
+    const queryString = queryParts.join("&");
+    const computedSignature = crypto
+      .createHmac("sha256", checksumKey)
+      .update(queryString)
+      .digest("hex");
+
+    if (computedSignature !== signature && computedSignature !== signatureHeader) {
+      throw badRequest("Invalid PayOS signature");
+    }
+  } else {
+    console.warn("⚠️ PayOS Checksum Key is not configured — signature verification skipped.");
+  }
+
+  if (code !== "00" && desc !== "success") {
+    console.log(`[PayOS Webhook] Payment failed or pending: code = ${code}, desc = ${desc}`);
+    return true;
+  }
+
+  // 2. Parse the description to find the order code
+  const description = data.description || "";
+  const match = description.match(/(ONL|OFF)\d+/i);
+  let orderCode = "";
+
+  if (match) {
+    orderCode = match[0].toUpperCase();
+  } else if (data.orderCode) {
+    orderCode = String(data.orderCode);
+  }
+
+  if (!orderCode) {
+    console.log(`[PayOS Webhook] Skipping: could not extract order code from description "${description}" or data "${data.orderCode}"`);
+    return true;
+  }
+
+  // 3. Update the order
+  const order = await Order.findOne({
+    $or: [
+      { code: orderCode },
+      { code: new RegExp(orderCode, "i") }
+    ]
+  });
+
+  if (!order) {
+    console.log(`[PayOS Webhook] Order code ${orderCode} was not found in the system.`);
+    return true;
+  }
+
+  if (order.orderStatus !== "pending") {
+    console.log(`[PayOS Webhook] Order ${order.code} is not in pending status (current: ${order.orderStatus}).`);
+    return true;
+  }
+
+  if (order.paymentStatus === "paid") {
+    return true;
+  }
+
+  const transferAmount = data.amount || 0;
+  if (Number(transferAmount) >= order.totalAmount) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const updatedOrder = await Order.findOneAndUpdate(
+        { _id: order._id, orderStatus: "pending" },
+        { 
+          $set: { 
+            orderStatus: "processing",
+            paymentStatus: "paid"
+          }
+        },
+        { session, new: true }
+      );
+
+      if (updatedOrder) {
+        await (PaymentTransaction as any).create([{
+          orderId: order._id,
+          amount: Number(transferAmount),
+          method: "transfer",
+          status: "success",
+          type: "charge",
+          transactionId: data.reference || `PAYOS_${Date.now()}`,
+          details: { rawPayload: payload },
+        }], { session });
+
+        await session.commitTransaction();
+        console.log(`[PayOS Webhook] Payment confirmed successfully for order ${order.code}!`);
+
+        if (order.userId) {
+          User.findById(order.userId)
+            .select("email")
+            .lean()
+            .then(u => {
+              if (u && u.email) {
+                sendOrderSuccessEmail(u.email, updatedOrder.code, updatedOrder.totalAmount)
+                  .catch(err => console.error("Error sending order success email:", err));
+              }
+            });
+        }
+      } else {
+        await session.commitTransaction();
+      }
+    } catch (error) {
+      await session.abortTransaction();
+      console.error("[PayOS Webhook] Error while updating order status:", error);
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+  } else {
+    console.log(`[PayOS Webhook] Received amount (${transferAmount}) is lower than order total (${order.totalAmount}). Manual audit required.`);
+  }
+
+  return true;
 };

@@ -1,6 +1,6 @@
-import Order from "../../models/order/order.schema.js";
-import Product from "../../models/product/product.schema.js";
-import User from "../../models/user/user.schema.js";
+import Order from "../order/models/order.schema.js";
+import Product from "../product/models/product.schema.js";
+import User from "../user/models/user.schema.js";
 // ── In-memory cache (TTL 5 phút) ─────────────────────────────────────────────
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 phút
 const cache = new Map();
@@ -82,7 +82,7 @@ export const aggregateRevenueForPeriod = (start, end) => {
 };
 export const countOrdersForPeriod = (start, end) => Order.countDocuments({
     createdAt: { $gte: start, $lte: end },
-    note: { $ne: "Hệ thống tự động hủy do quá hạn thanh toán" }
+    note: { $ne: "System auto-cancelled due to payment timeout" }
 });
 export const countCustomersForPeriod = (start, end) => User.countDocuments({
     role: "customer",
@@ -93,7 +93,7 @@ export const findRecentOrders = (dateFilter, limit = 5) => {
     const key = cacheKey("findRecentOrders", dateFilter, limit);
     return withCache(key, () => Order.find({
         ...dateFilter,
-        note: { $ne: "Hệ thống tự động hủy do quá hạn thanh toán" }
+        note: { $ne: "System auto-cancelled due to payment timeout" }
     })
         .sort({ createdAt: -1 })
         .limit(limit)
@@ -105,6 +105,17 @@ export const aggregateTopProducts = (dateFilter, limit = 5) => {
     return withCache(key, () => Order.aggregate([
         { $match: { orderStatus: "completed", ...dateFilter } },
         { $unwind: "$items" },
+        {
+            $addFields: {
+                "items.productId": {
+                    $cond: {
+                        if: { $eq: [{ $type: "$items.productId" }, "string"] },
+                        then: { $toObjectId: "$items.productId" },
+                        else: "$items.productId",
+                    },
+                },
+            },
+        },
         {
             $group: {
                 _id: "$items.productId",
@@ -118,14 +129,14 @@ export const aggregateTopProducts = (dateFilter, limit = 5) => {
 export const findProductById = (id) => Product.findById(id).populate("categoryId").lean();
 // ── Low Stock ─────────────────────────────────────────────────────────────────
 export const findLowStockVariants = async (limit = 10) => {
-    const Variant = (await import("../../models/product/variant.schema.js"))
+    const Variant = (await import("../product/models/variant.schema.js"))
         .default;
     return Variant.find({ $expr: { $lte: ["$stock", "$minStock"] } })
         .limit(limit)
         .lean();
 };
 export const findVariantsByProductId = async (productId) => {
-    const Variant = (await import("../../models/product/variant.schema.js"))
+    const Variant = (await import("../product/models/variant.schema.js"))
         .default;
     return Variant.find({ productId }).lean();
 };
@@ -204,6 +215,17 @@ export const aggregateCategoryPerformance = (dateFilter) => {
         { $match: { orderStatus: "completed", ...dateFilter } },
         { $unwind: "$items" },
         {
+            $addFields: {
+                "items.productId": {
+                    $cond: {
+                        if: { $eq: [{ $type: "$items.productId" }, "string"] },
+                        then: { $toObjectId: "$items.productId" },
+                        else: "$items.productId",
+                    },
+                },
+            },
+        },
+        {
             $lookup: {
                 from: "products",
                 localField: "items.productId",
@@ -256,7 +278,7 @@ export const aggregateCategoryPerformance = (dateFilter) => {
         {
             $group: {
                 _id: "$rootCategory.name",
-                revenue: { $sum: "$items.lineTotal" },
+                revenue: { $sum: { $multiply: ["$items.price", "$items.quantity"] } },
                 sold: { $sum: "$items.quantity" },
             },
         },
@@ -286,9 +308,23 @@ export const aggregatePaymentMethods = (dateFilter) => {
         { $sort: { count: -1 } },
     ], AGG_OPTIONS));
 };
+export const aggregateChannelStats = (dateFilter) => {
+    const key = cacheKey("aggregateChannelStats", dateFilter);
+    return withCache(key, () => Order.aggregate([
+        { $match: { orderStatus: "completed", ...dateFilter } },
+        {
+            $group: {
+                _id: "$channel",
+                totalRevenue: { $sum: "$totalAmount" },
+                totalCost: { $sum: "$totalCost" },
+                count: { $sum: 1 },
+            },
+        },
+    ], AGG_OPTIONS));
+};
 // ── Voucher Stats ─────────────────────────────────────────────────────────────
 export const findAllVouchers = async (dateFilter) => {
-    const Voucher = (await import("../../models/system/voucher.schema.js"))
+    const Voucher = (await import("../voucher/models/voucher.schema.js"))
         .default;
     return Voucher.find(dateFilter).lean();
 };

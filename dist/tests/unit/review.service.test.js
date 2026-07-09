@@ -9,7 +9,7 @@ vi.mock("../../app/modules/review/dto/review.response.dto.js", () => ({
     mapReview: (r) => r,
     mapAdminReview: (r) => r,
 }));
-vi.mock("../../app/models/product/product.schema.js", () => ({
+vi.mock("../../app/modules/product/models/product.schema.js", () => ({
     default: {
         findById: vi.fn(),
         findByIdAndUpdate: vi.fn().mockResolvedValue(null),
@@ -18,7 +18,7 @@ vi.mock("../../app/models/product/product.schema.js", () => ({
 import * as reviewRepo from "../../app/modules/review/review.repository.js";
 import * as orderRepo from "../../app/modules/order/order.repository.js";
 import * as reviewService from "../../app/modules/review/review.service.js";
-import Product from "../../app/models/product/product.schema.js";
+import Product from "../../app/modules/product/models/product.schema.js";
 import mongoose from "mongoose";
 const FAKE_USER_ID = new mongoose.Types.ObjectId().toString();
 const FAKE_PRODUCT_ID = new mongoose.Types.ObjectId().toString();
@@ -41,6 +41,7 @@ describe("reviewService.createReview", () => {
         rating: 5,
         comment: "Sản phẩm tốt",
         images: [],
+        videos: [],
     };
     it("tạo review thành công khi user đã mua và chưa review", async () => {
         vi.mocked(Product.findById).mockReturnValue({
@@ -89,7 +90,7 @@ describe("reviewService.deleteReviewByUser", () => {
         vi.mocked(reviewRepo.aggregateStats).mockResolvedValue([]);
         vi.mocked(reviewRepo.updateProductStats).mockResolvedValue(null);
         const result = await reviewService.deleteReviewByUser(FAKE_USER_ID, FAKE_REVIEW_ID);
-        expect(result).toMatchObject({ message: expect.stringContaining("xóa") });
+        expect(result).toMatchObject({ message: expect.stringContaining("deleted") });
     });
     it("throw forbidden khi review không thuộc về user", async () => {
         vi.mocked(reviewRepo.findOneAndDelete).mockResolvedValue(null);

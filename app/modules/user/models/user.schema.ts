@@ -49,6 +49,28 @@ export interface IUser {
   refreshTokens?: string[];
   dob?: Date;
   gender?: "male" | "female" | "other";
+  citizenId?: string;
+  startDate?: Date;
+  bankInfo?: {
+    bankName?: string;
+    accountNumber?: string;
+    accountName?: string;
+  };
+  emergencyContact?: {
+    name?: string;
+    phone?: string;
+    relationship?: string;
+  };
+  homeAddress?: string;
+  employeeId?: string;
+  status?: "working" | "probation" | "suspended" | "resigned";
+  contractType?: "fulltime" | "parttime" | "probationary" | "internship";
+  workingShift?: "morning" | "afternoon" | "night" | "full";
+  salaryInfo?: {
+    baseSalary: number;
+    allowance: number;
+    commissionRate: number;
+  };
   favorites?: mongoose.Types.ObjectId[];
   recentlyViewed?: mongoose.Types.ObjectId[];
   savedVouchers?: mongoose.Types.ObjectId[];
@@ -104,6 +126,40 @@ const userSchema = new Schema<UserDocument>(
     refreshTokens: { type: [String], select: false, default: [] }, // stored for revocation check
     dob: { type: Date },
     gender: { type: String, enum: ["male", "female", "other"] },
+    citizenId: { type: String, unique: true, sparse: true, trim: true },
+    startDate: { type: Date },
+    bankInfo: {
+      bankName: { type: String, trim: true },
+      accountNumber: { type: String, trim: true },
+      accountName: { type: String, trim: true },
+    },
+    emergencyContact: {
+      name: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      relationship: { type: String, trim: true },
+    },
+    homeAddress: { type: String, trim: true },
+    employeeId: { type: String, unique: true, sparse: true, trim: true },
+    status: {
+      type: String,
+      enum: ["working", "probation", "suspended", "resigned"],
+      default: "working",
+    },
+    contractType: {
+      type: String,
+      enum: ["fulltime", "parttime", "probationary", "internship"],
+      default: "fulltime",
+    },
+    workingShift: {
+      type: String,
+      enum: ["morning", "afternoon", "night", "full"],
+      default: "full",
+    },
+    salaryInfo: {
+      baseSalary: { type: Number, default: 0 },
+      allowance: { type: Number, default: 0 },
+      commissionRate: { type: Number, default: 0 },
+    },
     favorites: [{ type: Schema.Types.ObjectId, ref: "Product" }],
     recentlyViewed: [{ type: Schema.Types.ObjectId, ref: "Product" }],
     savedVouchers: [{ type: Schema.Types.ObjectId, ref: "Voucher" }],

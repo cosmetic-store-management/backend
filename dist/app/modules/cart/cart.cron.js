@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import Cart from "../../models/cart/cart.schema.js";
+import Cart from "./models/cart.schema.js";
 // Chạy vào lúc 02:00 sáng mỗi ngày
 cron.schedule("0 2 * * *", async () => {
     console.log("[Cart Cron] Bắt đầu dọn dẹp giỏ hàng mồ côi (không hoạt động > 30 ngày)...");

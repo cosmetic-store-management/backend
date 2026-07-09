@@ -126,11 +126,22 @@ export const validateVoucher = async (
   subtotal: number,
   shippingFee = 30000,
   userId?: string,
+  channel = "online",
 ) => {
   const voucher = await voucherRepo.findByCode(code);
 
   if (!voucher) throw notFound("Discount code does not exist");
   if (!voucher.isActive) throw badRequest("Discount code has been disabled");
+
+  // Enforce channel rule
+  if (voucher.channelRule && voucher.channelRule !== "all") {
+    if (voucher.channelRule === "online-only" && channel !== "online") {
+      throw badRequest("This discount code is only applicable for online orders");
+    }
+    if (voucher.channelRule === "offline-only" && channel !== "pos") {
+      throw badRequest("This discount code is only applicable for in-store purchases");
+    }
+  }
 
   const now = new Date();
   if (now < voucher.startDate)

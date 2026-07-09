@@ -82,6 +82,11 @@ export const decrementVariantStock = async (
       "Không đủ số lượng trong tồn kho hoặc biến thể không tồn tại",
     );
   }
+  
+  import("../inventory/inventory.service.js")
+    .then(service => service.checkAndTriggerLowStockAlert(updated))
+    .catch(err => console.error("Error triggering low stock alert:", err));
+
   return updated;
 };
 

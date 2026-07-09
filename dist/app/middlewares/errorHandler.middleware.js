@@ -8,12 +8,12 @@ export const errorHandler = (err, _req, res, _next) => {
     // MongoDB duplicate key
     if (err.code === 11000) {
         const field = Object.keys(err.keyValue || {})[0] || "field";
-        res.status(409).json({ success: false, message: `${field} đã tồn tại` });
+        res.status(409).json({ success: false, message: `${field} already exists` });
         return;
     }
     // Zod validation error
     if (err.name === "ZodError") {
-        res.status(400).json({ success: false, message: "Dữ liệu không hợp lệ", errors: err.errors });
+        res.status(400).json({ success: false, message: "Invalid data", errors: err.errors });
         return;
     }
     console.error("[Unexpected Error]", {
@@ -25,5 +25,5 @@ export const errorHandler = (err, _req, res, _next) => {
     });
     res
         .status(500)
-        .json({ success: false, message: "Lỗi server, vui lòng thử lại sau" });
+        .json({ success: false, message: "Server error, please try again later" });
 };

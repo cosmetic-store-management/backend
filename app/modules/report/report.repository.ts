@@ -166,6 +166,17 @@ export const aggregateTopProducts = (dateFilter: DateFilter, limit = 5) => {
         { $match: { orderStatus: "completed", ...dateFilter } },
         { $unwind: "$items" },
         {
+          $addFields: {
+            "items.productId": {
+              $cond: {
+                if: { $eq: [{ $type: "$items.productId" }, "string"] },
+                then: { $toObjectId: "$items.productId" },
+                else: "$items.productId",
+              },
+            },
+          },
+        },
+        {
           $group: {
             _id: "$items.productId",
             sold: { $sum: "$items.quantity" },
@@ -292,6 +303,17 @@ export const aggregateCategoryPerformance = (dateFilter: DateFilter) => {
         { $match: { orderStatus: "completed", ...dateFilter } },
         { $unwind: "$items" },
         {
+          $addFields: {
+            "items.productId": {
+              $cond: {
+                if: { $eq: [{ $type: "$items.productId" }, "string"] },
+                then: { $toObjectId: "$items.productId" },
+                else: "$items.productId",
+              },
+            },
+          },
+        },
+        {
           $lookup: {
             from: "products",
             localField: "items.productId",
@@ -344,7 +366,7 @@ export const aggregateCategoryPerformance = (dateFilter: DateFilter) => {
         {
           $group: {
             _id: "$rootCategory.name",
-            revenue: { $sum: "$items.lineTotal" },
+            revenue: { $sum: { $multiply: ["$items.price", "$items.quantity"] } },
             sold: { $sum: "$items.quantity" },
           },
         },
@@ -379,6 +401,26 @@ export const aggregatePaymentMethods = (dateFilter: DateFilter) => {
           },
         },
         { $sort: { count: -1 } },
+      ],
+      AGG_OPTIONS,
+    ),
+  );
+};
+
+export const aggregateChannelStats = (dateFilter: DateFilter) => {
+  const key = cacheKey("aggregateChannelStats", dateFilter);
+  return withCache(key, () =>
+    Order.aggregate(
+      [
+        { $match: { orderStatus: "completed", ...dateFilter } },
+        {
+          $group: {
+            _id: "$channel",
+            totalRevenue: { $sum: "$totalAmount" },
+            totalCost: { $sum: "$totalCost" },
+            count: { $sum: 1 },
+          },
+        },
       ],
       AGG_OPTIONS,
     ),

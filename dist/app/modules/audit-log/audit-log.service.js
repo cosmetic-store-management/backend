@@ -16,7 +16,7 @@ export const logAction = async (userId, userName, action, domain, description, i
     }
 };
 // ── Read ──────────────────────────────────────────────────────────────────────
-export const getAuditLogs = async (search, domain, startDate, endDate, cursor, limit = 20) => {
+export const getAuditLogs = async (search, domain, startDate, endDate, page = 1, limit = 20) => {
     const query = {};
     if (domain && domain !== "all") {
         query.domain = domain;
@@ -37,7 +37,7 @@ export const getAuditLogs = async (search, domain, startDate, endDate, cursor, l
             { description: { $regex: search.trim(), $options: "i" } },
         ];
     }
-    const result = await auditRepo.findByQuery(query, cursor || null, limit);
+    const result = await auditRepo.findByQuery(query, page, limit);
     const formattedLogs = result.logs.map((log) => ({
         id: log._id.toString(),
         userName: log.userName,
@@ -52,9 +52,10 @@ export const getAuditLogs = async (search, domain, startDate, endDate, cursor, l
     return {
         logs: formattedLogs,
         pagination: {
-            nextCursor: result.nextCursor,
-            hasNextPage: result.hasNextPage,
+            page: result.page,
+            totalPages: result.totalPages,
             limit,
+            total: result.total,
         }
     };
 };

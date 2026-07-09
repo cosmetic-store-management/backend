@@ -17,6 +17,11 @@ export const sepayWebhook = catchAsync(async (req, res) => {
     await paymentService.handleSepayWebhook(req.body, authHeader);
     res.json({ success: true });
 });
+export const payosWebhook = catchAsync(async (req, res) => {
+    const signatureHeader = req.headers["x-signature"] || "";
+    await paymentService.handlePayosWebhook(req.body, signatureHeader);
+    res.json({ success: true });
+});
 export const lookupAccount = catchAsync(async (req, res) => {
     const { bin, accountNumber } = req.body;
     if (!bin || !accountNumber) {
@@ -27,6 +32,7 @@ export const lookupAccount = catchAsync(async (req, res) => {
 });
 router.post("/create-intent", createPaymentIntent);
 router.post("/webhook/sepay", sepayWebhook);
+router.post("/webhook/payos", payosWebhook);
 import { authenticate, requirePermission } from "../../../middlewares/auth.middleware.js";
 router.post("/lookup-account", authenticate, requirePermission("orders.manage"), lookupAccount);
 // Webhook endpoint is mounted globally in server.ts to parse raw body

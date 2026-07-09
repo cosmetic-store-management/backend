@@ -1,59 +1,70 @@
-import Product from "../../models/product/product.schema.js";
-import Variant from "../../models/product/variant.schema.js";
-import Supplier from "../../models/inventory/supplier.schema.js";
-import GoodsReceipt from "../../models/inventory/goods-receipt.schema.js";
-import InventoryTransaction from "../../models/inventory/inventory-transaction.schema.js";
-import Batch from "../../models/inventory/batch.schema.js";
+import Product from "../product/models/product.schema.js";
+import Variant from "../product/models/variant.schema.js";
+import Supplier from "./models/supplier.schema.js";
+import GoodsReceipt from "./models/goods-receipt.schema.js";
+import InventoryTransaction from "./models/inventory-transaction.schema.js";
+import Batch from "./models/batch.schema.js";
 // ── Supplier ──────────────────────────────────────────────────────────────────
 export const findAllSuppliers = () => Supplier.find().sort({ name: 1 }).lean();
 export const findSupplierById = (id) => Supplier.findById(id);
 export const createSupplier = (data) => Supplier.create(data);
 // ── Variant / Stock ───────────────────────────────────────────────────────────
-export const findVariantsByQuery = async (query, cursor, limit) => {
-    if (cursor)
-        query._id = { $lt: cursor };
-    const variants = await Variant.find(query)
-        .populate({
-        path: "productId",
-        populate: { path: "brandId", select: "name slug imageUrl country" },
-    })
-        .sort({ _id: -1 })
-        .limit(limit + 1)
-        .lean();
-    const hasNextPage = variants.length > limit;
-    const items = hasNextPage ? variants.slice(0, limit) : variants;
-    const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
-    return { variants: items, nextCursor, hasNextPage, limit };
+export const findVariantsByQuery = async (query, page, limit) => {
+    const skip = (page - 1) * limit;
+    const [variants, total] = await Promise.all([
+        Variant.find(query)
+            .populate({
+            path: "productId",
+            populate: { path: "brandId", select: "name slug imageUrl country" },
+        })
+            .sort({ _id: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+        Variant.countDocuments(query),
+    ]);
+    const totalPages = Math.ceil(total / limit);
+    return { variants, total, limit, page, totalPages };
 };
 export const countVariantsByQuery = (query) => Variant.countDocuments(query);
 export const findVariantById = (id) => Variant.findById(id);
 export const findProductById = (id) => Product.findById(id);
 export const saveVariant = (variant) => variant.save();
-export const atomicUpdateStock = (id, quantity, session) => Variant.findByIdAndUpdate(id, { $inc: { stock: quantity } }, { returnDocument: "after", session });
+export const atomicUpdateStock = async (id, quantity, session) => {
+    const updated = await Variant.findByIdAndUpdate(id, { $inc: { stock: quantity } }, { returnDocument: "after", session });
+    if (updated && quantity < 0) {
+        import("./inventory.service.js")
+            .then(service => service.checkAndTriggerLowStockAlert(updated))
+            .catch(err => console.error("Error triggering low stock alert:", err));
+    }
+    return updated;
+};
 /** Tìm tất cả ID product match tên tìm kiếm */
 export const findProductIdsByName = async (search) => {
     const products = await Product.find({ name: { $regex: search.trim(), $options: "i" } }, "_id").lean();
     return products.map((p) => p._id);
 };
 // ── Inventory Transactions ────────────────────────────────────────────────────
-export const findTransactions = async (cursor, limit, type) => {
+export const findTransactions = async (page, limit, type) => {
     const query = {};
     if (type)
         query.type = type;
-    if (cursor)
-        query._id = { $lt: cursor };
-    const transactions = await InventoryTransaction.find(query)
-        .populate({
-        path: "variantId",
-        populate: { path: "productId", select: "name" },
-    })
-        .sort({ _id: -1 })
-        .limit(limit + 1)
-        .lean();
-    const hasNextPage = transactions.length > limit;
-    const items = hasNextPage ? transactions.slice(0, limit) : transactions;
-    const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
-    return { transactions: items, nextCursor, hasNextPage, limit };
+    const skip = (page - 1) * limit;
+    const [transactions, total] = await Promise.all([
+        InventoryTransaction.find(query)
+            .populate({
+            path: "variantId",
+            populate: { path: "productId", select: "name" },
+        })
+            .populate("creatorId", "name")
+            .sort({ _id: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+        InventoryTransaction.countDocuments(query),
+    ]);
+    const totalPages = Math.ceil(total / limit);
+    return { transactions, total, limit, page, totalPages };
 };
 export const countTransactions = (type) => {
     const query = type ? { type } : {};

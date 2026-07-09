@@ -1,6 +1,6 @@
-import Product from "../../models/product/product.schema.js";
-import Variant from "../../models/product/variant.schema.js";
-import Category from "../../models/product/category.schema.js";
+import Product from "./models/product.schema.js";
+import Variant from "./models/variant.schema.js";
+import Category from "../category/models/category.schema.js";
 const CATEGORY_FIELDS = "name slug imageUrl isActive";
 const BRAND_FIELDS = "name slug imageUrl country isActive";
 export async function attachVariants(products) {
@@ -47,15 +47,23 @@ export const findPublicByIds = async (ids) => {
         .filter(Boolean);
     return attachVariants(sorted);
 };
-export const findAdmin = async (query, cursor, limit) => {
-    if (cursor) {
-        query._id = { $lt: cursor };
+export const findAdmin = async (query, cursor, limit, page) => {
+    let dbQuery = Product.find(query);
+    if (page && page > 0) {
+        const skip = (page - 1) * limit;
+        dbQuery = dbQuery.skip(skip).sort({ _id: -1 });
     }
-    const products = await Product.find(query)
+    else if (cursor) {
+        query._id = { $lt: cursor };
+        dbQuery = Product.find(query).sort({ _id: -1 });
+    }
+    else {
+        dbQuery = dbQuery.sort({ _id: -1 });
+    }
+    const products = await dbQuery
         .populate("categoryId", "name slug imageUrl")
         .populate("categoryIds", "name slug imageUrl")
         .populate("brandId", BRAND_FIELDS)
-        .sort({ _id: -1 })
         .limit(limit + 1)
         .lean();
     const hasNextPage = products.length > limit;

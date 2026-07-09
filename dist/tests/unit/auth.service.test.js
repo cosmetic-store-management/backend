@@ -117,7 +117,7 @@ describe("OTP Verification", () => {
         vi.mocked(authRepo.upsertOtp).mockResolvedValue({});
         const result = await authService.sendOtp({ email: "test@example.com" });
         expect(authRepo.upsertOtp).toHaveBeenCalledWith("test@example.com", expect.any(String), expect.any(Date));
-        expect(result.message).toContain("đã được gửi");
+        expect(result.message).toContain("sent to your email");
     });
     it("verifyOtp thành công khi mã đúng và còn hạn", async () => {
         vi.mocked(authRepo.findOtpByEmail).mockResolvedValue({
@@ -127,7 +127,7 @@ describe("OTP Verification", () => {
         vi.mocked(authRepo.markOtpVerified).mockResolvedValue({});
         const result = await authService.verifyOtp({ email: "test@example.com", otpCode: "123456" });
         expect(authRepo.markOtpVerified).toHaveBeenCalledWith("test@example.com");
-        expect(result.message).toContain("thành công");
+        expect(result.message).toContain("verified successfully");
     });
     it("verifyOtp thất bại khi mã sai", async () => {
         vi.mocked(authRepo.findOtpByEmail).mockResolvedValue({
@@ -144,7 +144,7 @@ describe("authService.loginAdmin", () => {
         vi.mocked(authRepo.findByEmail).mockResolvedValue(adminUser);
         vi.mocked(authRepo.findByIdWithRefreshToken).mockResolvedValue(adminUser);
         vi.mocked(bcrypt.compare).mockResolvedValue(true);
-        const result = await authService.loginAdmin({
+        const result = await authService.login({
             email: "admin@example.com",
             password: "pass",
         });
@@ -155,18 +155,18 @@ describe("authService.loginAdmin", () => {
         const adminUser = makeFakeUser({ role: "owner" });
         vi.mocked(authRepo.findByEmail).mockResolvedValue(adminUser);
         vi.mocked(bcrypt.compare).mockResolvedValue(false);
-        await expect(authService.loginAdmin({ email: "admin@example.com", password: "wrong" })).rejects.toMatchObject({ status: 401 });
+        await expect(authService.login({ email: "admin@example.com", password: "wrong" })).rejects.toMatchObject({ status: 401 });
     });
     it("throw unauthorized khi role là customer", async () => {
         const customerUser = makeFakeUser({ role: "customer" });
         vi.mocked(authRepo.findByEmail).mockResolvedValue(customerUser);
         vi.mocked(bcrypt.compare).mockResolvedValue(true);
-        await expect(authService.loginAdmin({ email: "c@example.com", password: "pass" })).rejects.toMatchObject({ status: 401 });
+        await expect(authService.login({ email: "c@example.com", password: "pass" })).rejects.toMatchObject({ status: 401 });
     });
     it("throw unauthorized khi tài khoản bị khóa (isActive = false)", async () => {
         const lockedUser = makeFakeUser({ role: "staff", isActive: false });
         vi.mocked(authRepo.findByEmail).mockResolvedValue(lockedUser);
-        await expect(authService.loginAdmin({ email: "locked@example.com", password: "pass" })).rejects.toMatchObject({ status: 401 });
+        await expect(authService.login({ email: "locked@example.com", password: "pass" })).rejects.toMatchObject({ status: 401 });
     });
 });
 // ── loginPublic ───────────────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ describe("authService.loginPublic", () => {
         vi.mocked(authRepo.findByPhone).mockResolvedValue(customer);
         vi.mocked(authRepo.findByIdWithRefreshToken).mockResolvedValue(customer);
         vi.mocked(bcrypt.compare).mockResolvedValue(true);
-        const result = await authService.loginPublic({
+        const result = await authService.login({
             phone: "0901234567",
             password: "pass",
         });
@@ -185,7 +185,7 @@ describe("authService.loginPublic", () => {
     it("throw unauthorized khi tài khoản admin cố đăng nhập storefront", async () => {
         const adminUser = makeFakeUser({ role: "owner" });
         vi.mocked(authRepo.findByPhone).mockResolvedValue(adminUser);
-        await expect(authService.loginPublic({ phone: "0901234567", password: "pass" })).rejects.toMatchObject({ status: 401 });
+        await expect(authService.login({ phone: "0901234567", password: "pass" })).rejects.toMatchObject({ status: 401 });
     });
 });
 // ── refreshAccessToken ────────────────────────────────────────────────────────

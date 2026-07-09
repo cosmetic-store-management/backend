@@ -337,7 +337,7 @@ export const getRecommendedProducts = async (
   const { default: Order } = await import("../order/models/order.schema.js");
 
   // 1. Collaborative Filtering: "Customers who bought this also bought"
-  const orders = await Order.find({ "items.productId": pId })
+  const orders = await Order.find({ "items.productId": { $in: [pId, pId.toString()] } })
     .select("items.productId")
     .lean();
 

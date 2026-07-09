@@ -152,6 +152,7 @@ export const previewOrder = async (user: UserDocument | null, data: any) => {
         subtotal,
         shippingFee,
         user?._id.toString(),
+        data.channel || "online",
       );
       if (voucherRes.discountType === "freeship") {
         freeshipDiscountAmount = voucherRes.discountAmount;
@@ -361,6 +362,7 @@ export const createOrder = async (
         subtotal,
         shippingFee,
         user._id.toString(),
+        "online",
       );
       if (voucherRes.discountType === "freeship") {
         freeshipDiscountAmount = voucherRes.discountAmount;
@@ -542,6 +544,17 @@ export const createOrder = async (
 };
 
 export const createPOSOrder = async (operator: UserDocument, data: any) => {
+  // Generate POS Receipt Number
+  const today = new Date();
+  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, ""); // e.g., 20260708
+  const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
+  const endOfDay = new Date(new Date().setHours(23, 59, 59, 999));
+  const countToday = await Order.countDocuments({
+    channel: "pos",
+    createdAt: { $gte: startOfDay, $lte: endOfDay },
+  });
+  const receiptNumber = `HD-POS-${dateStr}-${String(countToday + 1).padStart(4, "0")}`;
+
   if (data.items && Array.isArray(data.items)) {
     data.items = data.items.reduce((acc: any[], item: any) => {
       const existing = acc.find((i) => i.variantId === item.variantId);
@@ -723,6 +736,7 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
       userId: customerUser ? (customerUser._id as any) : null,
       channel: "pos",
       creatorId: operator._id as any,
+      receiptNumber,
       paymentStatus: "paid",
       earnedPoints: Math.floor(finalTotalAmount / orderSettings.pointsEarnRate),
       items: normalizedItems,
@@ -776,7 +790,7 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
     );
     for (const item of sortedProductsToLog) {
       await InventoryTransaction.create([{
-        code: `TX-POS-${Math.floor(100000 + Math.random() * 900000)}`,
+        code: `TXOUT${Math.floor(100000 + Math.random() * 900000)}`,
         productId: item.productId,
         variantId: item.variantId,
         type: "out",

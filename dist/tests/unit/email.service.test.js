@@ -26,7 +26,7 @@ describe("emailService.sendResetPasswordEmail", () => {
         expect(sendMailMock).toHaveBeenCalledTimes(1);
         const callArg = sendMailMock.mock.calls[0][0];
         expect(callArg.to).toBe("user@example.com");
-        expect(callArg.subject).toContain("Đặt lại mật khẩu");
+        expect(callArg.subject).toContain("Reset your password");
         expect(callArg.html).toContain("token123");
     });
 });
@@ -38,7 +38,7 @@ describe("emailService.sendOrderSuccessEmail", () => {
         const callArg = sendMailMock.mock.calls[0][0];
         expect(callArg.to).toBe("customer@test.com");
         expect(callArg.subject).toContain("ORD123");
-        expect(callArg.html).toContain("500.000₫"); // formatted total
+        expect(callArg.html).toContain("500,000 ₫"); // formatted total
     });
 });
 describe("emailService.sendEmailWithRetry (internal test thông qua exported fn)", () => {
@@ -70,7 +70,7 @@ describe("SMTP Config Handling", () => {
         vi.resetModules();
         const freshEmailService = await import("../../app/shared/email/email.service.js");
         await freshEmailService.sendOrderSuccessEmail("test@test.com", "ORD", 100);
-        expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("SMTP_USER hoặc SMTP_PASS chưa được cấu hình"));
+        expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("SMTP_USER or SMTP_PASS is not configured — email will not be sent."));
         consoleWarnSpy.mockRestore();
     });
 });

@@ -3,7 +3,13 @@
  * Strategy: Mock voucherRepo để kiểm tra business logic của validateVoucher và các hàm CRUD.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import mongoose from "mongoose";
 vi.mock("../../app/modules/voucher/voucher.repository.js");
+vi.mock("../../app/modules/voucher/models/voucherReservation.schema.js", () => ({
+    default: {
+        exists: vi.fn().mockResolvedValue(false),
+    },
+}));
 vi.mock("../../app/modules/voucher/dto/voucher.response.dto.js", () => ({
     mapVoucher: (v) => ({
         id: v._id?.toString() ?? "vid",
@@ -90,7 +96,7 @@ describe("voucherService.validateVoucher", () => {
             .rejects.toMatchObject({ status: 400 });
     });
     it("throw badRequest khi user đã sử dụng voucher này", async () => {
-        const userId = "user_abc";
+        const userId = new mongoose.Types.ObjectId().toString();
         const voucher = makeFakeVoucher({ usedBy: [{ toString: () => userId }] });
         vi.mocked(voucherRepo.findByCode).mockResolvedValue(voucher);
         await expect(voucherService.validateVoucher("GIAM10", 200_000, 30_000, userId)).rejects.toMatchObject({ status: 400 });

@@ -4,6 +4,12 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import mongoose from "mongoose";
+vi.spyOn(mongoose, "startSession").mockResolvedValue({
+    startTransaction: vi.fn(),
+    commitTransaction: vi.fn(),
+    abortTransaction: vi.fn(),
+    endSession: vi.fn(),
+});
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 vi.mock("../../app/modules/user/user.repository.js");
 vi.mock("../../app/modules/user/dto/user.response.dto.js", () => ({
@@ -15,10 +21,10 @@ vi.mock("../../app/modules/user/dto/user.response.dto.js", () => ({
         points: u.points ?? 0,
     }),
 }));
-vi.mock("../../app/models/order/order.schema.js", () => ({
+vi.mock("../../app/modules/order/models/order.schema.js", () => ({
     default: { aggregate: vi.fn() },
 }));
-vi.mock("../../app/models/user/point-history.schema.js", () => ({
+vi.mock("../../app/modules/user/models/point-history.schema.js", () => ({
     default: { create: vi.fn().mockResolvedValue(undefined) },
 }));
 vi.mock("../../app/modules/product/product.repository.js", () => ({
@@ -30,9 +36,17 @@ vi.mock("../../app/modules/product/dto/product.response.dto.js", () => ({
 vi.mock("bcryptjs", () => ({
     default: { hash: vi.fn().mockResolvedValue("hashed_pass") },
 }));
+vi.mock("../../app/modules/user/models/user.schema.js", () => ({
+    default: {
+        findOne: vi.fn().mockReturnValue({
+            session: vi.fn().mockResolvedValue(null)
+        })
+    }
+}));
 import * as userRepo from "../../app/modules/user/user.repository.js";
 import * as userService from "../../app/modules/user/user.service.js";
-import PointHistory from "../../app/models/user/point-history.schema.js";
+import PointHistory from "../../app/modules/user/models/point-history.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const FAKE_ID = new mongoose.Types.ObjectId().toString();
 const FAKE_ADDR_ID = new mongoose.Types.ObjectId().toString();
@@ -47,33 +61,41 @@ const makeUser = (overrides = {}) => ({
     addresses: [],
     favorites: [],
     recentlyViewed: [],
+    save: vi.fn().mockResolvedValue(undefined),
     ...overrides,
 });
 const makeAdmin = (role = "owner") => makeUser({
     role,
     _id: { toString: () => new mongoose.Types.ObjectId().toString() },
 });
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(User.findOne).mockReturnValue({
+        session: vi.fn().mockResolvedValue(null)
+    });
+});
 // ── Profile ───────────────────────────────────────────────────────────────────
 describe("userService.updateCurrentUser", () => {
     it("cập nhật name thành công", async () => {
         const user = makeUser();
-        vi.mocked(userRepo.findById).mockResolvedValue(user);
+        vi.mocked(userRepo.findById).mockReturnValue({ session: vi.fn().mockResolvedValue(user) });
         await userService.updateCurrentUser(FAKE_ID, { name: "Tên Mới" });
         expect(user.name).toBe("Tên Mới");
-        expect(userRepo.save).toHaveBeenCalledWith(user);
+        expect(user.save).toHaveBeenCalledWith({ session: expect.any(Object) });
     });
     it("throw conflict khi phone mới thuộc tài khoản khác", async () => {
         const user = makeUser();
         const otherUser = makeUser({
             _id: { toString: () => new mongoose.Types.ObjectId().toString() },
         });
-        vi.mocked(userRepo.findById).mockResolvedValue(user);
-        vi.mocked(userRepo.findByPhone).mockResolvedValue(otherUser);
+        vi.mocked(userRepo.findById).mockReturnValue({ session: vi.fn().mockResolvedValue(user) });
+        vi.mocked(User.findOne).mockReturnValue({
+            session: vi.fn().mockResolvedValue(otherUser)
+        });
         await expect(userService.updateCurrentUser(FAKE_ID, { phone: "0999999999" })).rejects.toMatchObject({ status: 409 });
     });
     it("throw notFound khi user không tồn tại", async () => {
-        vi.mocked(userRepo.findById).mockResolvedValue(null);
+        vi.mocked(userRepo.findById).mockReturnValue({ session: vi.fn().mockResolvedValue(null) });
         await expect(userService.updateCurrentUser(FAKE_ID, { name: "X" })).rejects.toMatchObject({ status: 404 });
     });
 });

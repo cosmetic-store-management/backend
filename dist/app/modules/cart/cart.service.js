@@ -1,5 +1,5 @@
 import * as cartRepo from "./cart.repository.js";
-import Variant from "../../models/product/variant.schema.js";
+import Variant from "../product/models/variant.schema.js";
 import { notFound, badRequest } from "../../shared/errors/httpErrors.js";
 import { Types } from "mongoose";
 export const getCart = async (userId) => {
@@ -40,15 +40,15 @@ export const addItem = async (userId, data) => {
     }
     const variant = await Variant.findOne({ _id: data.variantId, isActive: true });
     if (!variant)
-        throw notFound("Sản phẩm không tồn tại hoặc đã ngừng kinh doanh");
+        throw notFound("Product does not exist or has been discontinued");
     // Check stock
     if (variant.stock < data.quantity) {
-        throw badRequest("Số lượng sản phẩm trong kho không đủ");
+        throw badRequest("Insufficient product stock");
     }
     const existingItem = cart.items.find((item) => item.variantId?._id?.toString() === data.variantId || item.variantId?.toString() === data.variantId);
     if (existingItem) {
         if (variant.stock < existingItem.quantity + data.quantity) {
-            throw badRequest("Số lượng sản phẩm trong kho không đủ");
+            throw badRequest("Insufficient product stock");
         }
         existingItem.quantity += data.quantity;
     }
@@ -61,15 +61,15 @@ export const addItem = async (userId, data) => {
 export const updateItem = async (userId, data) => {
     const cart = await cartRepo.findByUserId(userId);
     if (!cart)
-        throw notFound("Giỏ hàng trống");
+        throw notFound("Cart is empty");
     const existingItem = cart.items.find((item) => item.variantId?._id?.toString() === data.variantId || item.variantId?.toString() === data.variantId);
     if (!existingItem)
         throw notFound("Sản phẩm không có trong giỏ hàng");
     const variant = await Variant.findOne({ _id: data.variantId, isActive: true });
     if (!variant)
-        throw notFound("Sản phẩm không tồn tại hoặc đã ngừng kinh doanh");
+        throw notFound("Product does not exist or has been discontinued");
     if (variant.stock < data.quantity) {
-        throw badRequest("Số lượng sản phẩm trong kho không đủ");
+        throw badRequest("Insufficient product stock");
     }
     existingItem.quantity = data.quantity;
     await cartRepo.save(cart);
@@ -78,7 +78,7 @@ export const updateItem = async (userId, data) => {
 export const removeItem = async (userId, variantId) => {
     const cart = await cartRepo.findByUserId(userId);
     if (!cart)
-        throw notFound("Giỏ hàng trống");
+        throw notFound("Cart is empty");
     cart.items = cart.items.filter((item) => item.variantId?._id?.toString() !== variantId && item.variantId?.toString() !== variantId);
     await cartRepo.save(cart);
     return cartRepo.findByUserId(userId);

@@ -1,5 +1,5 @@
-import Order from "../../models/order/order.schema.js";
-import { cancelPendingOrder } from "./order.service.js";
+import Order from "./models/order.schema.js";
+import { abandonPendingOrder } from "./order.service.js";
 // Chạy mỗi phút 1 lần
 const CRON_INTERVAL = 60 * 1000;
 // Thời gian hết hạn của đơn hàng chờ thanh toán (15 phút)
@@ -21,8 +21,8 @@ export const startOrderCron = () => {
             }).limit(50); // Chỉ xử lý tối đa 50 đơn mỗi phút để tránh Write Conflict & SMTP Throttling
             for (const order of expiredOrders) {
                 try {
-                    await cancelPendingOrder(order.code, "Hệ thống tự động hủy do quá hạn thanh toán");
-                    console.log(`[Order Cron] Đã hủy tự động đơn hàng hết hạn: ${order.code}`);
+                    await abandonPendingOrder(order.code);
+                    console.log(`[Order Cron] Đã hủy QR quá hạn (15p): ${order.code}`);
                 }
                 catch (err) {
                     console.error(`[Order Cron] Lỗi khi hủy đơn hàng ${order.code}:`, err.message);
@@ -30,11 +30,11 @@ export const startOrderCron = () => {
             }
         }
         catch (error) {
-            console.error("[Order Cron] Lỗi khi quét đơn hàng hết hạn:", error);
+            console.error("[Order Cron] Lỗi khi quét QR hết hạn:", error);
         }
         finally {
             isRunning = false;
         }
     }, CRON_INTERVAL);
-    console.log(`[Order Cron] Đã khởi chạy cron hủy đơn hàng (chu kỳ: 1 phút, hạn: ${EXPIRE_MINUTES} phút)`);
+    console.log(`[Order Cron] Đã khởi chạy cron hủy QR (chu kỳ: 1 phút, hạn: ${EXPIRE_MINUTES} phút)`);
 };

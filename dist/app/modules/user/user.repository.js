@@ -1,7 +1,7 @@
-import User from "../../models/user/user.schema.js";
-import Otp from "../../models/user/otp.schema.js";
+import User from "./models/user.schema.js";
+import Otp from "../auth/models/otp.schema.js";
 export const findAll = () => User.find({ isDeleted: { $ne: true } }).select("-password").sort({ createdAt: -1 }).lean();
-export const findStaffs = async (cursor = null, limit = 20, search, status, role) => {
+export const findStaffs = async (page = 1, limit = 20, search, status, role, hiringStatus, workingShift) => {
     const query = { role: { $in: ["owner", "manager", "staff"] }, isDeleted: { $ne: true } };
     if (search) {
         query.$or = [
@@ -16,22 +16,32 @@ export const findStaffs = async (cursor = null, limit = 20, search, status, role
     if (role) {
         query.role = role;
     }
-    if (cursor) {
-        query._id = { $lt: cursor };
+    if (hiringStatus) {
+        query.status = hiringStatus;
     }
+    if (workingShift) {
+        query.workingShift = workingShift;
+    }
+    const skip = (page - 1) * limit;
     const [users, total] = await Promise.all([
         User.find(query)
             .select("-password")
             .sort({ _id: -1 })
-            .limit(limit + 1)
+            .skip(skip)
+            .limit(limit)
             .lean(),
-        // Vẫn đếm total để FE hiển thị "Tổng số: X" nếu cần (tuy nhiên countDocuments chạy khá nặng với DB siêu lớn)
         User.countDocuments(query),
     ]);
-    const hasNextPage = users.length > limit;
-    const items = hasNextPage ? users.slice(0, limit) : users;
-    const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
-    return { users: items, total, limit, nextCursor, hasNextPage };
+    const rolePriority = { owner: 3, manager: 2, staff: 1 };
+    const sortedUsers = [...users].sort((a, b) => {
+        const prioA = rolePriority[a.role] ?? 0;
+        const prioB = rolePriority[b.role] ?? 0;
+        if (prioA !== prioB)
+            return prioB - prioA;
+        return b._id.toString().localeCompare(a._id.toString());
+    });
+    const totalPages = Math.ceil(total / limit);
+    return { users: sortedUsers, total, limit, page, totalPages };
 };
 export const findById = (id) => User.findById(id).select("-password");
 export const findByEmail = (email) => User.findOne({ email, isDeleted: { $ne: true } });

@@ -8,18 +8,18 @@ type Query = Record<string, any>;
 export const findAll = async (query: Query, page: number, limit: number) => {
   const skip = (page - 1) * limit;
   const [brands, total] = await Promise.all([
-    Brand.find(query).sort({ _id: -1 }).skip(skip).limit(limit).lean(),
+    Brand.find(query).sort({ _id: -1 }).skip(skip).limit(limit).populate("supplierId").lean(),
     Brand.countDocuments(query),
   ]);
   
   const totalPages = Math.ceil(total / limit);
 
-  return { brands, total, limit, page, totalPages };
+  return { brands: brands as any[], total, limit, page, totalPages };
 };
 
 export const countAll = (query: Query) => Brand.countDocuments(query);
 
-export const findById = (id: string) => Brand.findById(id);
+export const findById = (id: string) => Brand.findById(id).populate("supplierId");
 
 export const findBySlug = (slug: string) => Brand.findOne({ slug });
 

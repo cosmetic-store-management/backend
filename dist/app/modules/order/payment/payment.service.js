@@ -1,7 +1,10 @@
 import Stripe from "stripe";
-import Order from "../../../models/order/order.schema.js";
-import PaymentTransaction from "../../../models/order/payment-transaction.schema.js";
+import crypto from "crypto";
+import Order from "../models/order.schema.js";
+import User from "../../user/models/user.schema.js";
+import PaymentTransaction from "../models/payment-transaction.schema.js";
 import { notFound, badRequest, } from "../../../shared/errors/httpErrors.js";
+import { sendOrderSuccessEmail } from "../../../shared/email/email.service.js";
 import mongoose from "mongoose";
 // Lazy initialize Stripe so that dotenv has time to populate process.env
 let stripeInstance = null;
@@ -16,9 +19,9 @@ const getStripe = () => {
 export const createStripePaymentIntent = async (orderId) => {
     const order = await Order.findById(orderId);
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     if (order.orderStatus !== "pending") {
-        throw badRequest("Đơn hàng không ở trạng thái chờ thanh toán");
+        throw badRequest("The order is not in pending payment status");
     }
     // VND is a zero-decimal currency in Stripe
     const amount = Math.round(order.totalAmount);
@@ -40,7 +43,7 @@ export const handleStripeWebhook = async (payload, signature) => {
     try {
         if (!webhookSecret) {
             if (process.env.NODE_ENV === "production") {
-                throw badRequest("Thiếu STRIPE_WEBHOOK_SECRET trên môi trường Production");
+                throw badRequest("Missing STRIPE_WEBHOOK_SECRET in the production environment");
             }
             // For local testing without signature verification if secret is missing
             event = JSON.parse(payload.toString());
@@ -64,7 +67,7 @@ export const handleStripeWebhook = async (payload, signature) => {
                     const session = await mongoose.startSession();
                     session.startTransaction();
                     try {
-                        // Chỉ lấy và update nếu đơn hàng đang ở trạng thái pending
+                        // Only fetch and update if the order is still pending
                         const order = await Order.findOneAndUpdate({ _id: orderId, orderStatus: "pending" }, {
                             $set: {
                                 orderStatus: "processing",
@@ -88,25 +91,30 @@ export const handleStripeWebhook = async (payload, signature) => {
                                 }], { session });
                             await session.commitTransaction();
                             // Ghi log thanh toán thành công
-                            console.log(`[Stripe Webhook] Đơn hàng ${order.code} đã được thanh toán.`);
+                            console.log(`[Stripe Webhook] Order ${order.code} has been paid.`);
+                            // Gửi email xác nhận thanh toán thành công
+                            const emailUser = await User.findById(order.userId).select("email");
+                            if (emailUser && emailUser.email) {
+                                sendOrderSuccessEmail(emailUser.email, order.code, order.totalAmount).catch(console.error);
+                            }
                         }
                         else {
-                            // Đơn hàng không tồn tại hoặc không ở trạng thái pending (có thể đã được xử lý bởi cron huỷ đơn)
+                            // The order does not exist or is not pending (it may already have been handled by the cancellation cron)
                             const existingOrder = await Order.findById(orderId);
                             if (existingOrder && existingOrder.orderStatus !== "pending" && existingOrder.paymentStatus !== "paid") {
-                                // Thanh toán thành công nhưng đơn đã huỷ -> Chuyển sang hoàn tiền
+                                // Payment succeeded but the order was cancelled -> move it to refund flow
                                 existingOrder.paymentStatus = "refund_pending";
                                 await existingOrder.save({ session });
                                 await PaymentTransaction.create([{
                                         orderId: existingOrder._id,
                                         amount: paymentIntent.amount,
                                         method: "stripe",
-                                        status: "success", // Tiền đã vào tài khoản
+                                        status: "success", // Funds have been received
                                         type: "charge",
                                         transactionId: paymentIntent.id,
                                         details: {
                                             paymentIntentId: paymentIntent.id,
-                                            note: `Khách hàng đã thanh toán thành công nhưng đơn hàng đang ở trạng thái ${existingOrder.orderStatus}. Cần hoàn tiền.`
+                                            note: `Customer paid successfully but the order is currently in ${existingOrder.orderStatus} status. Refund required.`
                                         },
                                     }], { session });
                             }
@@ -115,7 +123,7 @@ export const handleStripeWebhook = async (payload, signature) => {
                     }
                     catch (error) {
                         await session.abortTransaction();
-                        console.error("Lỗi khi xử lý Stripe webhook succeeded:", error);
+                        console.error("Error while processing the Stripe webhook succeeded event:", error);
                         throw error;
                     }
                     finally {
@@ -146,42 +154,42 @@ export const handleStripeWebhook = async (payload, signature) => {
     }
     return true;
 };
-// --- SEPAY WEBHOOK (AUTO CONFIRM CHUYỂN KHOẢN NGÂN HÀNG) ---
-import Setting from "../../../models/system/setting.schema.js";
+// --- SEPAY WEBHOOK (AUTO-CONFIRM BANK TRANSFER) ---
+import Setting from "../../setting/models/setting.schema.js";
 export const handleSepayWebhook = async (payload, authHeader) => {
-    // 1. Kiểm tra Token bảo mật (để chắc chắn request từ SePay)
+    // 1. Check the security token to ensure the request comes from SePay
     const webhookSetting = await Setting.findOne({ key: "global_settings" });
     const configuredToken = webhookSetting?.value?.sepayWebhookToken;
     if (!configuredToken) {
-        throw badRequest("Hệ thống chưa cấu hình Token bảo mật cho SePay");
+        throw badRequest("The system has not configured a security token for SePay");
     }
     // SePay gửi API Key dạng "Apikey [TOKEN]" trong header Authorization
     const requestToken = authHeader?.replace("Apikey ", "")?.trim();
     if (requestToken !== configuredToken) {
-        throw badRequest("Webhook Token không hợp lệ");
+        throw badRequest("Invalid webhook token");
     }
     const { content, transferAmount } = payload;
     if (!content || !transferAmount) {
-        throw badRequest("Payload thiếu content hoặc transferAmount");
+        throw badRequest("Payload is missing content or transferAmount");
     }
-    // 2. Phân tích nội dung để tìm Mã Đơn Hàng. 
-    // Cú pháp mặc định ta tạo trên VietQR là: GLOWUP [Mã Đơn]
+    // 2. Parse the content to find the order code.
+    // The default VietQR syntax we generate is: GLOWUP [Order Code]
     const match = content.match(/GLOWUP\s+([A-Z0-9]+)/i);
     if (!match) {
-        // Không tìm thấy mã đơn hàng hợp lệ trong nội dung CK
-        console.log(`[SePay Webhook] Bỏ qua giao dịch: Không khớp mã đơn - "${content}"`);
-        return true; // Return true để SePay không gửi lại
+        // No valid order code was found in the transfer content
+        console.log(`[SePay Webhook] Skipping transaction: order code does not match - "${content}"`);
+        return true; // Return true so SePay does not resend the webhook
     }
     const orderCode = match[1].toUpperCase();
-    // 3. Cập nhật đơn hàng
+    // 3. Update the order
     const order = await Order.findOne({ code: orderCode });
     if (!order) {
-        console.log(`[SePay Webhook] Không tìm thấy mã đơn ${orderCode} trong hệ thống.`);
+        console.log(`[SePay Webhook] Order code ${orderCode} was not found in the system.`);
         return true;
     }
     if (order.orderStatus !== "pending") {
-        console.log(`[SePay Webhook] Đơn hàng ${orderCode} không ở trạng thái chờ thanh toán (hiện tại: ${order.orderStatus}). Cần Admin kiểm tra tay.`);
-        // Nếu đơn hàng đã bị huỷ nhưng khách vẫn chuyển khoản, ghi nhận vào PaymentTransaction để Admin có thể xem lại
+        console.log(`[SePay Webhook] Order ${orderCode} is not in pending payment status (current: ${order.orderStatus}). Admin manual review is required.`);
+        // If the order was cancelled but the customer still transferred money, record it in PaymentTransaction for review
         if (order.paymentStatus !== "paid") {
             const session = await mongoose.startSession();
             session.startTransaction();
@@ -192,16 +200,16 @@ export const handleSepayWebhook = async (payload, authHeader) => {
                         orderId: order._id,
                         amount: Number(transferAmount),
                         method: "transfer",
-                        status: "success", // Tiền đã vào tài khoản
+                        status: "success", // Funds have been received
                         type: "charge",
                         transactionId: payload.referenceCode || payload.id || `SEPAY_${Date.now()}`,
-                        details: { rawPayload: payload, note: `Khách hàng chuyển khoản trễ khi đơn hàng đang ở trạng thái ${order.orderStatus}. Cần hoàn tiền.` },
+                        details: { rawPayload: payload, note: `Customer transferred late while the order was in ${order.orderStatus} status. Refund required.` },
                     }], { session });
                 await session.commitTransaction();
             }
             catch (error) {
                 await session.abortTransaction();
-                console.error("[SePay Webhook] Lỗi khi lưu log giao dịch trễ:", error);
+                console.error("[SePay Webhook] Error while saving late transaction log:", error);
             }
             finally {
                 await session.endSession();
@@ -212,12 +220,12 @@ export const handleSepayWebhook = async (payload, authHeader) => {
     if (order.paymentStatus === "paid") {
         return true;
     }
-    // Nếu số tiền gửi >= số tiền cần thanh toán
+    // If the transfer amount is greater than or equal to the amount due
     if (Number(transferAmount) >= order.totalAmount) {
         const session = await mongoose.startSession();
         session.startTransaction();
         try {
-            // Dùng findOneAndUpdate để lock và tránh Race Condition nếu SePay gọi 2 webhooks cùng lúc
+            // Use findOneAndUpdate to lock and avoid race conditions if SePay sends two webhooks at once
             const updatedOrder = await Order.findOneAndUpdate({ _id: order._id, orderStatus: "pending" }, {
                 $set: {
                     orderStatus: "processing",
@@ -236,15 +244,26 @@ export const handleSepayWebhook = async (payload, authHeader) => {
                         details: { rawPayload: payload },
                     }], { session });
                 await session.commitTransaction();
-                console.log(`[SePay Webhook] Xác nhận thanh toán thành công đơn ${orderCode}!`);
+                console.log(`[SePay Webhook] Payment confirmed successfully for order ${orderCode}!`);
+                if (order.userId) {
+                    User.findById(order.userId)
+                        .select("email")
+                        .lean()
+                        .then(u => {
+                        if (u && u.email) {
+                            sendOrderSuccessEmail(u.email, updatedOrder.code, updatedOrder.totalAmount)
+                                .catch(err => console.error("Error sending order success email:", err));
+                        }
+                    });
+                }
             }
             else {
-                await session.commitTransaction(); // Có thể đã được update trước đó
+                await session.commitTransaction(); // It may already have been updated
             }
         }
         catch (error) {
             await session.abortTransaction();
-            console.error("[SePay Webhook] Lỗi khi cập nhật đơn hàng:", error);
+            console.error("[SePay Webhook] Error while updating the order:", error);
             throw error;
         }
         finally {
@@ -252,8 +271,8 @@ export const handleSepayWebhook = async (payload, authHeader) => {
         }
     }
     else {
-        console.log(`[SePay Webhook] Số tiền CK (${transferAmount}) nhỏ hơn tổng đơn (${order.totalAmount}). Cần Admin kiểm tra tay.`);
-        // Ghi nhận giao dịch thiếu tiền vào DB để Admin xử lý
+        console.log(`[SePay Webhook] Transfer amount (${transferAmount}) is lower than the order total (${order.totalAmount}). Admin manual review is required.`);
+        // Record the underpayment transaction in the DB for admin review
         const session = await mongoose.startSession();
         session.startTransaction();
         try {
@@ -264,13 +283,13 @@ export const handleSepayWebhook = async (payload, authHeader) => {
                     status: "pending",
                     type: "charge",
                     transactionId: payload.referenceCode || payload.id || `SEPAY_${Date.now()}`,
-                    details: { rawPayload: payload, note: `Chuyển khoản thiếu tiền: Gửi ${transferAmount}, cần ${order.totalAmount}` },
+                    details: { rawPayload: payload, note: `Underpaid transfer: sent ${transferAmount}, required ${order.totalAmount}` },
                 }], { session });
             await session.commitTransaction();
         }
         catch (error) {
             await session.abortTransaction();
-            console.error("[SePay Webhook] Lỗi khi lưu log giao dịch thiếu tiền:", error);
+            console.error("[SePay Webhook] Error while saving underpayment transaction log:", error);
         }
         finally {
             await session.endSession();
@@ -301,21 +320,21 @@ export const lookupBankAccount = async (bin, accountNumber) => {
             return { accountName: data.data.accountName };
         }
         if (data.code === "47" || (data.desc && data.desc.includes("Free Plan"))) {
-            throw new Error("Gói API VietQR miễn phí đã ngừng hỗ trợ tra cứu. Vui lòng nâng cấp tài khoản Casso/VietQR.");
+            throw new Error("The free VietQR API plan no longer supports lookup. Please upgrade your Casso/VietQR account.");
         }
-        throw new Error(data.desc || "Không tìm thấy thông tin tài khoản");
+        throw new Error(data.desc || "Account information not found");
     }
     catch (error) {
-        throw badRequest(error.message || "Lỗi khi tra cứu tài khoản");
+        throw badRequest(error.message || "Error while looking up account information");
     }
 };
 // --- REFUND PAYMENT ---
 export const refundPayment = async (orderId, session) => {
     const order = await Order.findById(orderId).session(session || null);
     if (!order)
-        throw notFound("Không tìm thấy đơn hàng");
+        throw notFound("Order not found");
     if (order.paymentStatus !== "paid") {
-        return; // Không cần hoàn tiền nếu chưa thanh toán thành công
+        return; // No refund is needed if payment has not succeeded
     }
     // Tìm giao dịch thanh toán thành công gần nhất
     const transaction = await PaymentTransaction.findOne({
@@ -324,7 +343,7 @@ export const refundPayment = async (orderId, session) => {
         type: "charge",
     }).session(session || null).sort({ createdAt: -1 });
     if (!transaction) {
-        console.log(`[Refund] Không tìm thấy giao dịch thanh toán gốc cho đơn ${order.code}. Đánh dấu chờ xử lý tay.`);
+        console.log(`[Refund] No original payment transaction was found for order ${order.code}. Marking for manual handling.`);
         order.paymentStatus = "refund_pending";
         if (!session) {
             await order.save();
@@ -332,7 +351,7 @@ export const refundPayment = async (orderId, session) => {
         return;
     }
     try {
-        if (transaction.method === "stripe") {
+        if (transaction.paymentMethod === "stripe") {
             const paymentIntentId = transaction.details?.paymentIntentId;
             if (paymentIntentId) {
                 // Stripe Refund API
@@ -344,7 +363,7 @@ export const refundPayment = async (orderId, session) => {
                 await PaymentTransaction.create([{
                         orderId: order._id,
                         amount: refund.amount,
-                        method: "stripe",
+                        paymentMethod: "stripe",
                         status: "success",
                         type: "refund",
                         transactionId: refund.id,
@@ -357,16 +376,16 @@ export const refundPayment = async (orderId, session) => {
             }
         }
         else {
-            // Đối với SePay / Chuyển khoản, không thể auto refund, đánh dấu chờ hoàn tiền thủ công
+            // For SePay / bank transfers, auto refund is not possible, so mark it for manual refund
             order.paymentStatus = "refund_pending";
             await PaymentTransaction.create([{
                     orderId: order._id,
                     amount: transaction.amount,
-                    method: transaction.method,
-                    status: "pending", // Đợi Admin xử lý thủ công
+                    paymentMethod: transaction.paymentMethod,
+                    status: "pending", // Awaiting manual admin processing
                     type: "refund",
                     transactionId: `REFUND_${Date.now()}`,
-                    details: { note: "Yêu cầu hoàn tiền thủ công do khách hàng huỷ đơn." },
+                    details: { note: "Manual refund requested because the customer cancelled the order." },
                 }], { session: session || undefined });
         }
         if (!session) {
@@ -374,10 +393,129 @@ export const refundPayment = async (orderId, session) => {
         }
     }
     catch (error) {
-        console.error(`[Refund] Lỗi khi hoàn tiền đơn ${order.code}:`, error.message);
+        console.error(`[Refund] Error while refunding order ${order.code}:`, error.message);
         order.paymentStatus = "refund_pending";
         if (!session) {
             await order.save();
         }
     }
+};
+export const handlePayosWebhook = async (payload, signatureHeader) => {
+    const { code, desc, data, signature } = payload;
+    if (!data) {
+        throw badRequest("PayOS Payload is missing data");
+    }
+    // 1. Check signature if Checksum Key is configured
+    const webhookSetting = await Setting.findOne({ key: "global_settings" });
+    const checksumKey = process.env.PAYOS_CHECKSUM_KEY || webhookSetting?.value?.payosChecksumKey;
+    if (checksumKey) {
+        // Sort keys alphabetically
+        const sortedKeys = Object.keys(data).sort();
+        const queryParts = sortedKeys.map(key => {
+            let value = data[key];
+            if (value === null || value === undefined) {
+                value = "";
+            }
+            return `${key}=${value}`;
+        });
+        const queryString = queryParts.join("&");
+        const computedSignature = crypto
+            .createHmac("sha256", checksumKey)
+            .update(queryString)
+            .digest("hex");
+        if (computedSignature !== signature && computedSignature !== signatureHeader) {
+            throw badRequest("Invalid PayOS signature");
+        }
+    }
+    else {
+        console.warn("⚠️ PayOS Checksum Key is not configured — signature verification skipped.");
+    }
+    if (code !== "00" && desc !== "success") {
+        console.log(`[PayOS Webhook] Payment failed or pending: code = ${code}, desc = ${desc}`);
+        return true;
+    }
+    // 2. Parse the description to find the order code
+    const description = data.description || "";
+    const match = description.match(/(ONL|OFF)\d+/i);
+    let orderCode = "";
+    if (match) {
+        orderCode = match[0].toUpperCase();
+    }
+    else if (data.orderCode) {
+        orderCode = String(data.orderCode);
+    }
+    if (!orderCode) {
+        console.log(`[PayOS Webhook] Skipping: could not extract order code from description "${description}" or data "${data.orderCode}"`);
+        return true;
+    }
+    // 3. Update the order
+    const order = await Order.findOne({
+        $or: [
+            { code: orderCode },
+            { code: new RegExp(orderCode, "i") }
+        ]
+    });
+    if (!order) {
+        console.log(`[PayOS Webhook] Order code ${orderCode} was not found in the system.`);
+        return true;
+    }
+    if (order.orderStatus !== "pending") {
+        console.log(`[PayOS Webhook] Order ${order.code} is not in pending status (current: ${order.orderStatus}).`);
+        return true;
+    }
+    if (order.paymentStatus === "paid") {
+        return true;
+    }
+    const transferAmount = data.amount || 0;
+    if (Number(transferAmount) >= order.totalAmount) {
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        try {
+            const updatedOrder = await Order.findOneAndUpdate({ _id: order._id, orderStatus: "pending" }, {
+                $set: {
+                    orderStatus: "processing",
+                    paymentStatus: "paid"
+                }
+            }, { session, new: true });
+            if (updatedOrder) {
+                await PaymentTransaction.create([{
+                        orderId: order._id,
+                        amount: Number(transferAmount),
+                        method: "transfer",
+                        status: "success",
+                        type: "charge",
+                        transactionId: data.reference || `PAYOS_${Date.now()}`,
+                        details: { rawPayload: payload },
+                    }], { session });
+                await session.commitTransaction();
+                console.log(`[PayOS Webhook] Payment confirmed successfully for order ${order.code}!`);
+                if (order.userId) {
+                    User.findById(order.userId)
+                        .select("email")
+                        .lean()
+                        .then(u => {
+                        if (u && u.email) {
+                            sendOrderSuccessEmail(u.email, updatedOrder.code, updatedOrder.totalAmount)
+                                .catch(err => console.error("Error sending order success email:", err));
+                        }
+                    });
+                }
+            }
+            else {
+                await session.commitTransaction();
+            }
+        }
+        catch (error) {
+            await session.abortTransaction();
+            console.error("[PayOS Webhook] Error while updating order status:", error);
+            throw error;
+        }
+        finally {
+            await session.endSession();
+        }
+    }
+    else {
+        console.log(`[PayOS Webhook] Received amount (${transferAmount}) is lower than order total (${order.totalAmount}). Manual audit required.`);
+    }
+    return true;
 };

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as orderService from "../../app/modules/order/order.service.js";
 import * as orderRepo from "../../app/modules/order/order.repository.js";
 import * as paymentService from "../../app/modules/order/payment/payment.service.js";
-import User from "../../app/models/user/user.schema.js";
+import User from "../../app/modules/user/models/user.schema.js";
 import mongoose from "mongoose";
 vi.mock("../../app/modules/order/order.repository.js");
 vi.mock("../../app/modules/order/payment/payment.service.js");
@@ -43,7 +43,7 @@ describe("Business Logic: Order Cancellation", () => {
         const customer = { _id: order.userId.toString(), role: "customer" };
         await expect(orderService.cancelOrder(order._id.toString(), customer)).rejects.toMatchObject({
             status: 400,
-            message: "Chỉ có thể hủy đơn hàng đang chờ xử lý",
+            message: "Only pending orders can be cancelled",
         });
     });
     it("Hủy đơn hàng đã thanh toán (VNPAY) sẽ gọi hàm hoàn tiền", async () => {

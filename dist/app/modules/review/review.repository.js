@@ -1,18 +1,19 @@
-import Review from "../../models/user/review.schema.js";
-import Product from "../../models/product/product.schema.js";
+import Review from "./models/review.schema.js";
+import Product from "../product/models/product.schema.js";
 // ── Public ────────────────────────────────────────────────────────────────────
-export const findByProductId = async (query, cursor, limit) => {
-    if (cursor)
-        query._id = { $lt: cursor };
-    const reviews = await Review.find(query)
-        .populate("userId", "name avatarUrl")
-        .sort({ _id: -1 })
-        .limit(limit + 1)
-        .lean();
-    const hasNextPage = reviews.length > limit;
-    const items = hasNextPage ? reviews.slice(0, limit) : reviews;
-    const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
-    return { reviews: items, nextCursor, hasNextPage, limit };
+export const findByProductId = async (query, page, limit) => {
+    const skip = (page - 1) * limit;
+    const [reviews, total] = await Promise.all([
+        Review.find(query)
+            .populate("userId", "name avatarUrl")
+            .sort({ _id: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+        Review.countDocuments(query),
+    ]);
+    const totalPages = Math.ceil(total / limit);
+    return { reviews, total, limit, page, totalPages };
 };
 export const countByQuery = (query) => Review.countDocuments(query);
 export const findOne = (query) => Review.findOne(query);
@@ -30,19 +31,20 @@ export const aggregateStats = (productId) => Review.aggregate([
     },
 ]);
 // ── Admin ─────────────────────────────────────────────────────────────────────
-export const findAllAdmin = async (query, cursor, limit) => {
-    if (cursor)
-        query._id = { $lt: cursor };
-    const reviews = await Review.find(query)
-        .populate("userId", "name avatarUrl")
-        .populate("productId", "name slug imageUrl")
-        .sort({ _id: -1 })
-        .limit(limit + 1)
-        .lean();
-    const hasNextPage = reviews.length > limit;
-    const items = hasNextPage ? reviews.slice(0, limit) : reviews;
-    const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
-    return { reviews: items, nextCursor, hasNextPage, limit };
+export const findAllAdmin = async (query, page, limit) => {
+    const skip = (page - 1) * limit;
+    const [reviews, total] = await Promise.all([
+        Review.find(query)
+            .populate("userId", "name avatarUrl")
+            .populate("productId", "name slug imageUrl")
+            .sort({ _id: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+        Review.countDocuments(query),
+    ]);
+    const totalPages = Math.ceil(total / limit);
+    return { reviews, total, limit, page, totalPages };
 };
 export const findByIdAndDelete = (id) => Review.findByIdAndDelete(id);
 export const findByIdAndUpdate = (id, data) => Review.findByIdAndUpdate(id, data, { returnDocument: "after" });

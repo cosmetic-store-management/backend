@@ -19,12 +19,14 @@ router.use(authenticate, authorize("owner", "manager"));
 router.get("/", catchAsync(async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const result = await flashSaleService.getAllFlashSales(page, limit);
+    const status = req.query.status;
+    const search = req.query.search;
+    const result = await flashSaleService.getAllFlashSales({ status, search }, page, limit);
     return response.success(res, result);
 }));
 router.post("/", validate(createFlashSaleSchema), catchAsync(async (req, res) => {
     const result = await flashSaleService.createFlashSale(req.body);
-    return response.created(res, { message: "Tạo Flash Sale thành công", result });
+    return response.created(res, { message: "Flash sale created successfully", result });
 }));
 router.get("/:id", catchAsync(async (req, res) => {
     const result = await flashSaleService.getFlashSaleById(req.params.id);
@@ -32,7 +34,7 @@ router.get("/:id", catchAsync(async (req, res) => {
 }));
 router.put("/:id", validate(createFlashSaleSchema), catchAsync(async (req, res) => {
     const result = await flashSaleService.updateFlashSale(req.params.id, req.body);
-    return response.success(res, { message: "Cập nhật Flash Sale thành công", result });
+    return response.success(res, { message: "Flash sale updated successfully", result });
 }));
 router.delete("/:id", catchAsync(async (req, res) => {
     const result = await flashSaleService.deleteFlashSale(req.params.id);

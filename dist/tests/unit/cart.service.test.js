@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as cartService from "../../app/modules/cart/cart.service.js";
 import * as cartRepository from "../../app/modules/cart/cart.repository.js";
-import Variant from "../../app/models/product/variant.schema.js";
+import Variant from "../../app/modules/product/models/variant.schema.js";
 // Mock repositories and models
 vi.mock("../../app/modules/cart/cart.repository.js");
-vi.mock("../../app/models/product/product.schema.js");
-vi.mock("../../app/models/product/variant.schema.js");
+vi.mock("../../app/modules/product/models/variant.schema.js");
 describe("Cart Service Unit Tests", () => {
     beforeEach(() => {
         vi.clearAllMocks();

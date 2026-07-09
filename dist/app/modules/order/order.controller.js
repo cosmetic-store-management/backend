@@ -13,49 +13,55 @@ router.get("/admin/list", authenticate, requirePermission("orders.view"), catchA
 }));
 router.patch("/admin/:id/status", authenticate, requirePermission("orders.manage"), validate(UpdateOrderStatusSchema), catchAsync(async (req, res) => {
     const order = await orderService.updateOrderStatus(req.params.id, req.body, req.user);
-    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Cập nhật trạng thái đơn hàng "${order.code}" thành "${order.orderStatus}"`, req.ip || "127.0.0.1");
+    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Updated order status "${order.code}" to "${order.orderStatus}"`, req.ip || "127.0.0.1");
     return response.success(res, {
-        message: "Cập nhật đơn hàng thành công",
+        message: "Order updated successfully",
         order,
     });
 }));
 router.patch("/admin/:id/details", authenticate, requirePermission("orders.manage"), validate(UpdateOrderDetailsSchema), catchAsync(async (req, res) => {
     const order = await orderService.updateOrderDetailsAdmin(req.params.id, req.body);
-    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Cập nhật chi tiết giao hàng cho đơn "${order.code}"`, req.ip || "127.0.0.1");
+    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Updated delivery details for order "${order.code}"`, req.ip || "127.0.0.1");
     return response.success(res, {
-        message: "Cập nhật chi tiết đơn hàng thành công",
+        message: "Order details updated successfully",
         order,
     });
 }));
 router.patch("/admin/:id/refund", authenticate, requirePermission("orders.manage"), catchAsync(async (req, res) => {
     const order = await orderService.refundOrderAdmin(req.params.id);
-    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Xác nhận đã chuyển khoản hoàn tiền thủ công cho đơn "${order.code}"`, req.ip || "127.0.0.1");
+    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Confirmed manual refund transfer for order "${order.code}"`, req.ip || "127.0.0.1");
     return response.success(res, {
-        message: "Xác nhận hoàn tiền thành công",
+        message: "Refund confirmed successfully",
         order,
     });
 }));
 router.patch("/admin/:id/return/approve", authenticate, requirePermission("orders.manage"), catchAsync(async (req, res) => {
     const order = await orderService.approveReturnOrder(req.params.id, req.user);
-    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Duyệt yêu cầu trả hàng cho đơn "${order.code}"`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Duyệt yêu cầu trả hàng thành công", order });
+    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Approved return request for order "${order.code}"`, req.ip || "127.0.0.1");
+    return response.success(res, { message: "Return request approved successfully", order });
 }));
 router.patch("/admin/:id/return/reject", authenticate, requirePermission("orders.manage"), catchAsync(async (req, res) => {
     const order = await orderService.rejectReturnOrder(req.params.id, req.user, req.body.rejectReason);
-    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Từ chối yêu cầu trả hàng cho đơn "${order.code}". Lý do: ${req.body.rejectReason}`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Từ chối trả hàng thành công", order });
+    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Rejected return request for order "${order.code}". Reason: ${req.body.rejectReason}`, req.ip || "127.0.0.1");
+    return response.success(res, { message: "Return request rejected successfully", order });
+}));
+router.post("/:id/pos-return", authenticate, requirePermission("orders.manage"), catchAsync(async (req, res) => {
+    const { returnItems } = req.body;
+    const order = await orderService.processPOSReturn(req.params.id, req.user, returnItems);
+    await logAction(req.user._id.toString(), req.user.name, "update", "sales", `Processed POS return for order "${order.code}"`, req.ip || "127.0.0.1");
+    return response.success(res, { message: "POS Return processed successfully", order });
 }));
 // ── PUBLIC / CUSTOMER ─────────────────────────────────────────────────────────
-// Khách hàng tự hủy đơn (chỉ khi pending)
+// Customer cancels their own order (pending only)
 router.patch("/:id/cancel", authenticate, isAuthenticated, catchAsync(async (req, res) => {
     const order = await orderService.cancelOrder(req.params.id, req.user);
-    return response.success(res, { message: "Hủy đơn hàng thành công", order });
+    return response.success(res, { message: "Order cancelled successfully", order });
 }));
-// Khách hàng yêu cầu trả hàng (khi completed)
+// Customer requests a return (when completed)
 router.patch("/:id/return", authenticate, isAuthenticated, catchAsync(async (req, res) => {
     const order = await orderService.requestReturnOrder(req.params.id, req.user, req.body.reason, req.body.images);
     return response.success(res, {
-        message: "Yêu cầu trả hàng đã được gửi thành công",
+        message: "Return request submitted successfully",
         order,
     });
 }));

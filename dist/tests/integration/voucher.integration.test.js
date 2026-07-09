@@ -5,7 +5,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { connectTestDB, disconnectTestDB, clearCollections, } from "./helpers/db-helper.js";
 import mongoose from "mongoose";
 import * as voucherService from "../../app/modules/voucher/voucher.service.js";
-import Voucher from "../../app/models/system/voucher.schema.js";
+import Voucher from "../../app/modules/voucher/models/voucher.schema.js";
 const FAKE_USER_ID = new mongoose.Types.ObjectId().toString();
 beforeAll(async () => {
     await connectTestDB();

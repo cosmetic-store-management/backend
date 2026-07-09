@@ -5,7 +5,9 @@ export const mapFlashSale = (fs) => {
         startTime: fs.startTime,
         endTime: fs.endTime,
         isActive: fs.isActive,
-        items: (fs.items || []).map((item) => ({
+        items: (fs.items || [])
+            .filter((item) => item.productId && item.variantId)
+            .map((item) => ({
             productId: item.productId._id ? item.productId._id.toString() : item.productId.toString(),
             productName: item.productId.name,
             productSlug: item.productId.slug,

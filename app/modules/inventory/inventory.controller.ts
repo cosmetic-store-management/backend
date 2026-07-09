@@ -10,6 +10,7 @@ import * as inventoryService from "./inventory.service.js";
 import { logAction } from "../audit-log/audit-log.service.js";
 import {
   CreateSupplierSchema,
+  UpdateSupplierSchema,
   CreateGoodsReceiptSchema,
   AdjustStockSchema,
   UpdateMinStockSchema,
@@ -52,17 +53,62 @@ router.post(
   }),
 );
 
+router.put(
+  "/suppliers/:id",
+  authenticate,
+  requirePermission("products.manage"),
+  validate(UpdateSupplierSchema),
+  catchAsync(async (req, res) => {
+    const id = req.params.id as string;
+    const supplier = await inventoryService.updateSupplier(id, req.body);
+    await logAction(
+      req.user!._id.toString(),
+      req.user!.name,
+      "update",
+      "inventory",
+      `Cập nhật nhà cung cấp "${supplier.name}"`,
+      req.ip || "127.0.0.1",
+    );
+    return response.success(res, {
+      message: "Cập nhật nhà cung cấp thành công",
+      supplier,
+    });
+  }),
+);
+
+router.delete(
+  "/suppliers/:id",
+  authenticate,
+  requirePermission("products.manage"),
+  catchAsync(async (req, res) => {
+    const id = req.params.id as string;
+    await inventoryService.deleteSupplier(id);
+    await logAction(
+      req.user!._id.toString(),
+      req.user!.name,
+      "delete",
+      "inventory",
+      `Xóa nhà cung cấp ID "${id}"`,
+      req.ip || "127.0.0.1",
+    );
+    return response.success(res, {
+      message: "Xóa nhà cung cấp thành công",
+    });
+  }),
+);
+
 // Stock listing
 router.get(
   "/stock",
   authenticate,
   requirePermission("products.view"),
   catchAsync(async (req, res) => {
-    const { search, page, limit = "10" } = req.query;
+    const { search, page, limit = "10", stockStatus } = req.query;
     const result = await inventoryService.getStockList(
       search as string,
       Number(page) || 1,
       Number(limit),
+      stockStatus as string,
     );
     return response.success(res, result);
   }),

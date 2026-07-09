@@ -1,4 +1,4 @@
-import FlashSale from "../../models/marketing/flash-sale.schema.js";
+import FlashSale from "./models/flash-sale.schema.js";
 export const findActiveFlashSale = async () => {
     const now = new Date();
     return FlashSale.findOne({
@@ -30,8 +30,8 @@ export const findTimelineFlashSales = async () => {
         .populate("items.variantId", "name price")
         .lean();
 };
-export const findAll = async (skip, limit) => {
-    return FlashSale.find()
+export const findAll = async (query = {}, skip = 0, limit = 10) => {
+    return FlashSale.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -43,8 +43,8 @@ export const findAll = async (skip, limit) => {
         .populate("items.variantId", "name price")
         .lean();
 };
-export const countAll = async () => {
-    return FlashSale.countDocuments();
+export const countAll = async (query = {}) => {
+    return FlashSale.countDocuments(query);
 };
 export const findById = async (id) => {
     return FlashSale.findById(id)

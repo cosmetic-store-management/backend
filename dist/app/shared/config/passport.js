@@ -1,7 +1,7 @@
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as FacebookStrategy } from "passport-facebook";
-import User from "../../models/user/user.schema.js";
+import User from "../../modules/user/models/user.schema.js";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID || "YOUR_FACEBOOK_APP_ID";
@@ -46,6 +46,7 @@ passport.use(new GoogleStrategy({
     clientSecret: GOOGLE_CLIENT_SECRET,
     callbackURL: "/api/auth/google/callback",
     passReqToCallback: true,
+    proxy: true,
 }, verifyCallback));
 // === FACEBOOK STRATEGY ===
 passport.use(new FacebookStrategy({
@@ -54,6 +55,7 @@ passport.use(new FacebookStrategy({
     callbackURL: "/api/auth/facebook/callback",
     profileFields: ["id", "displayName", "photos", "email"],
     passReqToCallback: true,
+    proxy: true,
     graphAPIVersion: 'v19.0'
 }, verifyCallback));
 export default passport;

@@ -9,7 +9,7 @@ export const CreateCategorySchema = z.object({
     isActive: z.boolean().optional().default(true),
     sortOrder: z.number().int().min(0).optional().default(0),
 });
-export const UpdateCategorySchema = CreateCategorySchema.partial().refine((data) => Object.keys(data).length > 0, "Vui lòng cung cấp ít nhất một thông tin cần cập nhật");
+export const UpdateCategorySchema = CreateCategorySchema.partial().refine((data) => Object.keys(data).length > 0, "Please provide at least one field to update");
 export const UpdateCategoryStatusSchema = z.object({
     isActive: z.boolean(),
 });

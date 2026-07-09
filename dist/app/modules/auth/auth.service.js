@@ -48,33 +48,33 @@ export const sendOtp = async (data) => {
     sendOtpVerificationEmail(data.email, otpCode).catch((err) => {
         console.error("Failed to send OTP email", err);
     });
-    return { message: "Mã OTP đã được gửi đến email của bạn." };
+    return { message: "OTP code has been sent to your email." };
 };
 export const verifyOtp = async (data) => {
     const otpRecord = await authRepo.findOtpByEmail(data.email);
     if (!otpRecord)
-        throw notFound("Không tìm thấy yêu cầu gửi OTP cho email này");
+        throw notFound("No OTP request found for this email");
     if (otpRecord.otpCode !== data.otpCode) {
-        throw badRequest("Mã OTP không chính xác");
+        throw badRequest("Incorrect OTP code");
     }
     if (new Date() > otpRecord.expiresAt) {
-        throw badRequest("Mã OTP đã hết hạn");
+        throw badRequest("OTP code has expired");
     }
     await authRepo.markOtpVerified(data.email);
-    return { message: "Xác thực email thành công." };
+    return { message: "Email verified successfully." };
 };
 export const register = async (data) => {
     const existing = await authRepo.findByPhone(data.phone);
     // If user exists AND already has a password, it's a real duplicate.
     if (existing && existing.password) {
-        throw conflict("Số điện thoại đã được đăng ký. Vui lòng đăng nhập.");
+        throw conflict("Phone number is already registered. Please log in.");
     }
     if (data.email) {
         const existingEmail = await authRepo.findByEmail(data.email);
         // Ensure we don't conflict with our own POS account if it somehow had the same email
         if (existingEmail &&
             (!existing || existingEmail._id.toString() !== existing._id.toString())) {
-            throw conflict("Email đã tồn tại");
+            throw conflict("Email already exists");
         }
     }
     const hashedPassword = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
@@ -112,56 +112,29 @@ export const register = async (data) => {
     }
     return { user: mapUser(user), accessToken, refreshToken };
 };
-export const loginAdmin = async (data) => {
-    const user = data.email
-        ? await authRepo.findByEmail(data.email)
-        : await authRepo.findByPhone(data.phone);
-    if (!user)
-        throw unauthorized("Tài khoản hoặc mật khẩu không đúng");
-    if (!user.password)
-        throw unauthorized("Tài khoản chưa có mật khẩu");
-    if (!["owner", "manager", "staff"].includes(user.role)) {
-        throw unauthorized("Tài khoản không có quyền truy cập trang quản trị");
-    }
-    if (user.isActive === false) {
-        throw unauthorized("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Quản lý.");
-    }
-    const isValid = await bcrypt.compare(data.password, user.password);
-    if (!isValid)
-        throw unauthorized("Số điện thoại hoặc mật khẩu không đúng");
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
-    // Lưu refresh token vào DB
-    const userWithToken = await authRepo.findByIdWithRefreshToken(user._id.toString());
-    if (userWithToken) {
-        userWithToken.refreshTokens = userWithToken.refreshTokens || [];
-        userWithToken.refreshTokens.push(refreshToken);
-        if (userWithToken.refreshTokens.length > 5)
-            userWithToken.refreshTokens.shift();
-        await authRepo.save(userWithToken);
-    }
-    return { user: mapUser(user), accessToken, refreshToken };
-};
-export const loginPublic = async (data) => {
+export const login = async (data) => {
     if (!data.phone && !data.email)
-        throw unauthorized("Vui lòng nhập email hoặc số điện thoại");
+        throw unauthorized("Please enter email or phone number");
     const user = data.email
         ? await authRepo.findByEmail(data.email)
         : await authRepo.findByPhone(data.phone);
     if (!user)
-        throw unauthorized("Số điện thoại, email hoặc mật khẩu không đúng");
-    if (!user.password) {
-        throw unauthorized("Tài khoản của bạn được tạo tại Cửa hàng nhưng chưa có mật khẩu. Vui lòng Đăng ký lại hoặc chọn Quên mật khẩu để sử dụng Web.");
+        throw unauthorized("Incorrect phone number, email, or password");
+    if (data.email && !["owner", "manager", "staff"].includes(user.role)) {
+        throw unauthorized("Incorrect phone number, email, or password");
     }
-    if (user.role !== "customer") {
-        throw unauthorized("Tài khoản quản trị không thể đăng nhập tại đây");
+    if (data.phone && user.role !== "customer") {
+        throw unauthorized("Incorrect phone number, email, or password");
+    }
+    if (!user.password) {
+        throw unauthorized("Your account does not have a password. Please Register again or choose Forgot Password to use the Web.");
     }
     if (user.isActive === false) {
-        throw unauthorized("Tài khoản của bạn đã bị khóa.");
+        throw unauthorized("Your account has been locked. Please contact the Manager.");
     }
     const isValid = await bcrypt.compare(data.password, user.password);
     if (!isValid)
-        throw unauthorized("Số điện thoại hoặc mật khẩu không đúng");
+        throw unauthorized("Incorrect phone number or password");
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
     // Lưu refresh token vào DB
@@ -179,12 +152,12 @@ export const getCurrentUser = (user) => mapUser(user);
 export const changePassword = async (userId, data) => {
     const user = await authRepo.findByIdWithPassword(userId);
     if (!user)
-        throw notFound("Người dùng không tồn tại");
+        throw notFound("User does not exist");
     if (!user.password)
-        throw badRequest("Tài khoản này chưa có mật khẩu");
+        throw badRequest("This account does not have a password");
     const isValid = await bcrypt.compare(data.currentPassword, user.password);
     if (!isValid)
-        throw badRequest("Mật khẩu hiện tại không đúng");
+        throw badRequest("Current password is incorrect");
     user.password = await bcrypt.hash(data.newPassword, BCRYPT_ROUNDS);
     user.refreshTokens = []; // invalidate tất cả session khi đổi mật khẩu
     await authRepo.save(user);
@@ -197,15 +170,15 @@ export const refreshAccessToken = async (refreshToken) => {
         payload = jwt.verify(refreshToken, getRefreshSecret());
     }
     catch {
-        throw unauthorized("Refresh token không hợp lệ hoặc đã hết hạn");
+        throw unauthorized("Invalid or expired refresh token");
     }
     // [2] Tìm user và kiểm tra refresh token có khớp trong DB không
     const user = await authRepo.findByIdWithRefreshToken(payload.id);
     if (!user || !user.refreshTokens?.includes(refreshToken)) {
-        throw unauthorized("Refresh token không hợp lệ hoặc đã bị thu hồi");
+        throw unauthorized("Invalid or revoked refresh token");
     }
     if (user.isActive === false) {
-        throw unauthorized("Tài khoản đã bị khóa");
+        throw unauthorized("Account has been locked");
     }
     // [3] Issue token mới
     // Chú ý: KHÔNG rotate refresh token ở đây để tránh lỗi race condition khi mở nhiều tab.
@@ -233,7 +206,7 @@ export const forgotPassword = async (data) => {
     // Luôn trả thành công — không tiết lộ email/phone có tồn tại không (security)
     if (!user)
         return {
-            message: "Nếu tài khoản tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi",
+            message: "If the account exists, password reset instructions have been sent",
         };
     // Tạo token ngẫu nhiên 32 bytes
     const resetToken = crypto.randomBytes(32).toString("hex");
@@ -246,15 +219,15 @@ export const forgotPassword = async (data) => {
         await sendResetPasswordEmail(user.email, resetToken);
     }
     return {
-        message: "Nếu tài khoản tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi",
+        message: "If the account exists, password reset instructions have been sent",
     };
 };
 export const resetPassword = async (data) => {
     const user = await authRepo.findByResetToken(data.token);
     if (!user || !user.resetTokenExpiry)
-        throw badRequest("Token không hợp lệ hoặc đã hết hạn");
+        throw badRequest("Invalid or expired token");
     if (user.resetTokenExpiry < new Date())
-        throw badRequest("Token đã hết hạn, vui lòng yêu cầu lại");
+        throw badRequest("Token has expired, please request again");
     user.password = await bcrypt.hash(data.newPassword, BCRYPT_ROUNDS);
     user.resetToken = undefined;
     user.resetTokenExpiry = undefined;

@@ -8,7 +8,7 @@ export const globalLimiter = rateLimit({
     legacyHeaders: false,
     message: {
         success: false,
-        message: "Quá nhiều yêu cầu, vui lòng thử lại sau",
+        message: "Too many requests, please try again later",
     },
     skip: () => skipRateLimit,
 });
@@ -20,7 +20,7 @@ export const authLimiter = rateLimit({
     legacyHeaders: false,
     message: {
         success: false,
-        message: "Quá nhiều yêu cầu xác thực từ IP này, vui lòng thử lại sau 15 phút",
+        message: "Too many authentication requests from this IP, please try again in 15 minutes",
     },
     skip: () => skipRateLimit,
 });

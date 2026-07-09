@@ -8,6 +8,13 @@ export interface SupplierResponse {
   phone: string;
   email?: string;
   address?: string;
+  taxCode?: string;
+  contactPerson?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  contactPosition?: string;
+  isActive?: boolean;
+  notes?: string;
 }
 
 export function mapSupplier(doc: any): SupplierResponse {
@@ -17,6 +24,13 @@ export function mapSupplier(doc: any): SupplierResponse {
     phone: doc.phone,
     email: doc.email,
     address: doc.address,
+    taxCode: doc.taxCode,
+    contactPerson: doc.contactPerson,
+    contactPhone: doc.contactPhone,
+    contactEmail: doc.contactEmail,
+    contactPosition: doc.contactPosition,
+    isActive: doc.isActive,
+    notes: doc.notes,
   };
 }
 
@@ -38,6 +52,7 @@ export interface StockItemResponse {
   expiringBatchesCount?: number;
   manufactureDate?: string;
   expiryDate?: string;
+  supplierInfo?: SupplierResponse;
 }
 
 export interface StockListResponse {

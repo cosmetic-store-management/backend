@@ -24,10 +24,10 @@ describe("Category Service", () => {
     });
     describe("getAdminCategories", () => {
         it("trả về danh sách danh mục có phân trang", async () => {
-            vi.mocked(categoryRepo.findAll).mockResolvedValue([makeFakeCategory()]);
+            vi.mocked(categoryRepo.findAll).mockResolvedValue({ categories: [makeFakeCategory()], total: 1, limit: 10, page: 1, totalPages: 1 });
             vi.mocked(categoryRepo.countAll).mockResolvedValue(1);
             vi.mocked(categoryRepo.countProductsByCategoryIds).mockResolvedValue(new Map([[validObjectId, 5]]));
-            const result = await categoryService.getAdminCategories({ page: 1, limit: 10 });
+            const result = await categoryService.getAdminCategories({ limit: 10 });
             expect(result.categories).toHaveLength(1);
             expect(result.categories[0].productCount).toBe(5);
             expect(result.pagination.total).toBe(1);
@@ -58,7 +58,7 @@ describe("Category Service", () => {
             vi.mocked(categoryRepo.findById).mockResolvedValue(cat);
             vi.mocked(categoryRepo.findOneBy).mockResolvedValue(null);
             vi.mocked(categoryRepo.save).mockResolvedValue(cat);
-            const result = await categoryService.updateCategory(validObjectId, { name: "Mới" });
+            await categoryService.updateCategory(validObjectId, { name: "Mới" });
             expect(cat.name).toBe("Mới");
             expect(cat.slug).toBe("moi");
         });
@@ -66,11 +66,11 @@ describe("Category Service", () => {
             const cat = makeFakeCategory();
             vi.mocked(categoryRepo.findById).mockResolvedValue(cat);
             // Giả lập valid parent
-            vi.mocked(categoryRepo.findById).mockImplementation(async (id) => {
+            vi.mocked(categoryRepo.findById).mockImplementation((async (id) => {
                 if (id === validObjectId)
                     return cat;
                 return null;
-            });
+            }));
             await expect(categoryService.updateCategory(validObjectId, { parentId: validObjectId })).rejects.toMatchObject({
                 status: 400,
                 message: "Danh mục không thể là cha của chính nó",

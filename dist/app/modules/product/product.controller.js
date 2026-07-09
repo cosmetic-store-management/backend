@@ -36,7 +36,6 @@ router.get("/:id/recommendations", catchAsync(async (req, res) => {
 router.get("/admin/list", authenticate, requirePermission("products.view"), catchAsync(async (req, res) => {
     const result = await productService.getAdminProducts({
         ...req.query,
-        shopId: req.shopId,
     });
     return response.success(res, result);
 }));
@@ -47,45 +46,45 @@ router.get("/admin/:id", authenticate, requirePermission("products.view"), catch
 router.post("/admin", authenticate, requirePermission("products.manage"), validate(CreateProductSchema), catchAsync(async (req, res) => {
     const product = await productService.createProduct({
         ...req.body,
-        shopId: req.shopId,
     });
     await logAction(req.user._id.toString(), req.user.name, "create", "catalog", `Tạo sản phẩm "${product.name}"`, req.ip || "127.0.0.1");
     return response.created(res, {
-        message: "Tạo sản phẩm thành công",
+        message: "Product created successfully",
         product,
     });
 }));
 router.patch("/admin/:id/status", authenticate, requirePermission("products.manage"), validate(UpdateProductStatusSchema), catchAsync(async (req, res) => {
-    const product = await productService.updateProductStatus(req.params.id, req.body.isActive, req.shopId);
-    await logAction(req.user._id.toString(), req.user.name, "update", "catalog", `Cập nhật trạng thái sản phẩm "${product.name}" thành ${product.isActive ? "Bán" : "Ngừng bán"}`, req.ip || "127.0.0.1");
+    const product = await productService.updateProductStatus(req.params.id, req.body.isActive);
+    await logAction(req.user._id.toString(), req.user.name, "update", "catalog", `Cập nhật trạng thái sản phẩm "${product.name}" thành ${product.isActive ? "Bán" : "Discontinued"}`, req.ip || "127.0.0.1");
     return response.success(res, {
-        message: "Cập nhật trạng thái sản phẩm thành công",
+        message: "Product status updated successfully",
         product,
     });
 }));
 router.patch("/admin/:id", authenticate, requirePermission("products.manage"), validate(UpdateProductSchema), catchAsync(async (req, res) => {
-    const product = await productService.updateProduct(req.params.id, { ...req.body, shopId: req.shopId });
+    const product = await productService.updateProduct(req.params.id, { ...req.body });
     await logAction(req.user._id.toString(), req.user.name, "update", "catalog", `Cập nhật thông tin sản phẩm "${product.name}"`, req.ip || "127.0.0.1");
     return response.success(res, {
-        message: "Cập nhật sản phẩm thành công",
+        message: "Product updated successfully",
         product,
     });
 }));
 router.delete("/admin/:id", authenticate, requirePermission("products.manage"), catchAsync(async (req, res) => {
-    const product = await productService.getAdminProductDetail(req.params.id, req.shopId);
-    await productService.deleteProduct(req.params.id, req.shopId);
+    const product = await productService.getAdminProductDetail(req.params.id);
+    await productService.deleteProduct(req.params.id);
     if (product) {
         await logAction(req.user._id.toString(), req.user.name, "delete", "catalog", `Xóa sản phẩm "${product.name}"`, req.ip || "127.0.0.1");
     }
-    return response.success(res, { message: "Xóa sản phẩm thành công" });
+    return response.success(res, { message: "Product deleted successfully" });
 }));
 router.post("/admin/batch-import", authenticate, requirePermission("products.manage"), catchAsync(async (req, res) => {
     const { products } = req.body;
     if (!products || !Array.isArray(products)) {
-        return response.error(res, { message: "Dữ liệu không hợp lệ" }, 400);
+        res.status(400).json({ message: "Dữ liệu không hợp lệ" });
+        return;
     }
-    const result = await productService.batchImportProducts(products, req.shopId);
+    const result = await productService.batchImportProducts(products);
     await logAction(req.user._id.toString(), req.user.name, "create", "catalog", `Import hàng loạt ${result.totalProcessed} sản phẩm/biến thể`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Import thành công", result });
+    return response.success(res, { message: "Import successful", result });
 }));
 export default router;

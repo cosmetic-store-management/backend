@@ -136,6 +136,30 @@ router.patch(
   }),
 );
 
+router.post(
+  "/:id/pos-return",
+  authenticate,
+  requirePermission("orders.manage"),
+  catchAsync(async (req, res) => {
+    const { returnItems, returnReason } = req.body;
+    const order = await orderService.processPOSReturn(
+      req.params.id as string,
+      req.user!,
+      returnItems,
+      returnReason,
+    );
+    await logAction(
+      req.user!._id.toString(),
+      req.user!.name,
+      "update",
+      "sales",
+      `Processed POS return for order "${order.code}"`,
+      req.ip || "127.0.0.1",
+    );
+    return response.success(res, { message: "POS Return processed successfully", order });
+  }),
+);
+
 // ── PUBLIC / CUSTOMER ─────────────────────────────────────────────────────────
 
 // Customer cancels their own order (pending only)

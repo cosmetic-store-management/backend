@@ -1,16 +1,17 @@
-import Category from "../../models/product/category.schema.js";
-import Product from "../../models/product/product.schema.js";
-export const findAll = async (query, cursor, limit) => {
-    if (cursor)
-        query._id = { $lt: cursor };
-    const categories = await Category.find(query)
-        .sort({ _id: -1 })
-        .limit(limit + 1)
-        .lean();
-    const hasNextPage = categories.length > limit;
-    const items = hasNextPage ? categories.slice(0, limit) : categories;
-    const nextCursor = hasNextPage ? items[items.length - 1]._id.toString() : null;
-    return { categories: items, nextCursor, hasNextPage, limit };
+import Category from "./models/category.schema.js";
+import Product from "../product/models/product.schema.js";
+export const findAll = async (query, page, limit) => {
+    const skip = (page - 1) * limit;
+    const [categories, total] = await Promise.all([
+        Category.find(query)
+            .sort({ _id: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+        Category.countDocuments(query),
+    ]);
+    const totalPages = Math.ceil(total / limit);
+    return { categories, total, limit, page, totalPages };
 };
 export const countAll = (query) => Category.countDocuments(query);
 export const findById = (id) => Category.findById(id);

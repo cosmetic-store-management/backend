@@ -66,6 +66,7 @@ export interface IOrder {
   returnImages?: string[];
   returnRequestedAt?: Date;
   returnRejectReason?: string;
+  receiptNumber?: string;
   totalCost: number;
   items: IOrderItem[];
   createdAt: Date;
@@ -116,6 +117,7 @@ const orderSchema = new Schema<OrderDocument>(
     note: { type: String, trim: true, default: "" },
     channel: { type: String, enum: ["pos", "online"], default: "online" },
     creatorId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    receiptNumber: { type: String, trim: true, default: "", index: true },
     paymentStatus: {
       type: String,
       enum: ["pending", "paid", "failed", "refund_pending", "refunded"],

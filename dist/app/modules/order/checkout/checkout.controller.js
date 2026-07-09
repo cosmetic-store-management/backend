@@ -23,10 +23,10 @@ export const createPOSOrderHandler = catchAsync(async (req, res) => {
 router.post("/preview", validate(PreviewOrderSchema), previewOrderHandler);
 router.post("/", authenticate, validate(CreateOrderSchema), createOrderHandler);
 router.post("/pos", authenticate, authorize("owner", "manager", "staff"), createPOSOrderHandler);
-import { cancelPendingOrder } from "../order.service.js";
+import { abandonPendingOrder } from "../order.service.js";
 router.patch("/:code/cancel", catchAsync(async (req, res) => {
     const { code } = req.params;
-    const result = await cancelPendingOrder(code, "Khách hàng chủ động hủy thanh toán");
-    res.json({ success: true, data: result, message: "Hủy đơn hàng thành công" });
+    const result = await abandonPendingOrder(code);
+    res.json({ success: true, data: result, message: "Hủy mã QR thành công" });
 }));
 export default router;

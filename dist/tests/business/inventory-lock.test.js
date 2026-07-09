@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import mongoose from "mongoose";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
-import Product from "../../app/models/product/product.schema.js";
-import Variant from "../../app/models/product/variant.schema.js";
-import Setting from "../../app/models/system/setting.schema.js";
-import "../../app/models/index.js";
+import Product from "../../app/modules/product/models/product.schema.js";
+import Variant from "../../app/modules/product/models/variant.schema.js";
+import Setting from "../../app/modules/setting/models/setting.schema.js";
+// removed import
 import { createOrder } from "../../app/modules/order/checkout/checkout.service.js";
 describe("Concurrency Business Rules: Inventory Lock", () => {
     let mongoServer;

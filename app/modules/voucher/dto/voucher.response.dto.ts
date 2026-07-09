@@ -14,6 +14,7 @@ export interface VoucherResponse {
   isActive: boolean;
   ttlMinutes?: number;
   overbookingLimit?: number;
+  channelRule?: string;
 }
 
 export const mapVoucher = (voucher: VoucherDocument): VoucherResponse => ({
@@ -30,4 +31,5 @@ export const mapVoucher = (voucher: VoucherDocument): VoucherResponse => ({
   isActive: voucher.isActive,
   ttlMinutes: voucher.ttlMinutes,
   overbookingLimit: voucher.overbookingLimit,
+  channelRule: voucher.channelRule || "all",
 });

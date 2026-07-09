@@ -6,8 +6,8 @@ import * as auditService from "./audit-log.service.js";
 const router = Router();
 // ── ADMIN & STAFF ONLY ────────────────────────────────────────────────────────
 router.get("/", authenticate, isOwner, catchAsync(async (req, res) => {
-    const { search, domain, startDate, endDate, cursor, limit = "20" } = req.query;
-    const result = await auditService.getAuditLogs(search, domain, startDate, endDate, cursor, Number(limit));
+    const { search, domain, startDate, endDate, page, limit = "20" } = req.query;
+    const result = await auditService.getAuditLogs(search, domain, startDate, endDate, Number(page) || 1, Number(limit));
     return response.success(res, result);
 }));
 export default router;

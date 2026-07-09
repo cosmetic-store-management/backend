@@ -7,4 +7,10 @@ export const mapBrand = (brand, productCount = 0) => ({
     country: brand.country,
     isActive: brand.isActive,
     productCount,
+    website: brand.website,
+    contactPhone: brand.contactPhone,
+    contactEmail: brand.contactEmail,
+    supplierName: brand.supplierName,
+    minimumOrderValue: brand.minimumOrderValue,
+    leadTimeDays: brand.leadTimeDays,
 });

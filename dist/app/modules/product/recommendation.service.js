@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import User from "../../models/user/user.schema.js";
-import Product from "../../models/product/product.schema.js";
+import User from "../user/models/user.schema.js";
+import Product from "./models/product.schema.js";
 import * as productRepo from "./product.repository.js";
 import { mapProduct } from "./dto/product.response.dto.js";
 export const getRecommendations = async (userId, limit = 10) => {

@@ -13,6 +13,8 @@ export const findStaffs = async (
   search?: string,
   status?: string,
   role?: string,
+  hiringStatus?: string,
+  workingShift?: string,
 ) => {
   const query: any = { role: { $in: ["owner", "manager", "staff"] }, isDeleted: { $ne: true } };
 
@@ -32,6 +34,14 @@ export const findStaffs = async (
     query.role = role;
   }
 
+  if (hiringStatus) {
+    query.status = hiringStatus;
+  }
+
+  if (workingShift) {
+    query.workingShift = workingShift;
+  }
+
   const skip = (page - 1) * limit;
 
   const [users, total] = await Promise.all([
@@ -44,9 +54,17 @@ export const findStaffs = async (
     User.countDocuments(query),
   ]);
 
+  const rolePriority: Record<string, number> = { owner: 3, manager: 2, staff: 1 };
+  const sortedUsers = [...users].sort((a, b) => {
+    const prioA = rolePriority[a.role] ?? 0;
+    const prioB = rolePriority[b.role] ?? 0;
+    if (prioA !== prioB) return prioB - prioA;
+    return b._id.toString().localeCompare(a._id.toString());
+  });
+
   const totalPages = Math.ceil(total / limit);
 
-  return { users, total, limit, page, totalPages };
+  return { users: sortedUsers, total, limit, page, totalPages };
 };
 
 export const findById = (id: string) => User.findById(id).select("-password");

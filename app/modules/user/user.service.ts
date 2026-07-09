@@ -272,8 +272,18 @@ export const getStaffUsers = async (
   search?: string,
   status?: string,
   role?: string,
+  hiringStatus?: string,
+  workingShift?: string,
 ) => {
-  const result = await userRepo.findStaffs(page, limit, search, status, role);
+  const result = await userRepo.findStaffs(
+    page,
+    limit,
+    search,
+    status,
+    role,
+    hiringStatus,
+    workingShift,
+  );
   return {
     ...result,
     users: result.users.map(mapUser),
@@ -299,6 +309,15 @@ export const updateUserByAdmin = async (
   if (data.name !== undefined) user.name = data.name;
   if (data.phone !== undefined) user.phone = data.phone;
   if (data.email !== undefined) user.email = data.email;
+  if (data.citizenId !== undefined) user.citizenId = data.citizenId;
+  if (data.startDate !== undefined) user.startDate = data.startDate;
+  if (data.bankInfo !== undefined) user.bankInfo = data.bankInfo;
+  if (data.emergencyContact !== undefined) user.emergencyContact = data.emergencyContact;
+  if (data.homeAddress !== undefined) user.homeAddress = data.homeAddress;
+  if (data.status !== undefined) user.status = data.status;
+  if (data.contractType !== undefined) user.contractType = data.contractType;
+  if (data.workingShift !== undefined) user.workingShift = data.workingShift;
+  if (data.salaryInfo !== undefined) user.salaryInfo = data.salaryInfo;
 
   if (
     data.province !== undefined ||
@@ -473,6 +492,24 @@ export const createStaff = async (data: any, requester: UserDocument) => {
   }
 
   const hashedPassword = await bcrypt.hash(data.password || "123456", 12);
+
+  // Generate employeeId
+  const lastStaff = await User.findOne({
+    employeeId: { $regex: /^NV[0-9]{4}$/ }
+  })
+    .sort({ employeeId: -1 })
+    .select("employeeId")
+    .lean();
+
+  let nextNum = 1;
+  if (lastStaff && lastStaff.employeeId) {
+    const match = lastStaff.employeeId.match(/^NV([0-9]{4})$/);
+    if (match) {
+      nextNum = parseInt(match[1]) + 1;
+    }
+  }
+  const employeeId = `NV${String(nextNum).padStart(4, "0")}`;
+
   const newUser = await userRepo.create({
     name: data.name,
     email: data.email || undefined,
@@ -480,6 +517,16 @@ export const createStaff = async (data: any, requester: UserDocument) => {
     password: hashedPassword,
     role: finalRole,
     permissions: data.permissions || [],
+    citizenId: data.citizenId || undefined,
+    startDate: data.startDate || undefined,
+    bankInfo: data.bankInfo || undefined,
+    emergencyContact: data.emergencyContact || undefined,
+    homeAddress: data.homeAddress || undefined,
+    employeeId,
+    status: data.status || "working",
+    contractType: data.contractType || "fulltime",
+    workingShift: data.workingShift || "full",
+    salaryInfo: data.salaryInfo || { baseSalary: 0, allowance: 0, commissionRate: 0 },
   });
   return mapUser(newUser);
 };

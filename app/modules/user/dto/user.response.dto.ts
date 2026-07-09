@@ -17,6 +17,28 @@ export interface UserResponse {
   favorites?: any[];
   recentlyViewed?: any[];
   avatar?: string;
+  citizenId?: string;
+  startDate?: Date;
+  bankInfo?: {
+    bankName?: string;
+    accountNumber?: string;
+    accountName?: string;
+  };
+  emergencyContact?: {
+    name?: string;
+    phone?: string;
+    relationship?: string;
+  };
+  homeAddress?: string;
+  employeeId?: string;
+  status?: string;
+  contractType?: string;
+  workingShift?: string;
+  salaryInfo?: {
+    baseSalary: number;
+    allowance: number;
+    commissionRate: number;
+  };
 }
 
 /**
@@ -40,4 +62,14 @@ export const mapUser = (user: UserDocument): UserResponse => ({
   favorites: user.favorites,
   recentlyViewed: user.recentlyViewed,
   avatar: user.avatar,
+  citizenId: user.citizenId,
+  startDate: user.startDate,
+  bankInfo: user.bankInfo,
+  emergencyContact: user.emergencyContact,
+  homeAddress: user.homeAddress,
+  employeeId: user.employeeId,
+  status: user.status,
+  contractType: user.contractType,
+  workingShift: user.workingShift,
+  salaryInfo: user.salaryInfo,
 });

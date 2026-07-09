@@ -1,5 +1,5 @@
-import User from "../../models/user/user.schema.js";
-import Otp from "../../models/user/otp.schema.js";
+import User from "../user/models/user.schema.js";
+import Otp from "./models/otp.schema.js";
 export const findByPhone = (phone) => User.findOne({ phone });
 export const findByEmail = (email) => User.findOne({ email });
 export const findByIdWithPassword = (id) => User.findById(id);

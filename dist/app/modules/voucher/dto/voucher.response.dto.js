@@ -10,4 +10,7 @@ export const mapVoucher = (voucher) => ({
     usageLimit: voucher.usageLimit,
     usedCount: voucher.usedCount,
     isActive: voucher.isActive,
+    ttlMinutes: voucher.ttlMinutes,
+    overbookingLimit: voucher.overbookingLimit,
+    channelRule: voucher.channelRule || "all",
 });

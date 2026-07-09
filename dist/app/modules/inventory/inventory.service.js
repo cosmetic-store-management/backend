@@ -2,7 +2,7 @@ import { badRequest, notFound } from "../../shared/errors/httpErrors.js";
 import * as inventoryRepo from "./inventory.repository.js";
 import { mapGoodsReceipt, } from "./dto/inventory.response.dto.js";
 import mongoose from "mongoose";
-import { Variant } from "../../models/index.js";
+import Variant from "../product/models/variant.schema.js";
 /** Số ký tự cần lấy trong chuỗi ISO để được dạng "yyyy-MM-dd HH:mm" */
 const ISO_DATETIME_LENGTH = 16;
 /** Khoảng số random cho mã transaction */
@@ -17,7 +17,7 @@ export const createSupplier = async (data) => {
     return inventoryRepo.createSupplier(data);
 };
 // ── STOCK ─────────────────────────────────────────────────────────────────────
-export const getStockList = async (search, cursor, limit = 10) => {
+export const getStockList = async (search, page = 1, limit = 10, stockStatus) => {
     const query = {};
     if (search) {
         const productIds = await inventoryRepo.findProductIdsByName(search);
@@ -27,8 +27,17 @@ export const getStockList = async (search, cursor, limit = 10) => {
             { productId: { $in: productIds } },
         ];
     }
+    if (stockStatus === "low") {
+        query.$expr = { $lte: ["$stock", "$minStock"] };
+    }
+    else if (stockStatus === "out") {
+        query.stock = 0;
+    }
+    else if (stockStatus === "in") {
+        query.$expr = { $gt: ["$stock", "$minStock"] };
+    }
     const [result, totalItems] = await Promise.all([
-        inventoryRepo.findVariantsByQuery(query, cursor || null, limit),
+        inventoryRepo.findVariantsByQuery(query, page, limit),
         inventoryRepo.countVariantsByQuery(query),
     ]);
     const variants = result.variants;
@@ -87,15 +96,15 @@ export const getStockList = async (search, cursor, limit = 10) => {
         pagination: {
             limit,
             totalItems,
-            nextCursor: result.nextCursor,
-            hasNextPage: result.hasNextPage,
+            page: result.page,
+            totalPages: result.totalPages,
         },
     };
 };
 // ── TRANSACTIONS ──────────────────────────────────────────────────────────────
-export const getTransactions = async (cursor, limit, type) => {
+export const getTransactions = async (page = 1, limit, type) => {
     const [result, totalItems] = await Promise.all([
-        inventoryRepo.findTransactions(cursor || null, limit, type),
+        inventoryRepo.findTransactions(page, limit, type),
         inventoryRepo.countTransactions(type),
     ]);
     const txs = result.transactions;
@@ -120,8 +129,8 @@ export const getTransactions = async (cursor, limit, type) => {
         pagination: {
             limit,
             totalItems,
-            nextCursor: result.nextCursor,
-            hasNextPage: result.hasNextPage,
+            page: result.page,
+            totalPages: result.totalPages,
         },
     };
 };
@@ -132,20 +141,20 @@ export const getVariantBatches = async (variantId) => {
 export const updateBatch = async (batchId, data) => {
     const batch = await inventoryRepo.updateBatchInfo(batchId, data);
     if (!batch)
-        throw notFound("Không tìm thấy lô hàng");
+        throw notFound("Batch not found");
     return batch;
 };
 // ── GOODS RECEIPTS ────────────────────────────────────────────────────────────
 export const createGoodsReceipt = async (operator, data) => {
     const { supplierId, items } = data;
     if (!supplierId)
-        throw badRequest("supplierId là bắt buộc");
+        throw badRequest("supplierId is required");
     if (!items || !Array.isArray(items) || items.length === 0) {
-        throw badRequest("Đơn nhập hàng phải có ít nhất một sản phẩm");
+        throw badRequest("Import order must have at least one product");
     }
     const supplier = await inventoryRepo.findSupplierById(supplierId);
     if (!supplier)
-        throw notFound("Không tìm thấy nhà cung cấp");
+        throw notFound("Supplier not found");
     let totalAmount = 0;
     const receiptItems = [];
     const { ObjectId } = mongoose.Types;
@@ -156,14 +165,14 @@ export const createGoodsReceipt = async (operator, data) => {
             quantity <= 0 ||
             !importPrice ||
             importPrice <= 0) {
-            throw badRequest("Thông tin sản phẩm nhập kho không hợp lệ");
+            throw badRequest("Invalid inventory item information");
         }
         const variant = await inventoryRepo.findVariantById(variantId);
         if (!variant)
-            throw notFound(`Không tìm thấy biến thể ${variantId}`);
+            throw notFound(`Variant ${variantId} not found`);
         const product = await inventoryRepo.findProductById(variant.productId.toString());
         if (!product)
-            throw notFound(`Không tìm thấy sản phẩm của biến thể ${variantId}`);
+            throw notFound(`Product for variant ${variantId} not found`);
         totalAmount += importPrice * quantity;
         receiptItems.push({
             productId: variant.productId,
@@ -195,7 +204,7 @@ export const createGoodsReceipt = async (operator, data) => {
             if (variant) {
                 await inventoryRepo.atomicUpdateStock(variant._id, item.quantity, session);
                 await inventoryRepo.createTransaction({
-                    code: `TX-GR-${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
+                    code: `TXIN${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
                     productId: item.productId,
                     variantId: item.variantId,
                     type: "in",
@@ -261,7 +270,7 @@ export const adjustStock = async (operator, data) => {
             }
         }
         await inventoryRepo.createTransaction({
-            code: `TX-ADJ-${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
+            code: `TXADJ${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
             productId: variant.productId,
             variantId: variant._id,
             type: "adjustment",
@@ -285,8 +294,32 @@ export const updateMinStock = async (operator, data) => {
     const { variantId, minStock } = data;
     const variant = await Variant.findById(variantId);
     if (!variant)
-        throw new Error("Không tìm thấy sản phẩm");
+        throw new Error("Product not found");
     variant.minStock = minStock;
     await variant.save();
     return variant;
+};
+import { sendLowStockAlertEmail } from "../../shared/email/email.service.js";
+import User from "../user/models/user.schema.js";
+export const checkAndTriggerLowStockAlert = async (variant) => {
+    if (!variant || variant.stock > variant.minStock)
+        return;
+    try {
+        // Find active store owners and managers to notify
+        const managers = await User.find({
+            role: { $in: ["owner", "manager"] },
+            isActive: true,
+            isDeleted: { $ne: true }
+        }).select("email").lean();
+        const emails = managers.map(m => m.email).filter(Boolean);
+        if (emails.length === 0)
+            return;
+        for (const email of emails) {
+            await sendLowStockAlertEmail(email, variant.name, variant.stock, variant.minStock);
+        }
+        console.log(`[Low Stock Alert] Emailed low stock alert for variant ${variant.name} (Stock: ${variant.stock}/${variant.minStock})`);
+    }
+    catch (error) {
+        console.error("[Low Stock Alert] Failed to trigger low-stock alert:", error);
+    }
 };

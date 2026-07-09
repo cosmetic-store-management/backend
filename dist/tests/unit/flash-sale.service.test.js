@@ -65,7 +65,7 @@ describe("Flash Sale Service", () => {
         it("throw badRequest khi ID không hợp lệ", async () => {
             await expect(flashSaleService.updateFlashSale("invalid_id", {})).rejects.toMatchObject({
                 status: 400,
-                message: "ID không hợp lệ",
+                message: "Invalid ID",
             });
         });
         it("throw notFound khi flash sale không tồn tại", async () => {
@@ -73,7 +73,7 @@ describe("Flash Sale Service", () => {
             vi.mocked(flashSaleRepo.findById).mockResolvedValue(null);
             await expect(flashSaleService.updateFlashSale(validId, {})).rejects.toMatchObject({
                 status: 404,
-                message: "Flash Sale không tồn tại",
+                message: "Flash Sale does not exist",
             });
         });
         it("giữ nguyên soldQuantity khi update item cũ", async () => {
@@ -111,7 +111,7 @@ describe("Flash Sale Service", () => {
         it("throw badRequest khi ID không hợp lệ", async () => {
             await expect(flashSaleService.deleteFlashSale("invalid_id")).rejects.toMatchObject({
                 status: 400,
-                message: "ID không hợp lệ",
+                message: "Invalid ID",
             });
         });
         it("throw notFound khi flash sale không tồn tại", async () => {
@@ -119,7 +119,7 @@ describe("Flash Sale Service", () => {
             vi.mocked(flashSaleRepo.findById).mockResolvedValue(null);
             await expect(flashSaleService.deleteFlashSale(validId)).rejects.toMatchObject({
                 status: 404,
-                message: "Flash Sale không tồn tại",
+                message: "Flash Sale does not exist",
             });
         });
         it("xóa thành công", async () => {
@@ -127,7 +127,7 @@ describe("Flash Sale Service", () => {
             vi.mocked(flashSaleRepo.findById).mockResolvedValue(makeFakeFlashSale());
             vi.mocked(flashSaleRepo.deleteById).mockResolvedValue(undefined);
             const result = await flashSaleService.deleteFlashSale(validId);
-            expect(result.message).toBe("Xóa thành công");
+            expect(result.message).toBe("Deleted successfully");
             expect(flashSaleRepo.deleteById).toHaveBeenCalledWith(validId);
         });
     });

@@ -23,8 +23,8 @@ router.post("/suppliers", authenticate, requirePermission("products.manage"), va
 }));
 // Stock listing
 router.get("/stock", authenticate, requirePermission("products.view"), catchAsync(async (req, res) => {
-    const { search, cursor, limit = "10" } = req.query;
-    const result = await inventoryService.getStockList(search, cursor, Number(limit));
+    const { search, page, limit = "10", stockStatus } = req.query;
+    const result = await inventoryService.getStockList(search, Number(page) || 1, Number(limit), stockStatus);
     return response.success(res, result);
 }));
 // Batches for a variant
@@ -43,8 +43,8 @@ router.put("/stock/batches/:id", authenticate, requirePermission("products.manag
 }));
 // Transactions log
 router.get("/transactions", authenticate, requirePermission("products.view"), catchAsync(async (req, res) => {
-    const { cursor, limit = "10", type } = req.query;
-    const result = await inventoryService.getTransactions(cursor, Number(limit), type);
+    const { page, limit = "10", type } = req.query;
+    const result = await inventoryService.getTransactions(Number(page) || 1, Number(limit), type);
     return response.success(res, result);
 }));
 // Import stock (Goods receipt)
