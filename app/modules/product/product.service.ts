@@ -558,7 +558,50 @@ export const createProduct = async (data: CreateProductInput) => {
         v.sku?.trim() ||
         `SKU-${slugify(brandDoc.name).slice(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${idx}`,
     }));
-    await Variant.insertMany(variantsToCreate);
+    const insertedVariants = await Variant.insertMany(variantsToCreate);
+
+    // ── Opening Balance Sync ──────────────────────────────────────────────
+    // For each variant with initial stock > 0, create an opening balance
+    // Batch (TONDAU) and a corresponding InventoryTransaction so FEFO and
+    // Moving Average Cost calculations have a valid starting point.
+    const { default: Batch } = await import("../inventory/models/batch.schema.js");
+    const { default: InventoryTransaction } = await import(
+      "../inventory/models/inventory-transaction.schema.js"
+    );
+    for (let idx = 0; idx < insertedVariants.length; idx++) {
+      const insertedVariant = insertedVariants[idx];
+      const sourceVariant = data.variants[idx];
+      const initialStock = Number(sourceVariant.stock ?? 0);
+      if (initialStock <= 0) continue;
+
+      const estimatedPrice = Number(sourceVariant.price ?? 0) * 0.6;
+      await Batch.create({
+        variantId: insertedVariant._id,
+        goodsReceiptId: null,
+        batchCode: "TONDAU",
+        importPrice: estimatedPrice,
+        originalQty: initialStock,
+        remainingQty: initialStock,
+      });
+
+      const txCode = `TXIN-OB-${insertedVariant._id.toString().slice(-6).toUpperCase()}-${Date.now()}`;
+      // Resolve a creatorId: prefer owner/manager, fallback to any user
+      const { default: User } = await import("../user/models/user.schema.js");
+      const systemUser = await User.findOne({ role: { $in: ["owner", "manager"] } }).select("_id").lean()
+        ?? await User.findOne({}).select("_id").lean();
+      if (systemUser) {
+        await InventoryTransaction.create({
+          code: txCode,
+          productId: newProduct._id,
+          variantId: insertedVariant._id,
+          type: "in",
+          qty: initialStock,
+          price: estimatedPrice,
+          creatorId: systemUser._id,
+          date: new Date(),
+        });
+      }
+    }
   }
 
   const created = await productRepo.findById(newProduct._id.toString());
@@ -649,7 +692,40 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
       if (v.id) {
         await Variant.updateOne({ _id: v.id }, { $set: variantPayload });
       } else {
-        await Variant.create({ ...variantPayload, productId: product._id });
+        // New variant added during product update — sync opening balance
+        const newVariant = await Variant.create({ ...variantPayload, productId: product._id });
+        const initialStock = Number(v.stock ?? 0);
+        if (initialStock > 0) {
+          const { default: Batch } = await import("../inventory/models/batch.schema.js");
+          const { default: InventoryTransaction } = await import(
+            "../inventory/models/inventory-transaction.schema.js"
+          );
+          const estimatedPrice = Number(v.price ?? 0) * 0.6;
+          await Batch.create({
+            variantId: newVariant._id,
+            goodsReceiptId: null,
+            batchCode: "TONDAU",
+            importPrice: estimatedPrice,
+            originalQty: initialStock,
+            remainingQty: initialStock,
+          });
+          const txCode = `TXIN-OB-${newVariant._id.toString().slice(-6).toUpperCase()}-${Date.now()}`;
+          const { default: User } = await import("../user/models/user.schema.js");
+          const systemUser = await User.findOne({ role: { $in: ["owner", "manager"] } }).select("_id").lean()
+            ?? await User.findOne({}).select("_id").lean();
+          if (systemUser) {
+            await InventoryTransaction.create({
+              code: txCode,
+              productId: product._id,
+              variantId: newVariant._id,
+              type: "in",
+              qty: initialStock,
+              price: estimatedPrice,
+              creatorId: systemUser._id,
+              date: new Date(),
+            });
+          }
+        }
       }
     }
   }
@@ -678,10 +754,38 @@ export const deleteProduct = async (id: string) => {
   if (!product)
     throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền xóa");
 
-  await productRepo.findByIdAndDelete(id);
+  // ── Delete Guard ──────────────────────────────────────────────────────
+  // Block hard-delete if the product has active inventory batches or
+  // goods receipts. Use Discontinue (isActive = false) instead.
+  const { default: VariantCheck } = await import("./models/variant.schema.js");
+  const variantIds = await VariantCheck.find({ productId: id }).select("_id").lean();
+  if (variantIds.length > 0) {
+    const { default: Batch } = await import("../inventory/models/batch.schema.js");
+    const activeBatchCount = await Batch.countDocuments({
+      variantId: { $in: variantIds.map((v: any) => v._id) },
+      remainingQty: { $gt: 0 },
+    });
+    if (activeBatchCount > 0) {
+      throw conflict(
+        `Cannot delete this product — it has ${activeBatchCount} active inventory batch(es) with remaining stock. Use "Discontinue" (set inactive) instead.`,
+      );
+    }
 
-  const { default: Variant } =
-    await import("./models/variant.schema.js");
+    const { default: InventoryTransaction } = await import(
+      "../inventory/models/inventory-transaction.schema.js"
+    );
+    const txCount = await InventoryTransaction.countDocuments({
+      variantId: { $in: variantIds.map((v: any) => v._id) },
+    });
+    if (txCount > 0) {
+      throw conflict(
+        `Cannot delete this product — it has ${txCount} inventory transaction record(s). Use "Discontinue" (set inactive) to preserve audit history.`,
+      );
+    }
+  }
+
+  await productRepo.findByIdAndDelete(id);
+  const { default: Variant } = await import("./models/variant.schema.js");
   await Variant.deleteMany({ productId: id });
 };
 
@@ -776,7 +880,40 @@ export const batchImportProducts = async (productsData: any[]) => {
       if (existingVariantsMap.has(vKey)) {
         await Variant.findByIdAndUpdate(existingVariantsMap.get(vKey)!._id, variantData);
       } else {
-        await Variant.create(variantData);
+        // Brand new variant from Excel — sync opening balance
+        const newVariant = await Variant.create(variantData);
+        const initialStock = Number(variantData.stock ?? 0);
+        if (initialStock > 0) {
+          const { default: Batch } = await import("../inventory/models/batch.schema.js");
+          const { default: InventoryTransaction } = await import(
+            "../inventory/models/inventory-transaction.schema.js"
+          );
+          const estimatedPrice = Number(variantData.price ?? 0) * 0.6;
+          await Batch.create({
+            variantId: newVariant._id,
+            goodsReceiptId: null,
+            batchCode: "TONDAU",
+            importPrice: estimatedPrice,
+            originalQty: initialStock,
+            remainingQty: initialStock,
+          });
+          const txCode = `TXIN-OB-${newVariant._id.toString().slice(-6).toUpperCase()}-${Date.now()}`;
+          const { default: User } = await import("../user/models/user.schema.js");
+          const systemUser = await User.findOne({ role: { $in: ["owner", "manager"] } }).select("_id").lean()
+            ?? await User.findOne({}).select("_id").lean();
+          if (systemUser) {
+            await InventoryTransaction.create({
+              code: txCode,
+              productId: product._id,
+              variantId: newVariant._id,
+              type: "in",
+              qty: initialStock,
+              price: estimatedPrice,
+              creatorId: systemUser._id,
+              date: new Date(),
+            });
+          }
+        }
       }
       totalProcessed++;
     }

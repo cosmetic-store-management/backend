@@ -6,6 +6,7 @@ export interface IInventoryTransaction {
   variantId: Types.ObjectId;
   type: "in" | "out" | "adjustment";
   qty: number;
+  price?: number;
   creatorId: Types.ObjectId;
   date: Date;
 }
@@ -19,6 +20,7 @@ const inventoryTransactionSchema = new Schema<InventoryTransactionDocument>(
     variantId: { type: Schema.Types.ObjectId, ref: "Variant", required: true },
     type: { type: String, enum: ["in", "out", "adjustment"], required: true },
     qty: { type: Number, required: true },
+    price: { type: Number, default: 0 },
     creatorId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     date: { type: Date, default: Date.now },
   },

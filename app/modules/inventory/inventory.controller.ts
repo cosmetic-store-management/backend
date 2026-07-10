@@ -153,11 +153,12 @@ router.get(
   authenticate,
   requirePermission("products.view"),
   catchAsync(async (req, res) => {
-    const { page, limit = "10", type } = req.query;
+    const { page, limit = "10", type, variantId } = req.query;
     const result = await inventoryService.getTransactions(
       Number(page) || 1,
       Number(limit),
       type as string | undefined,
+      variantId as string | undefined,
     );
     return response.success(res, result);
   }),
@@ -232,6 +233,93 @@ router.patch(
     return response.success(res, {
       message: "Cập nhật định mức tồn kho thành công",
       variant,
+    });
+  }),
+);
+
+// GET Inventory Stats
+router.get(
+  "/stats",
+  authenticate,
+  requirePermission("products.view"),
+  catchAsync(async (req, res) => {
+    const stats = await inventoryService.getInventoryStats();
+    return response.success(res, stats as any);
+  }),
+);
+
+// GET Goods Receipts list
+router.get(
+  "/goods-receipts",
+  authenticate,
+  requirePermission("products.view"),
+  catchAsync(async (req, res) => {
+    const { page, limit = "10", search } = req.query;
+    const result = await inventoryService.getGoodsReceipts(
+      Number(page) || 1,
+      Number(limit),
+      search as string | undefined,
+    );
+    return response.success(res, result);
+  }),
+);
+
+// GET Goods Receipt detail
+router.get(
+  "/goods-receipts/:id",
+  authenticate,
+  requirePermission("products.view"),
+  catchAsync(async (req, res) => {
+    const result = await inventoryService.getGoodsReceiptDetail(req.params.id as string);
+    return response.success(res, result as any);
+  }),
+);
+
+// GET Stocktakes list
+router.get(
+  "/stocktakes",
+  authenticate,
+  requirePermission("products.view"),
+  catchAsync(async (req, res) => {
+    const { page, limit = "10", search } = req.query;
+    const result = await inventoryService.getStocktakes(
+      Number(page) || 1,
+      Number(limit),
+      search as string | undefined,
+    );
+    return response.success(res, result);
+  }),
+);
+
+// GET Stocktake detail
+router.get(
+  "/stocktakes/:id",
+  authenticate,
+  requirePermission("products.view"),
+  catchAsync(async (req, res) => {
+    const result = await inventoryService.getStocktakeDetail(req.params.id as string);
+    return response.success(res, result as any);
+  }),
+);
+
+// POST Create Stocktake
+router.post(
+  "/stocktakes",
+  authenticate,
+  requirePermission("products.manage"),
+  catchAsync(async (req, res) => {
+    const stocktake = await inventoryService.createStocktake(req.user!, req.body);
+    await logAction(
+      req.user!._id.toString(),
+      req.user!.name,
+      "update",
+      "inventory",
+      `Tạo phiếu kiểm kho "${stocktake.code}", chênh lệch ${stocktake.totalVarianceQty} sản phẩm`,
+      req.ip || "127.0.0.1",
+    );
+    return response.created(res, {
+      message: "Tạo phiếu kiểm kho thành công",
+      stocktake,
     });
   }),
 );

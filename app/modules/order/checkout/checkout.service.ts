@@ -843,6 +843,7 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
         variantId: item.variantId,
         type: "out",
         qty: item.quantity,
+        price: item.price,
         creatorId: operator._id,
         date: new Date(),
       }], { session });

@@ -2,9 +2,12 @@ import { badRequest, notFound } from "../../shared/errors/httpErrors.js";
 import * as inventoryRepo from "./inventory.repository.js";
 import {
   mapGoodsReceipt,
+  mapStocktake,
   type StockItemResponse,
   type TransactionResponse,
   type GoodsReceiptResponse,
+  type StocktakeResponse,
+  type PaginationMeta,
 } from "./dto/inventory.response.dto.js";
 import mongoose from "mongoose";
 import Variant from "../product/models/variant.schema.js";
@@ -128,6 +131,17 @@ export const getStockList = async (
     query.stock = 0;
   } else if (stockStatus === "in") {
     query.$expr = { $gt: ["$stock", "$minStock"] };
+  } else if (stockStatus === "expiring") {
+    const { default: Batch } = await import("./models/batch.schema.js");
+    const expiringDateThreshold = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+    const expiringBatches = await Batch.find({
+      remainingQty: { $gt: 0 },
+      expiryDate: { $lte: expiringDateThreshold },
+    })
+      .select("variantId")
+      .lean();
+    const variantIds = expiringBatches.map((b) => b.variantId);
+    query._id = { $in: variantIds };
   }
 
   const [result, totalItems] = await Promise.all([
@@ -213,12 +227,29 @@ export const getStockList = async (
   };
 };
 
+export const getInventoryStats = async () => {
+  const [totalSKUs, outOfStock, lowStock, totalValue] = await Promise.all([
+    inventoryRepo.countTotalSKUs(),
+    inventoryRepo.countOutOfStock(),
+    inventoryRepo.countLowStock(),
+    inventoryRepo.aggregateTotalInventoryValue(),
+  ]);
+
+  return {
+    totalSKUs,
+    totalValue,
+    outOfStock,
+    lowStock,
+  };
+};
+
 // ── TRANSACTIONS ──────────────────────────────────────────────────────────────
 
 export const getTransactions = async (
   page = 1,
   limit: number,
   type?: string,
+  variantId?: string,
 ): Promise<{
   transactions: TransactionResponse[];
   pagination: {
@@ -228,14 +259,13 @@ export const getTransactions = async (
     totalPages: number;
   };
 }> => {
-  const [result, totalItems] = await Promise.all([
-    inventoryRepo.findTransactions(page, limit, type),
-    inventoryRepo.countTransactions(type),
-  ]);
+  const result = await inventoryRepo.findTransactions(page, limit, type, variantId);
   const txs = result.transactions;
+  const totalItems = result.total;
 
   const transactions: TransactionResponse[] = txs.map((tx) => {
     const variant = tx.variantId as any;
+    const prod = variant?.productId as any;
     return {
       id: tx.code,
       sku: variant?.sku ?? "N/A",
@@ -248,6 +278,10 @@ export const getTransactions = async (
             .replace("T", " ")
             .substring(0, ISO_DATETIME_LENGTH)
         : "",
+      productName: prod?.name ?? "N/A",
+      productImage: prod?.imageUrl || prod?.imageUrls?.[0] || "",
+      barcode: variant?.barcode || "",
+      price: tx.price || Math.round((variant?.price || 0) * 0.6),
     };
   });
 
@@ -269,9 +303,95 @@ export const getVariantBatches = async (variantId: string) => {
 };
 
 export const updateBatch = async (batchId: string, data: any) => {
-  const batch = await inventoryRepo.updateBatchInfo(batchId, data);
-  if (!batch) throw notFound("Batch not found");
-  return batch;
+  const { default: Batch } = await import("./models/batch.schema.js");
+  const { default: GoodsReceipt } = await import("./models/goods-receipt.schema.js");
+  const { default: InventoryTransaction } = await import("./models/inventory-transaction.schema.js");
+
+  const session = await mongoose.startSession();
+  let updatedBatch: any = null;
+
+  try {
+    session.startTransaction();
+
+    const oldBatch = await Batch.findById(batchId).session(session);
+    if (!oldBatch) throw notFound("Batch not found");
+
+    const newImportPrice = Number(data.importPrice);
+    const newOriginalQty = Number(data.originalQty);
+
+    const priceChanged = !isNaN(newImportPrice) && newImportPrice !== oldBatch.importPrice;
+    const qtyChanged = !isNaN(newOriginalQty) && newOriginalQty !== oldBatch.originalQty;
+
+    let qtyDiff = 0;
+
+    if (qtyChanged) {
+      qtyDiff = newOriginalQty - oldBatch.originalQty;
+      if (oldBatch.remainingQty + qtyDiff < 0) {
+        throw badRequest(
+          `Không thể giảm số lượng nhập xuống thấp hơn số lượng còn lại đang có trong lô (còn lại: ${oldBatch.remainingQty})`
+        );
+      }
+      
+      // Update variant's total stock
+      await inventoryRepo.atomicUpdateStock(oldBatch.variantId, qtyDiff, session);
+
+      // Set remainingQty in update data
+      data.remainingQty = oldBatch.remainingQty + qtyDiff;
+    }
+
+    // 1. Update GoodsReceipt if linked
+    if (oldBatch.goodsReceiptId && (priceChanged || qtyChanged)) {
+      const receipt = await GoodsReceipt.findById(oldBatch.goodsReceiptId).session(session);
+      if (receipt) {
+        const item = receipt.items.find(
+          (i: any) => i.variantId.toString() === oldBatch.variantId.toString()
+        );
+        if (item) {
+          if (priceChanged) item.importPrice = newImportPrice;
+          if (qtyChanged) item.quantity = newOriginalQty;
+
+          // Recalculate total amount
+          receipt.totalAmount = receipt.items.reduce(
+            (sum: number, i: any) => sum + i.quantity * i.importPrice,
+            0
+          );
+          await receipt.save({ session });
+        }
+      }
+    }
+
+    // 2. Update corresponding InventoryTransaction
+    if (priceChanged || qtyChanged) {
+      const transaction = await InventoryTransaction.findOne({
+        variantId: oldBatch.variantId,
+        type: "in",
+        qty: oldBatch.originalQty,
+        price: oldBatch.importPrice,
+      }).session(session);
+
+      if (transaction) {
+        if (priceChanged) transaction.price = newImportPrice;
+        if (qtyChanged) transaction.qty = newOriginalQty;
+        await transaction.save({ session });
+      }
+    }
+
+    // 3. Update the batch itself
+    updatedBatch = await Batch.findByIdAndUpdate(
+      batchId,
+      { $set: data },
+      { new: true, session }
+    );
+
+    await session.commitTransaction();
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
+
+  return updatedBatch;
 };
 
 // ── GOODS RECEIPTS ────────────────────────────────────────────────────────────
@@ -331,7 +451,7 @@ export const createGoodsReceipt = async (
     });
   }
 
-  const receiptCode = `GR-${Date.now()}`;
+  const receiptCode = `GR${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`;
   let receipt: any = null;
 
   const session = await mongoose.startSession();
@@ -369,6 +489,7 @@ export const createGoodsReceipt = async (
             variantId: item.variantId,
             type: "in",
             qty: item.quantity,
+            price: item.importPrice,
             creatorId: operator._id,
             date: new Date(),
           },
@@ -465,6 +586,7 @@ export const adjustStock = async (
         variantId: variant._id,
         type: "adjustment",
         qty: diff, // có thể âm (giảm) hoặc dương (tăng)
+        price: Math.round(variant.price * 0.6),
         creatorId: operator._id,
         date: new Date(),
       },
@@ -480,6 +602,193 @@ export const adjustStock = async (
   }
 
   return updatedVariant;
+};
+
+// ── GOODS RECEIPTS QUERY & DETAIL ─────────────────────────────────────────────
+
+export const getGoodsReceipts = async (
+  page = 1,
+  limit = 10,
+  search?: string,
+): Promise<{ receipts: GoodsReceiptResponse[]; pagination: PaginationMeta }> => {
+  const query: any = {};
+  if (search) {
+    query.code = { $regex: new RegExp(search, "i") };
+  }
+  const result = await inventoryRepo.findGoodsReceipts(page, limit, query);
+  return {
+    receipts: result.receipts.map(mapGoodsReceipt),
+    pagination: {
+      page: result.page,
+      limit: result.limit,
+      totalItems: result.total,
+      totalPages: result.totalPages,
+    },
+  };
+};
+
+export const getGoodsReceiptDetail = async (id: string): Promise<GoodsReceiptResponse> => {
+  const doc = await inventoryRepo.findGoodsReceiptById(id);
+  if (!doc) throw notFound("Goods receipt not found");
+  return mapGoodsReceipt(doc);
+};
+
+// ── STOCKTAKES (KIỂM KHO HÀNG LOẠT VÀ CÂN BẰNG) ───────────────────────────────
+
+export const getStocktakes = async (
+  page = 1,
+  limit = 10,
+  search?: string,
+): Promise<{ stocktakes: StocktakeResponse[]; pagination: PaginationMeta }> => {
+  const query: any = {};
+  if (search) {
+    query.code = { $regex: new RegExp(search, "i") };
+  }
+  const result = await inventoryRepo.findStocktakes(page, limit, query);
+  return {
+    stocktakes: result.stocktakes.map(mapStocktake),
+    pagination: {
+      page: result.page,
+      limit: result.limit,
+      totalItems: result.total,
+      totalPages: result.totalPages,
+    },
+  };
+};
+
+export const getStocktakeDetail = async (id: string): Promise<StocktakeResponse> => {
+  const doc = await inventoryRepo.findStocktakeById(id);
+  if (!doc) throw notFound("Stocktake record not found");
+  return mapStocktake(doc);
+};
+
+export const createStocktake = async (
+  operator: any,
+  data: any,
+): Promise<StocktakeResponse> => {
+  const { items, notes } = data;
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    throw badRequest("Stocktake must have at least one product");
+  }
+
+  const { ObjectId } = mongoose.Types;
+  const stocktakeItems = [];
+  let totalVarianceQty = 0;
+  let totalAdjustmentValue = 0;
+
+  for (const item of items) {
+    const { variantId, actualQty } = item;
+    if (variantId === undefined || actualQty === undefined || actualQty < 0) {
+      throw badRequest("Invalid stocktake item parameters");
+    }
+
+    const variant = await inventoryRepo.findVariantById(variantId);
+    if (!variant) throw notFound(`Variant ${variantId} not found`);
+
+    const product = await inventoryRepo.findProductById(variant.productId.toString());
+    if (!product) throw notFound(`Product for variant ${variantId} not found`);
+
+    const systemQty = variant.stock;
+    const variance = actualQty - systemQty;
+
+    const activeBatches = await inventoryRepo.findActiveBatchesByVariant(variantId);
+    const costPrice = activeBatches.length > 0 ? activeBatches[0].importPrice : Math.round(variant.price * 0.6);
+    const adjustmentValue = variance * costPrice;
+
+    totalVarianceQty += variance;
+    totalAdjustmentValue += adjustmentValue;
+
+    stocktakeItems.push({
+      productId: variant.productId,
+      variantId: new ObjectId(variantId),
+      productName: product.name,
+      variantName: variant.name,
+      systemQty,
+      actualQty,
+      variance,
+      costPrice,
+    });
+  }
+
+  const stocktakeCode = `STK${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`;
+  let stocktake: any = null;
+
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+
+    // Create Stocktake document
+    stocktake = await inventoryRepo.createStocktake(
+      {
+        code: stocktakeCode,
+        items: stocktakeItems,
+        totalVarianceQty,
+        totalAdjustmentValue,
+        creatorId: operator._id,
+        notes,
+      },
+      session,
+    );
+
+    // Perform adjustments and log transactions
+    for (const item of stocktakeItems) {
+      if (item.variance !== 0) {
+        // Update Stock level
+        await inventoryRepo.atomicUpdateStock(
+          item.variantId,
+          item.variance, // could be negative or positive
+          session,
+        );
+
+        // Log transaction
+        await inventoryRepo.createTransaction(
+          {
+            code: `TXADJ${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
+            productId: item.productId,
+            variantId: item.variantId,
+            type: "adjustment",
+            qty: item.variance,
+            price: item.costPrice,
+            creatorId: operator._id,
+            date: new Date(),
+          },
+          session,
+        );
+
+        // If variance is negative, deduct batches (FIFO)
+        if (item.variance < 0) {
+          await inventoryRepo.deductBatchesFIFO(
+            item.variantId,
+            Math.abs(item.variance),
+            session,
+          );
+        } else {
+          // If variance is positive, create a dummy batch to balance stock
+          await inventoryRepo.createBatch(
+            {
+              variantId: item.variantId,
+              goodsReceiptId: null,
+              importPrice: item.costPrice,
+              originalQty: item.variance,
+              remainingQty: item.variance,
+            },
+            session,
+          );
+        }
+      }
+    }
+
+    await session.commitTransaction();
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
+
+  // Populate creator details for mapping
+  const populatedStocktake = await inventoryRepo.findStocktakeById(stocktake._id);
+  return mapStocktake(populatedStocktake);
 };
 
 // ── UPDATE MIN STOCK ────────────────────────────────────────────────────────

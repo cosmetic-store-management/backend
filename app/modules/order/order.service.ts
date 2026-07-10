@@ -45,11 +45,17 @@ export const attachItemsToOrders = async (orders: OrderDocument[]) => {
   return orders.map((order) => mapOrder(order, (order as any).items || []));
 };
 
-export const restoreStock = async (items: any[], session?: mongoose.ClientSession): Promise<void> => {
+export const restoreStock = async (
+  items: any[],
+  session?: mongoose.ClientSession,
+  operatorId?: string,
+): Promise<void> => {
   // Sort by variantId to prevent Deadlock when locking multiple variant documents
   const sortedItems = [...items].sort((a, b) =>
     (a.variantId || "").toString().localeCompare((b.variantId || "").toString())
   );
+  const InventoryTransaction = (await import("../inventory/models/inventory-transaction.schema.js")).default;
+
   for (const item of sortedItems) {
     if (item.variantId) {
       await orderRepo.incrementVariantStock(
@@ -73,6 +79,18 @@ export const restoreStock = async (items: any[], session?: mongoose.ClientSessio
         },
         session
       );
+
+      // Log the return in the InventoryTransaction log!
+      await InventoryTransaction.create([{
+        code: `TXRET${Math.floor(100000 + Math.random() * 900000)}`,
+        productId: item.productId,
+        variantId: item.variantId,
+        type: "in",
+        qty: item.quantity,
+        price: avgCostPrice || item.price || 0,
+        creatorId: operatorId || "60c72b2f9b1d8b2c8c8b4567", // fallback system user
+        date: new Date(),
+      }], { session });
     }
   }
 };
@@ -297,7 +315,7 @@ export const updateOrderStatus = async (
         order.paymentStatus = "refund_pending";
       }
 
-      await restoreStock(items, session);
+      await restoreStock(items, session, requestUser?._id?.toString());
       if (order.voucherCode) {
         await decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
       }
@@ -505,7 +523,7 @@ export const approveReturnOrder = async (orderId: string, _requestUser: UserDocu
 
     // Khôi phục kho
     const items = (order as any).items || [];
-    await restoreStock(items, session);
+    await restoreStock(items, session, _requestUser?._id?.toString());
 
     // Xử lý Điểm
     if (order.userId) {
@@ -644,7 +662,7 @@ export const cancelOrder = async (
     order = updatedOrder as any;
 
     const items = (order as any).items || [];
-    await restoreStock(items, session);
+    await restoreStock(items, session, requestUser?._id?.toString());
 
     if (order.voucherCode) {
       await decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
@@ -717,7 +735,7 @@ export const cancelPendingOrder = async (
     order = updatedOrder as any;
 
     const items = (order as any).items || [];
-    await restoreStock(items, session);
+    await restoreStock(items, session, order.userId?.toString());
 
     if (order.voucherCode) {
       await decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
@@ -768,7 +786,7 @@ export const abandonPendingOrder = async (orderCode: string) => {
 
   try {
     const items = (order as any).items || [];
-    await restoreStock(items, session);
+    await restoreStock(items, session, order.userId?.toString());
 
     if (order.voucherCode) {
       await decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
@@ -921,7 +939,7 @@ export const processPOSReturn = async (
   try {
     order.paymentStatus = "refunded";
 
-    await restoreStock(itemsToReturn, session);
+    await restoreStock(itemsToReturn, session, requester?._id?.toString());
 
     if (order.userId) {
       const userDoc = await User.findById(order.userId);

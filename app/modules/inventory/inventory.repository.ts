@@ -10,6 +10,7 @@ import Supplier from "./models/supplier.schema.js";
 import GoodsReceipt from "./models/goods-receipt.schema.js";
 import InventoryTransaction from "./models/inventory-transaction.schema.js";
 import Batch from "./models/batch.schema.js";
+import Stocktake from "./models/stocktake.schema.js";
 
 // ── Supplier ──────────────────────────────────────────────────────────────────
 
@@ -91,9 +92,21 @@ export const findProductIdsByName = async (
 
 // ── Inventory Transactions ────────────────────────────────────────────────────
 
-export const findTransactions = async (page: number, limit: number, type?: string) => {
+export const findTransactions = async (page: number, limit: number, type?: string, variantId?: string) => {
   const query: any = {};
-  if (type) query.type = type;
+  if (variantId) {
+    query.variantId = variantId;
+  }
+  if (type) {
+    if (type === "customer_return") {
+      query.code = { $regex: /^TXRET/ };
+    } else if (type === "in") {
+      query.type = "in";
+      query.code = { $regex: /^(?!TXRET)/ };
+    } else {
+      query.type = type;
+    }
+  }
 
   const skip = (page - 1) * limit;
 
@@ -101,7 +114,7 @@ export const findTransactions = async (page: number, limit: number, type?: strin
     InventoryTransaction.find(query)
       .populate({
         path: "variantId",
-        populate: { path: "productId", select: "name" },
+        populate: { path: "productId", select: "name imageUrl imageUrls" },
       })
       .populate("creatorId", "name")
       .sort({ _id: -1 })
@@ -128,6 +141,7 @@ export const createTransaction = (
     variantId: any;
     type: "in" | "out" | "adjustment";
     qty: number;
+    price?: number;
     creatorId: any;
     date: Date;
   },
@@ -222,3 +236,75 @@ export const deductBatchesFIFO = async (
 
 export const findLowStockVariants = (limit = 10) =>
   Variant.find({ $expr: { $lte: ["$stock", "$minStock"] } }).limit(limit);
+
+export const aggregateTotalInventoryValue = async () => {
+  const result = await Batch.aggregate([
+    { $match: { remainingQty: { $gt: 0 } } },
+    { $group: { _id: null, totalValue: { $sum: { $multiply: ["$remainingQty", "$importPrice"] } } } }
+  ]);
+  return result[0]?.totalValue || 0;
+};
+
+export const countTotalSKUs = () => Variant.countDocuments({ isDeleted: { $ne: true } });
+
+export const countOutOfStock = () => Variant.countDocuments({ stock: 0, isDeleted: { $ne: true } });
+
+export const countLowStock = () =>
+  Variant.countDocuments({
+    $expr: { $lte: ["$stock", "$minStock"] },
+    stock: { $gt: 0 },
+    isDeleted: { $ne: true }
+  });
+
+// ── Goods Receipts Query ──────────────────────────────────────────────────────
+
+export const findGoodsReceipts = async (page: number, limit: number, query: any = {}) => {
+  const skip = (page - 1) * limit;
+  const [receipts, total] = await Promise.all([
+    GoodsReceipt.find(query)
+      .populate("supplierId", "name phone email contactPerson")
+      .populate("creatorId", "name")
+      .populate("items.productId", "name imageUrl imageUrls")
+      .populate("items.variantId", "barcode sku imageUrl")
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    GoodsReceipt.countDocuments(query),
+  ]);
+  const totalPages = Math.ceil(total / limit);
+  return { receipts, total, limit, page, totalPages };
+};
+
+export const findGoodsReceiptById = (id: string) =>
+  GoodsReceipt.findById(id)
+    .populate("supplierId", "name phone email address contactPerson")
+    .populate("creatorId", "name")
+    .populate("items.productId", "name imageUrl imageUrls")
+    .populate("items.variantId", "barcode sku imageUrl")
+    .lean();
+
+// ── Stocktakes Query ──────────────────────────────────────────────────────────
+
+export const createStocktake = (data: any, session?: mongoose.ClientSession) =>
+  Stocktake.create([data], { session }).then((docs) => docs[0]);
+
+export const findStocktakes = async (page: number, limit: number, query: any = {}) => {
+  const skip = (page - 1) * limit;
+  const [stocktakes, total] = await Promise.all([
+    Stocktake.find(query)
+      .populate("creatorId", "name")
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Stocktake.countDocuments(query),
+  ]);
+  const totalPages = Math.ceil(total / limit);
+  return { stocktakes, total, limit, page, totalPages };
+};
+
+export const findStocktakeById = (id: string) =>
+  Stocktake.findById(id)
+    .populate("creatorId", "name")
+    .lean();
