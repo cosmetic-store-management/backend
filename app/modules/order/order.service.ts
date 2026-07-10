@@ -21,6 +21,7 @@ import {
 import { refundPayment } from "./payment/payment.service.js";
 import PointHistory from "../user/models/point-history.schema.js";
 import Product from "../product/models/product.schema.js";
+import { logOrderActivity } from "./order-activity.service.js";
 
 import {
   POINTS_EARN_RATE,
@@ -108,7 +109,13 @@ export const getOrdersForAdmin = async ({
   if (orderStatus) query.orderStatus = orderStatus;
   if (channel) query.channel = channel;
   if (userId) query.userId = userId;
-  if (paymentStatus) query.paymentStatus = paymentStatus;
+  if (paymentStatus) {
+    if (paymentStatus === "refunded") {
+      query.paymentStatus = { $in: ["refunded", "refund_pending"] };
+    } else {
+      query.paymentStatus = paymentStatus;
+    }
+  }
   if (search) {
     query.$or = [
       { code: { $regex: search, $options: "i" } },
@@ -248,6 +255,34 @@ export const updateOrderStatus = async (
     }
 
     order = updatedOrder as any;
+
+    if (data.orderStatus && data.orderStatus !== previousStatus) {
+      await logOrderActivity(
+        order._id,
+        "status_changed",
+        {
+          statusFrom: previousStatus,
+          statusTo: data.orderStatus,
+          note: `Order status updated from ${previousStatus} to ${data.orderStatus}`,
+          operatorId: requestUser._id,
+          operatorName: requestUser.name,
+        },
+        session
+      );
+    }
+
+    if (data.receiverName && data.receiverName !== order.receiverName) {
+      await logOrderActivity(
+        order._id,
+        "detail_updated",
+        {
+          note: `Recipient updated from ${order.receiverName} to ${data.receiverName}`,
+          operatorId: requestUser._id,
+          operatorName: requestUser.name,
+        },
+        session
+      );
+    }
 
     const items = (order as any).items || [];
 
@@ -961,6 +996,17 @@ export const processPOSReturn = async (
       metaData: { refundedBy: requester.name },
     }], { session });
 
+    await logOrderActivity(
+      order._id,
+      "returned",
+      {
+        note: `POS order items returned and refunded successfully with total amount of ${refundAmount.toLocaleString("vi-VN")} VND. Reason: ${order.returnReason || "No reason specified"}`,
+        operatorId: requester._id,
+        operatorName: requester.name,
+      },
+      session
+    );
+
     await orderRepo.saveOrder(order, session);
     await session.commitTransaction();
   } catch (error: any) {
@@ -979,3 +1025,8 @@ export {
   createOrder,
   createPOSOrder,
 } from "./checkout/checkout.service.js";
+
+export {
+  getOrderActivities,
+  logOrderActivity,
+} from "./order-activity.service.js";

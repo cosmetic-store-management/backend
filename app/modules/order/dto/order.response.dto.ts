@@ -5,6 +5,7 @@ export interface OrderItemResponse {
   variantId?: string;
   productName: string;
   variantName?: string;
+  barcode?: string;
   imageUrl: string;
   price: number;
   quantity: number;
@@ -41,6 +42,7 @@ export const mapOrderItem = (item: any): OrderItemResponse => ({
   ...(item.variantId ? { variantId: item.variantId.toString() } : {}),
   productName: item.productName,
   ...(item.variantName ? { variantName: item.variantName } : {}),
+  ...(item.barcode ? { barcode: item.barcode } : {}),
   imageUrl: item.imageUrl,
   price: item.price,
   quantity: item.quantity,

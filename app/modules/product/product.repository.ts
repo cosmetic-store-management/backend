@@ -187,8 +187,10 @@ export const findCategoryById = (id: string) => Category.findById(id).lean();
 export const findCategoryBySlug = (slug: string) =>
   Category.findOne({ slug, isActive: true }).select("_id").lean();
 
-export const findCategoryIdsWithDescendants = async (slug: string) => {
-  const root = await Category.findOne({ slug, isActive: true })
+export const findCategoryIdsWithDescendants = async (identifier: string) => {
+  const isObjectId = mongoose.Types.ObjectId.isValid(identifier);
+  const query = isObjectId ? { _id: identifier } : { slug: identifier, isActive: true };
+  const root = await Category.findOne(query)
     .select("_id")
     .lean();
   if (!root) return [];

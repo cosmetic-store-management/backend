@@ -23,7 +23,7 @@ export const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 
 export const generateOrderCode = (prefix = "ORD"): string => {
   const random = Math.floor(10000000 + Math.random() * 90000000); // 8-digit random
-  return `${prefix}-${random}`;
+  return `${prefix}${random}`;
 };
 
 export const calculateTierDiscount = (

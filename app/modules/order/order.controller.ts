@@ -160,6 +160,16 @@ router.post(
   }),
 );
 
+router.get(
+  "/admin/:id/activities",
+  authenticate,
+  requirePermission("orders.view"),
+  catchAsync(async (req, res) => {
+    const activities = await orderService.getOrderActivities(req.params.id as string);
+    return response.success(res, { activities });
+  }),
+);
+
 // ── PUBLIC / CUSTOMER ─────────────────────────────────────────────────────────
 
 // Customer cancels their own order (pending only)

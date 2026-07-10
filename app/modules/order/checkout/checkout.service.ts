@@ -18,10 +18,23 @@ import {
   generateOrderCode,
   getOrderSettings,
 } from "./checkout.helper.js";
+import { logOrderActivity } from "../order-activity.service.js";
 import { calcShippingFeeFromSettings } from "../shipping/shipping.service.js";
 import { sendOrderSuccessEmail } from "../../../shared/email/email.service.js";
 import * as orderRepo from "../order.repository.js";
 import { findActiveFlashSale, incrementFlashSaleSoldQuantity } from "../../marketing/flash-sale.repository.js";
+
+const paymentMethodLabel: Record<string, string> = {
+  cod: "Cash on Delivery",
+  bank: "Bank Transfer",
+  ewallet: "E-Wallet",
+  qr: "QR Code",
+  cash: "Cash",
+  card: "Card",
+  stripe: "Stripe Payment Gateway",
+  pos_card: "POS Card Reader",
+  transfer: "QR Transfer",
+};
 
 export const getUserTotalSpent = async (
   userId: mongoose.Types.ObjectId | string,
@@ -318,6 +331,7 @@ export const createOrder = async (
       variantId: variant._id,
       productName: product.name,
       variantName: variant.name,
+      barcode: variant.barcode || "",
       imageUrl: variant.imageUrl || product.imageUrl,
       price: unitPrice,
       quantity: item.quantity,
@@ -465,6 +479,17 @@ export const createOrder = async (
       idempotencyKey: data.idempotencyKey,
       items: normalizedItems,
     }, session);
+
+    await logOrderActivity(
+      newOrder._id,
+      "placed",
+      {
+        note: "Online order placed successfully",
+        operatorId: user._id,
+        operatorName: user.name,
+      },
+      session
+    );
 
     orderItems = (newOrder as any).items;
 
@@ -632,6 +657,7 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
       variantId: variant._id,
       productName: product.name,
       variantName: variant.name,
+      barcode: variant.barcode || "",
       imageUrl: variant.imageUrl || product.imageUrl,
       price: unitPrice,
       quantity: item.quantity,
@@ -741,6 +767,28 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
       earnedPoints: Math.floor(finalTotalAmount / orderSettings.pointsEarnRate),
       items: normalizedItems,
     }, session);
+
+    await logOrderActivity(
+      newOrder._id,
+      "placed",
+      {
+        note: `POS order created successfully at Counter with Receipt number ${newOrder.receiptNumber || newOrder.code}`,
+        operatorId: operator._id,
+        operatorName: operator.name,
+      },
+      session
+    );
+
+    await logOrderActivity(
+      newOrder._id,
+      "payment_received",
+      {
+        note: `Payment of ${finalTotalAmount.toLocaleString("vi-VN")} VND successfully received via ${paymentMethodLabel[data.paymentMethod] || data.paymentMethod}`,
+        operatorId: operator._id,
+        operatorName: operator.name,
+      },
+      session
+    );
 
     orderItems = (newOrder as any).items;
 

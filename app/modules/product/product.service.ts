@@ -178,52 +178,52 @@ export const getPublicProducts = async ({
   const mongoSort = sortMap[sort ?? "newest"] ?? { createdAt: -1 };
 
   try {
-  // ── Cache for Metadata Aggregations ──────────────────────────────────────────
-  // Key: query hash, Value: { brands, categories, expiresAt }
-  const metadataCacheKey = JSON.stringify(queryWithoutBrands) + "|" + JSON.stringify(queryWithoutCategories);
-  const now = Date.now();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const filterCache = (global as any).__filterCache || new Map();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (global as any).__filterCache = filterCache;
+    // ── Cache for Metadata Aggregations ──────────────────────────────────────────
+    // Key: query hash, Value: { brands, categories, expiresAt }
+    const metadataCacheKey = JSON.stringify(queryWithoutBrands) + "|" + JSON.stringify(queryWithoutCategories);
+    const now = Date.now();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filterCache = (global as any).__filterCache || new Map();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).__filterCache = filterCache;
 
-  let availableBrands: any[] = [];
-  let availableCategoryIds: string[] = [];
+    let availableBrands: any[] = [];
+    let availableCategoryIds: string[] = [];
 
-  const cachedMeta = filterCache.get(metadataCacheKey);
-  if (cachedMeta && cachedMeta.expiresAt > now) {
-    availableBrands = cachedMeta.brands;
-    availableCategoryIds = cachedMeta.categories;
-  } else {
-    try {
-      // Parallel metadata queries (brands + categories in products)
-      const [fetchedBrands, fetchedCats] = await Promise.all([
-        productRepo.findBrandsInProducts(queryWithoutBrands).catch((e: any) => {
-          console.error("[findBrands]", e.message);
-          return [];
-        }),
-        productRepo
-          .findCategoriesInProducts(queryWithoutCategories)
-          .catch((e: any) => {
-            console.error("[findCats]", e.message);
+    const cachedMeta = filterCache.get(metadataCacheKey);
+    if (cachedMeta && cachedMeta.expiresAt > now) {
+      availableBrands = cachedMeta.brands;
+      availableCategoryIds = cachedMeta.categories;
+    } else {
+      try {
+        // Parallel metadata queries (brands + categories in products)
+        const [fetchedBrands, fetchedCats] = await Promise.all([
+          productRepo.findBrandsInProducts(queryWithoutBrands).catch((e: any) => {
+            console.error("[findBrands]", e.message);
             return [];
           }),
-      ]);
-      availableBrands = fetchedBrands;
-      availableCategoryIds = fetchedCats;
-      // Cache for 60 seconds
-      filterCache.set(metadataCacheKey, {
-        brands: availableBrands,
-        categories: availableCategoryIds,
-        expiresAt: now + 60000,
-      });
+          productRepo
+            .findCategoriesInProducts(queryWithoutCategories)
+            .catch((e: any) => {
+              console.error("[findCats]", e.message);
+              return [];
+            }),
+        ]);
+        availableBrands = fetchedBrands;
+        availableCategoryIds = fetchedCats;
+        // Cache for 60 seconds
+        filterCache.set(metadataCacheKey, {
+          brands: availableBrands,
+          categories: availableCategoryIds,
+          expiresAt: now + 60000,
+        });
 
-      // Simple cache cleanup
-      if (filterCache.size > 1000) filterCache.clear();
-    } catch (e: any) {
-      console.error("Metadata fetch error:", e.message);
+        // Simple cache cleanup
+        if (filterCache.size > 1000) filterCache.clear();
+      } catch (e: any) {
+        console.error("Metadata fetch error:", e.message);
+      }
     }
-  }
 
     // ── Price sort: aggregate variant min prices ───────────────────────────
     if (isPrice) {
@@ -429,7 +429,25 @@ export const getAdminProducts = async ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const query: Record<string, any> = {};
 
-  if (search) query.name = { $regex: search.trim(), $options: "i" };
+  if (search) {
+    const cleanSearch = search.trim();
+    const matchingVariants = await mongoose
+      .model("Variant")
+      .find({
+        $or: [
+          { barcode: { $regex: cleanSearch, $options: "i" } },
+          { sku: { $regex: cleanSearch, $options: "i" } },
+        ],
+      })
+      .select("productId")
+      .lean();
+    const variantProductIds = matchingVariants.map((v: any) => v.productId);
+
+    query.$or = [
+      { name: { $regex: cleanSearch, $options: "i" } },
+      { _id: { $in: variantProductIds } },
+    ];
+  }
   if (status === "active") query.isActive = true;
   else if (status === "inactive") query.isActive = false;
 
@@ -437,10 +455,10 @@ export const getAdminProducts = async ({
     const stockQuery: any = {};
     if (minStock !== undefined) stockQuery.$gte = Number(minStock);
     if (maxStock !== undefined) stockQuery.$lte = Number(maxStock);
-    
+
     const matchingVariants = await mongoose.model("Variant").find({ stock: stockQuery }).select("productId").lean();
     const productIds = matchingVariants.map((v: any) => v.productId);
-    
+
     if (query._id) {
       // If _id is already filtered (unlikely in this query, but safe)
       query._id = { ...query._id, $in: productIds };
@@ -491,10 +509,9 @@ export const getAdminProducts = async ({
 export const getAdminProductDetail = async (
   id: string,
 ) => {
-  const query: any = { _id: id };
-  const product = await productRepo.findDocumentBy(query);
+  const product = await productRepo.findById(id);
   if (!product) throw notFound("Product not found");
-  return mapProduct(product);
+  return mapProduct(product as any);
 };
 
 export const createProduct = async (data: CreateProductInput) => {
@@ -670,10 +687,11 @@ export const deleteProduct = async (id: string) => {
 
 export const batchImportProducts = async (productsData: any[]) => {
   let totalProcessed = 0;
-  
+
   const productGroups = new Map<string, any[]>();
   for (const row of productsData) {
-    const slug = row["Slug"] || slugify(row["Product name"]);
+    const pName = row["Product Name"] || row["Product name"];
+    const slug = row["Slug"] || (pName ? slugify(pName) : "");
     if (!slug) continue;
     if (!productGroups.has(slug)) {
       productGroups.set(slug, []);
@@ -683,32 +701,37 @@ export const batchImportProducts = async (productsData: any[]) => {
 
   for (const [slug, rows] of productGroups.entries()) {
     const firstRow = rows[0];
-    
+
     let brandId: mongoose.Types.ObjectId | undefined;
-    if (firstRow["Brand"]) {
-      let brand = await Brand.findOne({ name: new RegExp(`^${firstRow["Brand"]}$`, 'i') });
+    const brandName = firstRow["Brand"];
+    if (brandName) {
+      let brand = await Brand.findOne({ name: new RegExp(`^${brandName}$`, 'i') });
       if (!brand) {
-        brand = await Brand.create({ name: firstRow["Brand"], slug: slugify(firstRow["Brand"]) });
+        brand = await Brand.create({ name: brandName, slug: slugify(brandName) });
       }
       brandId = brand._id;
     }
 
     let categoryId: mongoose.Types.ObjectId | undefined;
-    if (firstRow["Category"]) {
-      let cat = await Category.findOne({ name: new RegExp(`^${firstRow["Category"]}$`, 'i') });
+    const categoryName = firstRow["Category"];
+    if (categoryName) {
+      let cat = await Category.findOne({ name: new RegExp(`^${categoryName}$`, 'i') });
       if (!cat) {
-        cat = await Category.create({ name: firstRow["Category"], slug: slugify(firstRow["Category"]) });
+        cat = await Category.create({ name: categoryName, slug: slugify(categoryName) });
       }
       categoryId = cat._id;
     }
 
+    const pStatusRaw = firstRow["Product Status"] || firstRow["Trạng thái"];
+    const isProductActive = pStatusRaw === "Active" || pStatusRaw === "Đang bán" || pStatusRaw === true || pStatusRaw === "true";
+
     const productData = {
-      name: firstRow["Product name"],
+      name: firstRow["Product Name"] || firstRow["Product name"],
       slug: slug,
       brandId: brandId,
       categoryId: categoryId,
-      description: firstRow["Mô tả"] || "",
-      isActive: firstRow["Trạng thái (Sản phẩm)"] === "Đang bán",
+      description: firstRow["Description"] || firstRow["Mô tả"] || "",
+      isActive: isProductActive,
     };
 
     if (!productData.name || !brandId || !categoryId) {
@@ -723,21 +746,31 @@ export const batchImportProducts = async (productsData: any[]) => {
     }
 
     const existingVariants = await Variant.find({ productId: product._id });
-    const existingVariantsMap = new Map(existingVariants.map(v => [v.sku || v.name, v]));
+    const existingVariantsMap = new Map(
+      existingVariants.map(v => [v.barcode || v.sku || v.name, v])
+    );
 
     for (const row of rows) {
-      const vName = row["Tên biến thể"] || "Mặc định";
-      const vSku = row["SKU"] || "";
-      const vKey = vSku || vName;
+      const vName = row["Variant Name"] || row["Tên biến thể"] || "Default";
+      const barcode = row["Barcode"] || row["SKU"] || "";
+      const vKey = barcode || vName;
+
+      const vStatusRaw = row["Variant Status"] || row["Trạng thái (Biến thể)"];
+      const isVariantActive = vStatusRaw !== "Inactive" && vStatusRaw !== "Discontinued" && vStatusRaw !== false && vStatusRaw !== "false";
 
       const variantData = {
         productId: product._id,
         name: vName,
-        sku: vSku,
-        price: Number(row["Giá bán"]) || 0,
-        discountPrice: row["Discount price"] ? Number(row["Discount price"]) : undefined,
-        stock: Number(row["Tồn kho"]) || 0,
-        isActive: row["Trạng thái (Biến thể)"] !== "Discontinued",
+        barcode: barcode,
+        sku: barcode, // Sync SKU with barcode
+        price: Number(row["Price"] || row["Giá bán"]) || 0,
+        discountPrice: row["Sale Price"] !== undefined && row["Sale Price"] !== ""
+          ? Number(row["Sale Price"])
+          : row["Discount price"] !== undefined && row["Discount price"] !== ""
+            ? Number(row["Discount price"])
+            : undefined,
+        stock: Number(row["Stock"] || row["Tồn kho"]) || 0,
+        isActive: isVariantActive,
       };
 
       if (existingVariantsMap.has(vKey)) {
