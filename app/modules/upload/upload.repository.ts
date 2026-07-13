@@ -18,3 +18,7 @@ export const saveFile = async (
 export const getFileByFilename = async (filename: string) => {
   return await Upload.findOne({ filename });
 };
+
+export const deleteFileByFilename = async (filename: string) => {
+  return await Upload.deleteOne({ filename });
+};

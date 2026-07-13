@@ -1,8 +1,8 @@
-import { Router, Request, Response } from "express";
-import { calcShippingFeeFromSettings } from "./shipping.service.js";
-import { catchAsync } from "../../../shared/helpers/catchAsync.js";
+import { Request, Response } from "express";
 
-const router = Router();
+import { calcShippingFeeFromSettings } from "./shipping.service.js";
+
+import { catchAsync } from "../../../shared/helpers/catchAsync.js";
 
 export const calculateFee = catchAsync(async (
   req: Request,
@@ -22,6 +22,4 @@ export const calculateFee = catchAsync(async (
   res.json({ success: true, fee });
 });
 
-router.post("/calculate", calculateFee);
-
-export default router;
+export const postCalculate = calculateFee;

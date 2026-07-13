@@ -65,6 +65,7 @@ export interface IOrder {
   returnReason?: string;
   returnImages?: string[];
   returnRequestedAt?: Date;
+  returnedAt?: Date;
   returnRejectReason?: string;
   receiptNumber?: string;
   totalCost: number;
@@ -130,6 +131,8 @@ const orderSchema = new Schema<OrderDocument>(
     usedPoints: { type: Number, min: 0, default: 0 },
     tierDiscountAmount: { type: Number, min: 0, default: 0 },
     completedAt: { type: Date },
+    cancelledAt: { type: Date },
+    returnedAt: { type: Date },
     returnReason: { type: String, trim: true, default: "" },
     returnImages: { type: [String], default: [] },
     returnRequestedAt: { type: Date },
@@ -174,6 +177,21 @@ orderSchema.index({ createdAt: -1, paymentStatus: 1 });
 orderSchema.index({ channel: 1, orderStatus: 1, createdAt: -1 });
 // Tìm theo tên người nhận, SĐT (text search — admin)
 orderSchema.index({ phone: 1 });
+
+// ── Pre-save hooks ─────────────────────────────────────────────────────────────
+orderSchema.pre("save", function () {
+  if (this.isModified("orderStatus")) {
+    if (this.orderStatus === "completed" && !this.completedAt) {
+      this.completedAt = new Date();
+    }
+    if (this.orderStatus === "cancelled" && !this.cancelledAt) {
+      this.cancelledAt = new Date();
+    }
+    if (this.orderStatus === "returned" && !this.returnedAt) {
+      this.returnedAt = new Date();
+    }
+  }
+});
 
 const Order = mongoose.model<OrderDocument>("Order", orderSchema);
 

@@ -489,7 +489,7 @@ export const handlePayosWebhook = async (payload: any, signatureHeader: string) 
 
   // 2. Parse the description to find the order code
   const description = data.description || "";
-  const match = description.match(/(ONL|OFF)\d+/i);
+  const match = description.match(/(ONL|OFF|ORD)\d+/i);
   let orderCode = "";
 
   if (match) {

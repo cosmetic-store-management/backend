@@ -1,8 +1,8 @@
-import { Router, Request, Response } from "express";
-import * as paymentService from "./payment.service.js";
-import { catchAsync } from "../../../shared/helpers/catchAsync.js";
+import { Request, Response } from "express";
 
-const router = Router();
+import * as paymentService from "./payment.service.js";
+
+import { catchAsync } from "../../../shared/helpers/catchAsync.js";
 
 export const createPaymentIntent = catchAsync(async (
   req: Request,
@@ -52,11 +52,11 @@ export const lookupAccount = catchAsync(async (
   res.json({ success: true, ...result });
 });
 
-router.post("/create-intent", createPaymentIntent);
-router.post("/webhook/sepay", sepayWebhook);
-router.post("/webhook/payos", payosWebhook);
-import { authenticate, requirePermission } from "../../../middlewares/auth.middleware.js";
-router.post("/lookup-account", authenticate, requirePermission("orders.manage"), lookupAccount);
-// Webhook endpoint is mounted globally in server.ts to parse raw body
 
-export default router;
+export const postCreateIntent = createPaymentIntent;
+
+export const postWebhookSepay = sepayWebhook;
+
+export const postWebhookPayos = payosWebhook;
+
+export const postLookupAccount = lookupAccount;

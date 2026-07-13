@@ -1,42 +1,21 @@
-import { Router } from "express";
-import {
-  authenticate,
-  requirePermission,
-} from "../../middlewares/auth.middleware.js";
-import { validate } from "../../middlewares/validate.middleware.js";
+
+
+
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
+
 import * as response from "../../shared/helpers/response.js";
+
 import * as inventoryService from "./inventory.service.js";
+
 import { logAction } from "../audit-log/audit-log.service.js";
-import {
-  CreateSupplierSchema,
-  UpdateSupplierSchema,
-  CreateGoodsReceiptSchema,
-  AdjustStockSchema,
-  UpdateMinStockSchema,
-} from "./dto/inventory.request.dto.js";
 
-const router = Router();
 
-// ── ADMIN & STAFF ONLY ────────────────────────────────────────────────────────
-
-// Suppliers CRUD
-router.get(
-  "/suppliers",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (_req, res) => {
+export const getSuppliers = catchAsync(async (_req, res) => {
     const suppliers = await inventoryService.getSuppliers();
     return response.success(res, { suppliers });
-  }),
-);
+  });
 
-router.post(
-  "/suppliers",
-  authenticate,
-  requirePermission("products.manage"),
-  validate(CreateSupplierSchema),
-  catchAsync(async (req, res) => {
+export const postSuppliers = catchAsync(async (req, res) => {
     const supplier = await inventoryService.createSupplier(req.body);
     await logAction(
       req.user!._id.toString(),
@@ -50,15 +29,9 @@ router.post(
       message: "Tạo nhà cung cấp thành công",
       supplier,
     });
-  }),
-);
+  });
 
-router.put(
-  "/suppliers/:id",
-  authenticate,
-  requirePermission("products.manage"),
-  validate(UpdateSupplierSchema),
-  catchAsync(async (req, res) => {
+export const putSuppliersId = catchAsync(async (req, res) => {
     const id = req.params.id as string;
     const supplier = await inventoryService.updateSupplier(id, req.body);
     await logAction(
@@ -73,14 +46,9 @@ router.put(
       message: "Cập nhật nhà cung cấp thành công",
       supplier,
     });
-  }),
-);
+  });
 
-router.delete(
-  "/suppliers/:id",
-  authenticate,
-  requirePermission("products.manage"),
-  catchAsync(async (req, res) => {
+export const deleteSuppliersId = catchAsync(async (req, res) => {
     const id = req.params.id as string;
     await inventoryService.deleteSupplier(id);
     await logAction(
@@ -94,15 +62,9 @@ router.delete(
     return response.success(res, {
       message: "Xóa nhà cung cấp thành công",
     });
-  }),
-);
+  });
 
-// Stock listing
-router.get(
-  "/stock",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (req, res) => {
+export const getStock = catchAsync(async (req, res) => {
     const { search, page, limit = "10", stockStatus } = req.query;
     const result = await inventoryService.getStockList(
       search as string,
@@ -111,26 +73,14 @@ router.get(
       stockStatus as string,
     );
     return response.success(res, result);
-  }),
-);
+  });
 
-// Batches for a variant
-router.get(
-  "/stock/:variantId/batches",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (req, res) => {
+export const getStockVariantIdBatches = catchAsync(async (req, res) => {
     const batches = await inventoryService.getVariantBatches(req.params.variantId as string);
     return response.success(res, { batches });
-  }),
-);
+  });
 
-// Update a batch
-router.put(
-  "/stock/batches/:id",
-  authenticate,
-  requirePermission("products.manage"),
-  catchAsync(async (req, res) => {
+export const putStockBatchesId = catchAsync(async (req, res) => {
     const batch = await inventoryService.updateBatch(req.params.id as string, req.body);
     await logAction(
       req.user!._id.toString(),
@@ -144,15 +94,9 @@ router.put(
       message: "Cập nhật lô hàng thành công",
       batch,
     });
-  }),
-);
+  });
 
-// Transactions log
-router.get(
-  "/transactions",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (req, res) => {
+export const getTransactions = catchAsync(async (req, res) => {
     const { page, limit = "10", type, variantId } = req.query;
     const result = await inventoryService.getTransactions(
       Number(page) || 1,
@@ -161,16 +105,9 @@ router.get(
       variantId as string | undefined,
     );
     return response.success(res, result);
-  }),
-);
+  });
 
-// Import stock (Goods receipt)
-router.post(
-  "/goods-receipts",
-  authenticate,
-  requirePermission("products.manage"),
-  validate(CreateGoodsReceiptSchema),
-  catchAsync(async (req, res) => {
+export const postGoodsReceipts = catchAsync(async (req, res) => {
     const receipt = await inventoryService.createGoodsReceipt(
       req.user!,
       req.body,
@@ -187,16 +124,9 @@ router.post(
       message: "Nhập kho sản phẩm thành công",
       receipt,
     });
-  }),
-);
+  });
 
-// Adjust stock (Kiểm kho)
-router.post(
-  "/stock/adjust",
-  authenticate,
-  requirePermission("products.manage"),
-  validate(AdjustStockSchema),
-  catchAsync(async (req, res) => {
+export const postStockAdjust = catchAsync(async (req, res) => {
     const variant = await inventoryService.adjustStock(req.user!, req.body);
     const reasonText = req.body.reason ? ` (Lý do: ${req.body.reason})` : "";
     await logAction(
@@ -211,16 +141,9 @@ router.post(
       message: "Cập nhật tồn kho thành công",
       variant,
     });
-  }),
-);
+  });
 
-// Update Min Stock
-router.patch(
-  "/stock/min-stock",
-  authenticate,
-  requirePermission("products.manage"),
-  validate(UpdateMinStockSchema),
-  catchAsync(async (req, res) => {
+export const patchStockMinStock = catchAsync(async (req, res) => {
     const variant = await inventoryService.updateMinStock(req.user!, req.body);
     await logAction(
       req.user!._id.toString(),
@@ -234,26 +157,14 @@ router.patch(
       message: "Cập nhật định mức tồn kho thành công",
       variant,
     });
-  }),
-);
+  });
 
-// GET Inventory Stats
-router.get(
-  "/stats",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (req, res) => {
+export const getStats = catchAsync(async (req, res) => {
     const stats = await inventoryService.getInventoryStats();
     return response.success(res, stats as any);
-  }),
-);
+  });
 
-// GET Goods Receipts list
-router.get(
-  "/goods-receipts",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (req, res) => {
+export const getGoodsReceipts = catchAsync(async (req, res) => {
     const { page, limit = "10", search } = req.query;
     const result = await inventoryService.getGoodsReceipts(
       Number(page) || 1,
@@ -261,26 +172,14 @@ router.get(
       search as string | undefined,
     );
     return response.success(res, result);
-  }),
-);
+  });
 
-// GET Goods Receipt detail
-router.get(
-  "/goods-receipts/:id",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (req, res) => {
+export const getGoodsReceiptsId = catchAsync(async (req, res) => {
     const result = await inventoryService.getGoodsReceiptDetail(req.params.id as string);
     return response.success(res, result as any);
-  }),
-);
+  });
 
-// GET Stocktakes list
-router.get(
-  "/stocktakes",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (req, res) => {
+export const getStocktakes = catchAsync(async (req, res) => {
     const { page, limit = "10", search } = req.query;
     const result = await inventoryService.getStocktakes(
       Number(page) || 1,
@@ -288,26 +187,14 @@ router.get(
       search as string | undefined,
     );
     return response.success(res, result);
-  }),
-);
+  });
 
-// GET Stocktake detail
-router.get(
-  "/stocktakes/:id",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (req, res) => {
+export const getStocktakesId = catchAsync(async (req, res) => {
     const result = await inventoryService.getStocktakeDetail(req.params.id as string);
     return response.success(res, result as any);
-  }),
-);
+  });
 
-// POST Create Stocktake
-router.post(
-  "/stocktakes",
-  authenticate,
-  requirePermission("products.manage"),
-  catchAsync(async (req, res) => {
+export const postStocktakes = catchAsync(async (req, res) => {
     const stocktake = await inventoryService.createStocktake(req.user!, req.body);
     await logAction(
       req.user!._id.toString(),
@@ -321,7 +208,4 @@ router.post(
       message: "Tạo phiếu kiểm kho thành công",
       stocktake,
     });
-  }),
-);
-
-export default router;
+  });

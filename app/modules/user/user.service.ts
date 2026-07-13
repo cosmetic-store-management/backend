@@ -802,6 +802,7 @@ export const getCustomers = async (
 
   const customers = result.data.map((u: any) => {
     const defaultAddress = (u.addresses || []).find((a: any) => a.isDefault) || (u.addresses || [])[0] || {};
+    const currentTier = getTierBySpending(u.totalSpent || 0);
     return {
       id: u._id.toString(),
       name: u.name,
@@ -812,6 +813,7 @@ export const getCustomers = async (
       hasOnlineAccount: u.hasOnlineAccount,
       orderCount: u.orderCount,
       totalSpent: u.totalSpent,
+      tier: currentTier.key,
       createdAt: u.createdAt,
       lastPurchaseDate: u.lastPurchaseDate || null,
       province: defaultAddress.province || "",
@@ -883,6 +885,13 @@ export const adjustUserPoints = async (
   });
 
   return mapUser(user);
+};
+
+export const getUserPointHistory = async (userId: string) => {
+  return await PointHistory.find({ userId })
+    .populate("performedBy", "name email")
+    .sort({ createdAt: -1 })
+    .lean();
 };
 
 // ── Source: user-interactions.service.ts ──────────────────────────────
@@ -1012,6 +1021,20 @@ export const deleteUser = async (targetUserId: string, currentUser: UserDocument
 
   if (targetUser.role === "owner") {
     throw forbidden("Cannot delete the store owner account");
+  }
+
+  // Find all reviews written by this user to recalculate product stats later
+  const { default: Review } = await import("../review/models/review.schema.js");
+  const userReviews = await Review.find({ userId: targetUserId }, "productId").lean();
+  const productIds = Array.from(new Set(userReviews.map((r: any) => r.productId.toString())));
+
+  // Delete reviews
+  await Review.deleteMany({ userId: targetUserId });
+
+  // Recalculate stats for each affected product
+  const { updateProductStats } = await import("../review/review.service.js");
+  for (const productId of productIds) {
+    await updateProductStats(new mongoose.Types.ObjectId(productId));
   }
 
   await User.findByIdAndDelete(targetUserId);

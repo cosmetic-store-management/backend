@@ -1,10 +1,11 @@
-import { Router, Request, Response } from "express";
-import * as cartService from "./cart.service.js";
-import { addItemSchema, syncCartSchema, updateItemSchema } from "./dto/cart.request.dto.js";
-import { authenticate } from "../../middlewares/auth.middleware.js";
-import { catchAsync } from "../../shared/helpers/catchAsync.js";
+import { Request, Response } from "express";
 
-const router = Router();
+import * as cartService from "./cart.service.js";
+
+import { addItemSchema, syncCartSchema, updateItemSchema } from "./dto/cart.request.dto.js";
+
+
+import { catchAsync } from "../../shared/helpers/catchAsync.js";
 
 export const getCart = async (req: Request, res: Response) => {
   const cart = await cartService.getCart(req.user!._id.toString());
@@ -42,14 +43,14 @@ export const clearCart = async (req: Request, res: Response) => {
   res.status(204).send();
 };
 
-// Route Definitions
-router.use(authenticate);
+export const getRoot = catchAsync(getCart);
 
-router.get("/", catchAsync(getCart));
-router.post("/sync", catchAsync(syncCart));
-router.post("/items", catchAsync(addItem));
-router.put("/items/:variantId", catchAsync(updateItem));
-router.delete("/items/:variantId", catchAsync(removeItem));
-router.delete("/", catchAsync(clearCart));
+export const postSync = catchAsync(syncCart);
 
-export default router;
+export const postItems = catchAsync(addItem);
+
+export const putItemsVariantId = catchAsync(updateItem);
+
+export const deleteItemsVariantId = catchAsync(removeItem);
+
+export const deleteRoot = catchAsync(clearCart);

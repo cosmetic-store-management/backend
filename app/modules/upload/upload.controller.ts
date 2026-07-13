@@ -1,14 +1,18 @@
-import { Router } from "express";
-import { authenticate, isStaff } from "../../middlewares/auth.middleware.js";
+
+
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
+
 import * as response from "../../shared/helpers/response.js";
+
 import { badRequest } from "../../shared/errors/httpErrors.js";
+
 import multer from "multer";
+
 import * as uploadService from "./upload.service.js";
 
 const storage = multer.memoryStorage();
 
-const upload = multer({
+export const upload = multer({
   storage,
   limits: {
     fileSize: 15 * 1024 * 1024, // 15 MB cho video để vừa giới hạn 16MB của MongoDB
@@ -30,13 +34,24 @@ const upload = multer({
   },
 });
 
-const router = Router();
+import { Request, Response, NextFunction } from "express";
 
-// ── GET /api/uploads/:filename ──────────────────────────────────────────────────
-// Serve file trực tiếp từ MongoDB
-router.get(
-  "/:filename",
-  catchAsync(async (req, res) => {
+export const uploadMediaMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  upload.single("file")(req, res, (err: any) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({
+          success: false,
+          message: "File is too large. Maximum size is 15MB",
+        });
+      }
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    next();
+  });
+};
+
+export const getFilename = catchAsync(async (req, res) => {
     const filename = req.params.filename as string;
     const file = await uploadService.getFile(filename);
 
@@ -48,15 +63,9 @@ router.get(
     res.setHeader("Cache-Control", "public, max-age=2592000");
     res.setHeader("Content-Type", file.mimeType);
     res.send(file.data);
-  }),
-);
+  });
 
-// ── POST /api/upload ───────────────────────────────────────────────────────────
-router.post(
-  "/",
-  authenticate,
-  isStaff,
-  catchAsync(async (req, res) => {
+export const postRoot = catchAsync(async (req, res) => {
     const { base64 } = req.body;
     if (!base64) throw badRequest("Missing image data (base64)");
 
@@ -73,32 +82,9 @@ router.post(
       message: "Image uploaded successfully",
       url,
     });
-  }),
-);
+  });
 
-// ── POST /api/upload/media ─────────────────────────────────────────────────────
-// Cho phép cả Admin và Customer tải ảnh hoặc video
-router.post(
-  "/media",
-  authenticate,
-  (req, res, next) => {
-    upload.single("file")(req, res, (err) => {
-      if (err) {
-        if (
-          err instanceof multer.MulterError &&
-          err.code === "LIMIT_FILE_SIZE"
-        ) {
-          return res.status(400).json({
-            success: false,
-            message: "File is too large. Maximum size is 15MB",
-          });
-        }
-        return res.status(400).json({ success: false, message: err.message });
-      }
-      next();
-    });
-  },
-  catchAsync(async (req, res) => {
+export const postMedia = catchAsync(async (req, res) => {
     if (!req.file) throw badRequest("No file was uploaded");
 
     const host =
@@ -119,7 +105,4 @@ router.post(
       message: "File uploaded successfully",
       url,
     });
-  }),
-);
-
-export default router;
+  });

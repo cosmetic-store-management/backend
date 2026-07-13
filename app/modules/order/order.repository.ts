@@ -103,3 +103,32 @@ export const incrementVariantStock = async (
     { session }
   );
 };
+
+export const hasCompletedPurchase = async (
+  userId: string | mongoose.Types.ObjectId,
+  productId: string | mongoose.Types.ObjectId,
+): Promise<boolean> => {
+  const exists = await Order.exists({
+    userId,
+    orderStatus: "completed",
+    "items.productId": productId,
+  });
+  return !!exists;
+};
+
+export const getLatestCompletedOrderItem = async (
+  userId: string | mongoose.Types.ObjectId,
+  productId: string | mongoose.Types.ObjectId,
+) => {
+  const order = await Order.findOne({
+    userId,
+    orderStatus: "completed",
+    "items.productId": productId,
+  })
+    .sort({ completedAt: -1, createdAt: -1 })
+    .lean();
+
+  return order?.items.find((item: any) => item.productId.toString() === productId.toString()) || null;
+};
+
+

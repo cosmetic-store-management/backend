@@ -35,6 +35,9 @@ export interface OrderResponse {
   creatorId: string | null;
   paymentStatus: string;
   transactionId?: string;
+  completedAt?: Date;
+  cancelledAt?: Date;
+  returnedAt?: Date;
 }
 
 export const mapOrderItem = (item: any): OrderItemResponse => ({
@@ -76,6 +79,9 @@ export const mapOrder = (
   creatorId: order.creatorId?.toString() ?? null,
   paymentStatus: order.paymentStatus,
   ...(order.transactionId ? { transactionId: order.transactionId } : {}),
+  ...(order.completedAt ? { completedAt: order.completedAt } : {}),
+  ...(order.cancelledAt ? { cancelledAt: order.cancelledAt } : {}),
+  ...(order.returnedAt ? { returnedAt: order.returnedAt } : {}),
 });
 
 export const mapPublicOrder = (

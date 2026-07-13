@@ -1,32 +1,16 @@
-import { Router } from "express";
-import {
-  authenticate,
-  isManager,
-  isAuthenticated,
-  requirePermission,
-  authorize,
-} from "../../middlewares/auth.middleware.js";
-import { validate } from "../../middlewares/validate.middleware.js";
+
+
+
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
+
 import * as response from "../../shared/helpers/response.js";
-import {
-  UpdateProfileSchema,
-  UpdateRoleSchema,
-  UpdateStatusSchema,
-  AddressSchema,
-  CreateStaffSchema,
-} from "./dto/user.request.dto.js";
+
+
 import * as userService from "./user.service.js";
+
 import { logAction } from "../audit-log/audit-log.service.js";
 
-const router = Router();
-
-// GET /api/users — admin/staff list
-router.get(
-  "/",
-  authenticate,
-  isManager,
-  catchAsync(async (req, res) => {
+export const getRoot = catchAsync(async (req, res) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const search = req.query.search as string;
@@ -45,27 +29,14 @@ router.get(
       workingShift,
     );
     return response.success(res, result);
-  }),
-);
+  });
 
-// GET /api/users/me/tier-info
-router.get(
-  "/me/tier-info",
-  authenticate,
-  isAuthenticated,
-  catchAsync(async (req, res) => {
+export const getMeTierInfo = catchAsync(async (req, res) => {
     const tierInfo = await userService.getMyTierInfo(req.user!._id.toString());
     return response.success(res, tierInfo as any);
-  }),
-);
+  });
 
-// PATCH /api/users/me
-router.patch(
-  "/me",
-  authenticate,
-  isAuthenticated,
-  validate(UpdateProfileSchema),
-  catchAsync(async (req, res) => {
+export const patchMe = catchAsync(async (req, res) => {
     const user = await userService.updateCurrentUser(
       req.user!._id.toString(),
       req.body,
@@ -82,15 +53,9 @@ router.patch(
       message: "Profile updated successfully",
       user,
     });
-  }),
-);
+  });
 
-// PATCH /api/users/me/avatar
-router.patch(
-  "/me/avatar",
-  authenticate,
-  isAuthenticated,
-  catchAsync(async (req, res) => {
+export const patchMeAvatar = catchAsync(async (req, res) => {
     const { avatar } = req.body;
     if (!avatar) throw { status: 400, message: "Missing image data" };
     const user = await userService.updateAvatar(
@@ -101,16 +66,9 @@ router.patch(
       message: "Profile picture updated successfully",
       user,
     });
-  }),
-);
+  });
 
-// POST /api/users/me/addresses
-router.post(
-  "/me/addresses",
-  authenticate,
-  isAuthenticated,
-  validate(AddressSchema),
-  catchAsync(async (req, res) => {
+export const postMeAddresses = catchAsync(async (req, res) => {
     const user = await userService.addAddress(
       req.user!._id.toString(),
       req.body,
@@ -124,16 +82,9 @@ router.post(
       req.ip || "127.0.0.1",
     );
     return response.success(res, { message: "Address added successfully", user });
-  }),
-);
+  });
 
-// PUT /api/users/me/addresses/:addressId
-router.put(
-  "/me/addresses/:addressId",
-  authenticate,
-  isAuthenticated,
-  validate(AddressSchema),
-  catchAsync(async (req, res) => {
+export const putMeAddressesAddressId = catchAsync(async (req, res) => {
     const user = await userService.updateAddress(
       req.user!._id.toString(),
       req.params.addressId as string,
@@ -151,15 +102,9 @@ router.put(
       message: "Address updated successfully",
       user,
     });
-  }),
-);
+  });
 
-// DELETE /api/users/me/addresses/:addressId
-router.delete(
-  "/me/addresses/:addressId",
-  authenticate,
-  isAuthenticated,
-  catchAsync(async (req, res) => {
+export const deleteMeAddressesAddressId = catchAsync(async (req, res) => {
     const user = await userService.deleteAddress(
       req.user!._id.toString(),
       req.params.addressId as string,
@@ -173,26 +118,14 @@ router.delete(
       req.ip || "127.0.0.1",
     );
     return response.success(res, { message: "Address deleted successfully", user });
-  }),
-);
+  });
 
-// GET /api/users/me/favorites
-router.get(
-  "/me/favorites",
-  authenticate,
-  isAuthenticated,
-  catchAsync(async (req, res) => {
+export const getMeFavorites = catchAsync(async (req, res) => {
     const products = await userService.getFavorites(req.user!._id.toString());
     return response.success(res, { products });
-  }),
-);
+  });
 
-// POST /api/users/me/favorites/:productId
-router.post(
-  "/me/favorites/:productId",
-  authenticate,
-  isAuthenticated,
-  catchAsync(async (req, res) => {
+export const postMeFavoritesProductId = catchAsync(async (req, res) => {
     const result = await userService.toggleFavorite(
       req.user!._id.toString(),
       req.params.productId as string,
@@ -204,15 +137,9 @@ router.post(
           : "Removed from favorites",
       result,
     });
-  }),
-);
+  });
 
-// GET /api/users/me/viewed
-router.get(
-  "/me/viewed",
-  authenticate,
-  isAuthenticated,
-  catchAsync(async (req, res) => {
+export const getMeViewed = catchAsync(async (req, res) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 12;
     const result = await userService.getRecentlyViewed(
@@ -221,54 +148,30 @@ router.get(
       limit,
     );
     return response.success(res, result);
-  }),
-);
+  });
 
-// POST /api/users/me/viewed/:productId
-router.post(
-  "/me/viewed/:productId",
-  authenticate,
-  isAuthenticated,
-  catchAsync(async (req, res) => {
+export const postMeViewedProductId = catchAsync(async (req, res) => {
     await userService.recordRecentlyViewed(
       req.user!._id.toString(),
       req.params.productId as string,
     );
     return response.success(res, { message: "Recently viewed product recorded" });
-  }),
-);
+  });
 
-// DELETE /api/users/me/viewed — xóa toàn bộ lịch sử
-router.delete(
-  "/me/viewed",
-  authenticate,
-  isAuthenticated,
-  catchAsync(async (req, res) => {
+export const deleteMeViewed = catchAsync(async (req, res) => {
     await userService.clearRecentlyViewed(req.user!._id.toString());
     return response.success(res, { message: "All view history cleared" });
-  }),
-);
+  });
 
-// DELETE /api/users/me/viewed/:productId — xóa 1 sản phẩm
-router.delete(
-  "/me/viewed/:productId",
-  authenticate,
-  isAuthenticated,
-  catchAsync(async (req, res) => {
+export const deleteMeViewedProductId = catchAsync(async (req, res) => {
     await userService.removeFromViewed(
       req.user!._id.toString(),
       req.params.productId as string,
     );
     return response.success(res, { message: "Product removed from history" });
-  }),
-);
+  });
 
-// GET /api/users/customers — admin only
-router.get(
-  "/customers",
-  authenticate,
-  requirePermission("customers.view"),
-  catchAsync(async (req, res) => {
+export const getCustomers = catchAsync(async (req, res) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const search = req.query.search as string;
@@ -295,15 +198,9 @@ router.get(
       endDate,
     );
     return response.success(res, result);
-  }),
-);
+  });
 
-// POST /api/users/customers — admin only
-router.post(
-  "/customers",
-  authenticate,
-  requirePermission("customers.manage"),
-  catchAsync(async (req, res) => {
+export const postCustomers = catchAsync(async (req, res) => {
     const customer = await userService.createManualCustomer(req.body);
     await logAction(
       req.user!._id.toString(),
@@ -317,16 +214,9 @@ router.post(
       message: "Customer created successfully",
       customer,
     });
-  }),
-);
+  });
 
-// POST /api/users/staff — manager only (owner bypassed)
-router.post(
-  "/staff",
-  authenticate,
-  isManager,
-  validate(CreateStaffSchema),
-  catchAsync(async (req, res) => {
+export const postStaff = catchAsync(async (req, res) => {
     const staff = await userService.createStaff(req.body, req.user!);
     await logAction(
       req.user!._id.toString(),
@@ -340,26 +230,14 @@ router.post(
       message: "Staff account created successfully",
       staff,
     });
-  }),
-);
+  });
 
-// GET /api/users/:id — admin only
-router.get(
-  "/:id",
-  authenticate,
-  requirePermission("customers.view"),
-  catchAsync(async (req, res) => {
+export const getId = catchAsync(async (req, res) => {
     const user = await userService.getUserById(req.params.id as string);
     return response.success(res, { user });
-  }),
-);
+  });
 
-// PATCH /api/users/:id — owner/manager
-router.patch(
-  "/:id",
-  authenticate,
-  isManager,
-  catchAsync(async (req, res) => {
+export const patchId = catchAsync(async (req, res) => {
     const user = await userService.updateUserByAdmin(
       req.params.id as string,
       req.body,
@@ -374,16 +252,9 @@ router.patch(
       req.ip || "127.0.0.1",
     );
     return response.success(res, { user });
-  }),
-);
+  });
 
-// PATCH /api/users/:id/role — manager only
-router.patch(
-  "/:id/role",
-  authenticate,
-  isManager,
-  validate(UpdateRoleSchema),
-  catchAsync(async (req, res) => {
+export const patchIdRole = catchAsync(async (req, res) => {
     const user = await userService.updateUserRole(
       req.params.id as string,
       req.body.role,
@@ -402,16 +273,9 @@ router.patch(
       message: "Cập nhật quyền thành công",
       user,
     });
-  }),
-);
+  });
 
-// PATCH /api/users/:id/status — manager only
-router.patch(
-  "/:id/status",
-  authenticate,
-  isManager,
-  validate(UpdateStatusSchema),
-  catchAsync(async (req, res) => {
+export const patchIdStatus = catchAsync(async (req, res) => {
     const user = await userService.updateUserStatus(
       req.params.id as string,
       req.body.isActive,
@@ -430,15 +294,9 @@ router.patch(
       message: `${actionText} tài khoản thành công`,
       user,
     });
-  }),
-);
+  });
 
-// PATCH /api/users/:id/reset-password — manager only
-router.patch(
-  "/:id/reset-password",
-  authenticate,
-  isManager,
-  catchAsync(async (req, res) => {
+export const patchIdResetPassword = catchAsync(async (req, res) => {
     const user = await userService.resetUserPassword(
       req.params.id as string,
       req.user!,
@@ -455,50 +313,52 @@ router.patch(
       message: "Đặt lại mật khẩu thành công (Mặc định: GlowUp@123456)",
       user,
     });
-  }),
-);
+  });
 
-// DELETE /api/users/:id — manager only
-router.delete(
-  "/:id",
-  authenticate,
-  isManager,
-  catchAsync(async (req, res) => {
-    const user = await userService.getUserById(req.params.id as string);
-    await userService.deleteUserById(req.params.id as string, req.user!);
-    await logAction(
-      req.user!._id.toString(),
-      req.user!.name,
-      "delete",
-      "identity",
-      `Xóa tài khoản "${user.name}"`,
-      req.ip || "127.0.0.1",
-    );
-    return response.success(res, { message: "Xóa tài khoản thành công" });
-  }),
-);
+export const deleteId = catchAsync(async (req, res) => {
+    const targetUser = await userService.getUserById(req.params.id as string);
+    if (!targetUser) throw { status: 404, message: "Không tìm thấy người dùng" };
 
-// PATCH /api/users/:id/internal-notes — admin only
-router.patch(
-  "/:id/internal-notes",
-  authenticate,
-  requirePermission("customers.manage"),
-  catchAsync(async (req, res) => {
+    if (targetUser.role === "customer") {
+      // Customer delete (GDPR anonymization)
+      await userService.deleteUserById(req.params.id as string, req.user!);
+      await logAction(
+        req.user!._id.toString(),
+        req.user!.name,
+        "delete",
+        "identity",
+        `Xóa tài khoản khách hàng "${targetUser.name}"`,
+        req.ip || "127.0.0.1",
+      );
+      return response.success(res, { message: "Xóa tài khoản khách hàng thành công" });
+    } else {
+      // Staff delete — requires "users.delete" permission (except for Owner)
+      if (req.user!.role !== "owner" && !req.user!.permissions.includes("users.delete" as any)) {
+        throw { status: 403, message: "Bạn không có quyền xóa tài khoản nhân viên" };
+      }
+      await userService.deleteUser(req.params.id as string, req.user!);
+      await logAction(
+        req.user!._id.toString(),
+        req.user!.name,
+        "delete",
+        "identity",
+        `Xóa tài khoản nhân viên "${targetUser.name}"`,
+        req.ip || "127.0.0.1",
+      );
+      return response.success(res, { message: "Xóa tài khoản nhân viên thành công" });
+    }
+  });
+
+export const patchIdInternalNotes = catchAsync(async (req, res) => {
     const { internalNotes } = req.body;
     const user = await userService.updateInternalNotes(
       req.params.id as string,
       internalNotes,
     );
     return response.success(res, { user });
-  }),
-);
+  });
 
-// PATCH /api/users/:id/staff-notes — manager only
-router.patch(
-  "/:id/staff-notes",
-  authenticate,
-  isManager,
-  catchAsync(async (req, res) => {
+export const patchIdStaffNotes = catchAsync(async (req, res) => {
     const { internalNotes } = req.body;
     const user = await userService.updateStaffInternalNotes(
       req.params.id as string,
@@ -506,15 +366,9 @@ router.patch(
       req.user!,
     );
     return response.success(res, { user });
-  }),
-);
+  });
 
-// PATCH /api/users/:id/points — admin only
-router.patch(
-  "/:id/points",
-  authenticate,
-  isManager,
-  catchAsync(async (req, res) => {
+export const patchIdPoints = catchAsync(async (req, res) => {
     const { pointsChanged, reason } = req.body;
     const user = await userService.adjustUserPoints(
       req.params.id as string,
@@ -523,30 +377,9 @@ router.patch(
       req.user!._id.toString(),
     );
     return response.success(res, { user });
-  }),
-);
-// DELETE /api/users/:id - admin only, requires users.delete
-router.delete(
-  "/:id",
-  authenticate,
-  authorize("owner", "manager"),
-  requirePermission("users.delete"),
-  catchAsync(async (req, res) => {
-    await userService.deleteUser(req.params.id as string, req.user!);
-    
-    await logAction(
-      req.user!._id.toString(),
-      req.user!.name,
-      "delete",
-      "identity",
-      `Xóa tài khoản nhân viên ${req.params.id as string}`,
-      req.ip || "127.0.0.1"
-    );
+  });
 
-    return response.success(res, { message: "Đã xóa tài khoản thành công" });
-  }),
-);
-
-
-
-export default router;
+export const getIdPointsHistory = catchAsync(async (req, res) => {
+    const history = await userService.getUserPointHistory(req.params.id as string);
+    return response.success(res, { history });
+  });

@@ -190,7 +190,23 @@ export const createCategory = async (data: CreateCategoryInput) => {
   const existing = await categoryRepo.findBySlug(slug);
   if (existing) throw conflict("Category slug already exists");
   const parentId = await parseParentId(data.parentId);
-  const newCategory = await categoryRepo.create({ ...data, parentId, slug });
+
+  let sortOrder = data.sortOrder;
+  if (sortOrder === undefined || sortOrder === 1) {
+    const maxOrder = await categoryRepo.findMaxSortOrder(parentId);
+    if (maxOrder > 0 || (await categoryRepo.findOneBy({ parentId, sortOrder: 1 }))) {
+      sortOrder = maxOrder + 1;
+    } else {
+      sortOrder = 1;
+    }
+  }
+
+  const newCategory = await categoryRepo.create({
+    ...data,
+    parentId,
+    slug,
+    sortOrder,
+  });
   return mapCategory(newCategory);
 };
 

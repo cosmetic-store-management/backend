@@ -1,77 +1,48 @@
-import { Router } from "express";
-import {
-  authenticate,
-  requirePermission,
-} from "../../middlewares/auth.middleware.js";
+
+
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
+
 import * as response from "../../shared/helpers/response.js";
+
 import * as reportService from "./report.service.js";
 
-const router = Router();
-
-// ── ADMIN & STAFF ONLY ────────────────────────────────────────────────────────
-
-router.get(
-  "/dashboard",
-  authenticate,
-  requirePermission("reports.view"),
-  catchAsync(async (req, res) => {
+export const getDashboard = catchAsync(async (req, res) => {
     const { startDate, endDate } = req.query as {
       startDate?: string;
       endDate?: string;
     };
     const result = await reportService.getDashboardStats(startDate, endDate);
     return response.success(res, result);
-  }),
-);
+  });
 
-router.get(
-  "/completion-rates",
-  authenticate,
-  requirePermission("reports.view"),
-  catchAsync(async (req, res) => {
+export const getCompletionRates = catchAsync(async (req, res) => {
     const { startDate, endDate } = req.query as {
       startDate?: string;
       endDate?: string;
     };
     const result = await reportService.getCompletionRates(startDate, endDate);
     return response.success(res, result);
-  }),
-);
+  });
 
-router.get(
-  "/vouchers",
-  authenticate,
-  requirePermission("reports.view"),
-  catchAsync(async (req, res) => {
+export const getVouchers = catchAsync(async (req, res) => {
     const { startDate, endDate } = req.query as {
       startDate?: string;
       endDate?: string;
     };
     const result = await reportService.getVoucherStats(startDate, endDate);
     return response.success(res, result as any);
-  }),
-);
+  });
 
-router.get(
-  "/revenue-chart",
-  authenticate,
-  requirePermission("reports.view"),
-  catchAsync(async (req, res) => {
+export const getRevenueChart = catchAsync(async (req, res) => {
     const { startDate, endDate } = req.query as {
       startDate?: string;
       endDate?: string;
     };
     const result = await reportService.getRevenueChart(startDate, endDate);
     return response.success(res, result as any);
-  }),
-);
+  });
 
-router.get(
-  "/category-performance",
-  authenticate,
-  requirePermission("reports.view"),
-  catchAsync(async (req, res) => {
+export const getCategoryPerformance = catchAsync(async (req, res) => {
     const { startDate, endDate } = req.query as {
       startDate?: string;
       endDate?: string;
@@ -81,14 +52,9 @@ router.get(
       endDate,
     );
     return response.success(res, result as any);
-  }),
-);
+  });
 
-router.get(
-  "/payment-methods",
-  authenticate,
-  requirePermission("reports.view"),
-  catchAsync(async (req, res) => {
+export const getPaymentMethods = catchAsync(async (req, res) => {
     const { startDate, endDate } = req.query as {
       startDate?: string;
       endDate?: string;
@@ -98,14 +64,9 @@ router.get(
       endDate,
     );
     return response.success(res, result as any);
-  }),
-);
+  });
 
-router.get(
-  "/export-pdf",
-  authenticate,
-  requirePermission("reports.view"),
-  catchAsync(async (req, res) => {
+export const getExportPdf = catchAsync(async (req, res) => {
     const { startDate, endDate } = req.query as {
       startDate?: string;
       endDate?: string;
@@ -116,7 +77,4 @@ router.get(
     res.setHeader("Content-Disposition", `attachment; filename="Report_${new Date().toISOString().slice(0, 10)}.pdf"`);
     
     pdfStream.pipe(res);
-  }),
-);
-
-export default router;
+  });

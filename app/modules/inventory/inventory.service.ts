@@ -552,10 +552,19 @@ export const adjustStock = async (
       session,
     );
 
+    let importPrice = data.costPrice;
+    if (!importPrice) {
+      const activeBatches = await inventoryRepo.findActiveBatchesByVariants([variant._id]);
+      if (activeBatches && activeBatches.length > 0) {
+        importPrice = activeBatches[0].importPrice;
+      } else {
+        importPrice = Math.round(variant.price * 0.6);
+      }
+    }
+
     if (diff < 0) {
       await inventoryRepo.deductBatchesFIFO(variant._id, Math.abs(diff), session);
     } else if (diff > 0) {
-      const importPrice = Math.round(variant.price * 0.6);
       await inventoryRepo.createBatch(
         {
           variantId: variant._id,
@@ -586,7 +595,7 @@ export const adjustStock = async (
         variantId: variant._id,
         type: "adjustment",
         qty: diff, // có thể âm (giảm) hoặc dương (tăng)
-        price: Math.round(variant.price * 0.6),
+        price: importPrice,
         creatorId: operator._id,
         date: new Date(),
       },

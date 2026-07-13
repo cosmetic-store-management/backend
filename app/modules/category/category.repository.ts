@@ -41,6 +41,16 @@ export const deleteById = (id: string) => Category.findByIdAndDelete(id);
 export const findActiveCategoryIds = (): Promise<mongoose.Types.ObjectId[]> =>
   Product.distinct("categoryId", { isActive: true });
 
+export const findMaxSortOrder = async (
+  parentId: mongoose.Types.ObjectId | null,
+): Promise<number> => {
+  const result = await Category.findOne({ parentId })
+    .sort({ sortOrder: -1 })
+    .select("sortOrder")
+    .lean();
+  return result ? result.sortOrder : 0;
+};
+
 export const findActiveByIds = (ids: mongoose.Types.ObjectId[]) =>
   Category.find({ _id: { $in: ids }, isActive: true })
     .sort({ sortOrder: 1, createdAt: -1 })

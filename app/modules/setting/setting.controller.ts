@@ -1,16 +1,18 @@
-import { Router } from "express";
+
 import mongoose from "mongoose";
+
 import { z } from "zod";
-import { authenticate, isOwner } from "../../middlewares/auth.middleware.js";
+
+
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
+
 import * as response from "../../shared/helpers/response.js";
+
 import * as settingService from "./setting.service.js";
+
 import { logAction } from "../audit-log/audit-log.service.js";
+
 import { badRequest } from "../../shared/errors/httpErrors.js";
-
-const router = Router();
-
-// ── Zod schema cho PUT /api/settings ─────────────────────────────────────────
 
 const UpdateSettingsSchema = z
   .object({
@@ -54,11 +56,7 @@ const UpdateSettingsSchema = z
   })
   .strict();
 
-// ── GET /api/settings/public — không cần auth ─────────────────────────────────
-
-router.get(
-  "/public",
-  catchAsync(async (_req, res) => {
+export const getPublic = catchAsync(async (_req, res) => {
     const all = await settingService.getSettings();
     // Chỉ expose các field an toàn — bao gồm chi tiết ngân hàng để checkout hiển thị
     const {
@@ -106,14 +104,9 @@ router.get(
       bankQrCodeUrl,
     };
     return response.success(res, publicSettings);
-  }),
-);
+  });
 
-// ── GET /api/settings/public/stats — lấy số liệu thật ────────────────────────
-
-router.get(
-  "/public/stats",
-  catchAsync(async (_req, res) => {
+export const getPublicStats = catchAsync(async (_req, res) => {
     try {
       const [productsCount, customersCount, ratingResult] = await Promise.all([
         mongoose.model("Product").countDocuments({ isActive: true }),
@@ -138,27 +131,14 @@ router.get(
         rating: 4.9
       });
     }
-  }),
-);
+  });
 
-// ── GET /api/settings — authenticated ─────────────────────────────────────────
-
-router.get(
-  "/",
-  authenticate,
-  catchAsync(async (_req, res) => {
+export const getRoot = catchAsync(async (_req, res) => {
     const settings = await settingService.getSettings();
     return response.success(res, { settings });
-  }),
-);
+  });
 
-// ── PUT /api/settings — owner only, Zod validated ─────────────────────────────
-
-router.put(
-  "/",
-  authenticate,
-  isOwner,
-  catchAsync(async (req, res) => {
+export const putRoot = catchAsync(async (req, res) => {
     const parsed = UpdateSettingsSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues
@@ -180,7 +160,4 @@ router.put(
       message: "Cấu hình được lưu thành công",
       settings,
     });
-  }),
-);
-
-export default router;
+  });

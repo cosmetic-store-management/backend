@@ -337,25 +337,16 @@ export const getRecommendedProducts = async (
   const { default: Order } = await import("../order/models/order.schema.js");
 
   // 1. Collaborative Filtering: "Customers who bought this also bought"
-  const orders = await Order.find({ "items.productId": { $in: [pId, pId.toString()] } })
-    .select("items.productId")
-    .lean();
+  const ordersAggregation = await Order.aggregate([
+    { $match: { "items.productId": pId } },
+    { $unwind: "$items" },
+    { $match: { "items.productId": { $ne: pId } } },
+    { $group: { _id: "$items.productId", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: limit }
+  ]);
 
-  const frequencyMap: Record<string, number> = {};
-  for (const order of orders) {
-    for (const item of order.items) {
-      const idStr = item.productId.toString();
-      if (idStr !== productId) {
-        frequencyMap[idStr] = (frequencyMap[idStr] || 0) + 1;
-      }
-    }
-  }
-
-  // Sort by frequency
-  const sortedIds = Object.entries(frequencyMap)
-    .sort(([, countA], [, countB]) => countB - countA)
-    .map(([id]) => new mongoose.Types.ObjectId(id))
-    .slice(0, limit);
+  const sortedIds = ordersAggregation.map(doc => doc._id);
 
   const recommendedProducts: any[] = [];
 
@@ -787,6 +778,9 @@ export const deleteProduct = async (id: string) => {
   await productRepo.findByIdAndDelete(id);
   const { default: Variant } = await import("./models/variant.schema.js");
   await Variant.deleteMany({ productId: id });
+
+  const { default: Review } = await import("../review/models/review.schema.js");
+  await Review.deleteMany({ productId: id });
 };
 
 export const batchImportProducts = async (productsData: any[]) => {

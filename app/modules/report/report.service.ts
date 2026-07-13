@@ -14,7 +14,7 @@ function calcChange(current: number, previous: number): number {
   return Math.round(((current - previous) / previous) * 100 * 10) / 10;
 }
 
-function buildDateFilter(startDate?: string, endDate?: string) {
+function buildGeneralDateFilter(startDate?: string, endDate?: string) {
   const filter: any = {
     note: { $ne: "System auto-cancelled due to payment timeout" }
   };
@@ -22,6 +22,18 @@ function buildDateFilter(startDate?: string, endDate?: string) {
     filter.createdAt = {};
     if (startDate) filter.createdAt.$gte = new Date(startDate);
     if (endDate) filter.createdAt.$lte = new Date(endDate);
+  }
+  return filter;
+}
+
+function buildCompletedDateFilter(startDate?: string, endDate?: string) {
+  const filter: any = {
+    note: { $ne: "System auto-cancelled due to payment timeout" }
+  };
+  if (startDate || endDate) {
+    filter.completedAt = {};
+    if (startDate) filter.completedAt.$gte = new Date(startDate);
+    if (endDate) filter.completedAt.$lte = new Date(endDate);
   }
   return filter;
 }
@@ -55,7 +67,8 @@ export const getDashboardStats = async (
   endDate?: string,
   creatorId?: string,
 ) => {
-  const dateFilter = buildDateFilter(startDate, endDate);
+  const generalFilter = buildGeneralDateFilter(startDate, endDate);
+  const completedFilter = buildCompletedDateFilter(startDate, endDate);
   const { prevStart, prevEnd } = getPreviousPeriod(startDate, endDate);
 
   // --- Kỳ hiện tại ---
@@ -68,12 +81,12 @@ export const getDashboardStats = async (
     topProductsAgg,
     lowStockRaw,
   ] = await Promise.all([
-    reportRepo.aggregateRevenue(dateFilter),
-    reportRepo.countOrders(dateFilter),
-    reportRepo.aggregateSoldProducts(dateFilter),
-    reportRepo.countCustomers(dateFilter),
-    reportRepo.findRecentOrders(dateFilter, 5),
-    reportRepo.aggregateTopProducts(dateFilter, 5),
+    reportRepo.aggregateRevenue(completedFilter),
+    reportRepo.countOrders(completedFilter),
+    reportRepo.aggregateSoldProducts(completedFilter),
+    reportRepo.countCustomers(generalFilter),
+    reportRepo.findRecentOrders(generalFilter, 5),
+    reportRepo.aggregateTopProducts(completedFilter, 5),
     reportRepo.findLowStockVariants(10),
   ]);
 
@@ -160,7 +173,7 @@ export const getDashboardStats = async (
       ? settings.profitMargin / 100
       : DEFAULT_PROFIT_MARGIN;
 
-  const channelRaw = await reportRepo.aggregateChannelStats(dateFilter);
+  const channelRaw = await reportRepo.aggregateChannelStats(completedFilter);
   const channelStats = {
     online: { revenue: 0, orders: 0, profit: 0 },
     pos: { revenue: 0, orders: 0, profit: 0 }
@@ -199,7 +212,7 @@ export const getCompletionRates = async (
   startDate?: string,
   endDate?: string,
 ) => {
-  const dateFilter = buildDateFilter(startDate, endDate);
+  const dateFilter = buildGeneralDateFilter(startDate, endDate);
   const result = await reportRepo.aggregateCompletionRates(dateFilter);
 
   if (result.length === 0) {
@@ -229,7 +242,7 @@ export const getCompletionRates = async (
 // ── Revenue Chart ─────────────────────────────────────────────────────────────
 
 export const getRevenueChart = async (startDate?: string, endDate?: string) => {
-  const dateFilter = buildDateFilter(startDate, endDate);
+  const dateFilter = buildCompletedDateFilter(startDate, endDate);
   const result = await reportRepo.aggregateRevenueChart(dateFilter);
   return result.map((r) => ({
     date: r._id,
@@ -244,7 +257,7 @@ export const getCategoryPerformance = async (
   startDate?: string,
   endDate?: string,
 ) => {
-  const dateFilter = buildDateFilter(startDate, endDate);
+  const dateFilter = buildCompletedDateFilter(startDate, endDate);
   const result = await reportRepo.aggregateCategoryPerformance(dateFilter);
   return result.map((r) => ({
     category: r._id,
@@ -447,7 +460,7 @@ export const getPaymentMethodsStats = async (
   startDate?: string,
   endDate?: string,
 ) => {
-  const dateFilter = buildDateFilter(startDate, endDate);
+  const dateFilter = buildCompletedDateFilter(startDate, endDate);
   const result = await reportRepo.aggregatePaymentMethods(dateFilter);
   return result.map((r) => ({
     method: r._id,
@@ -459,7 +472,7 @@ export const getPaymentMethodsStats = async (
 // ── Voucher Stats ─────────────────────────────────────────────────────────────
 
 export const getVoucherStats = async (startDate?: string, endDate?: string) => {
-  const dateFilter = buildDateFilter(startDate, endDate);
+  const dateFilter = buildGeneralDateFilter(startDate, endDate);
   const vouchers = await reportRepo.findAllVouchers(dateFilter);
 
   return vouchers.map((v: any) => {

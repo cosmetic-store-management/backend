@@ -1,70 +1,37 @@
-import { Router } from "express";
-import {
-  authenticate,
-  requirePermission,
-} from "../../middlewares/auth.middleware.js";
-import { validate } from "../../middlewares/validate.middleware.js";
+
+
+
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
+
 import * as response from "../../shared/helpers/response.js";
-import {
-  CreateBrandSchema,
-  UpdateBrandSchema,
-  UpdateBrandStatusSchema,
-} from "./dto/brand.request.dto.js";
+
+
 import * as brandService from "./brand.service.js";
+
 import { logAction } from "../audit-log/audit-log.service.js";
 
-const router = Router();
-
-// ── PUBLIC ────────────────────────────────────────────────────────────────────
-
-// GET /api/brands (Public - Chỉ lấy Thương hiệu đang Hợp tác)
-router.get(
-  "/",
-  catchAsync(async (_req, res) => {
+export const getRoot = catchAsync(async (_req, res) => {
     const result = await brandService.getPublicBrands();
     return response.success(res, { brands: result });
-  }),
-);
+  });
 
-// GET /api/brands/:id (Public - Không dùng slug vì Brand DB không có slug public)
-router.get(
-  "/:id",
-  catchAsync(async (req, res) => {
+export const getId = catchAsync(async (req, res) => {
     const brand = await brandService.getBrandDetail(req.params.id as string);
     if (!brand.isActive) throw new Error("Brand is inactive");
     return response.success(res, { brand });
-  }),
-);
+  });
 
-// ── ADMIN ─────────────────────────────────────────────────────────────────────
-
-router.get(
-  "/admin/list",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (req, res) => {
+export const getAdminList = catchAsync(async (req, res) => {
     const result = await brandService.getAdminBrands(req.query as any);
     return response.success(res, result);
-  }),
-);
+  });
 
-router.get(
-  "/admin/:id",
-  authenticate,
-  requirePermission("products.view"),
-  catchAsync(async (req, res) => {
+export const getAdminId = catchAsync(async (req, res) => {
     const brand = await brandService.getBrandDetail(req.params.id as string);
     return response.success(res, { brand });
-  }),
-);
+  });
 
-router.post(
-  "/admin",
-  authenticate,
-  requirePermission("products.manage"),
-  validate(CreateBrandSchema),
-  catchAsync(async (req, res) => {
+export const postAdmin = catchAsync(async (req, res) => {
     const brand = await brandService.createBrand(req.body);
     await logAction(
       req.user!._id.toString(),
@@ -78,15 +45,9 @@ router.post(
       message: "Brand created successfully",
       brand,
     });
-  }),
-);
+  });
 
-router.patch(
-  "/admin/:id/status",
-  authenticate,
-  requirePermission("products.manage"),
-  validate(UpdateBrandStatusSchema),
-  catchAsync(async (req, res) => {
+export const patchAdminIdStatus = catchAsync(async (req, res) => {
     const brand = await brandService.updateBrandStatus(
       req.params.id as string,
       req.body.isActive,
@@ -103,15 +64,9 @@ router.patch(
       message: "Cập nhật trạng thái thương hiệu thành công",
       brand,
     });
-  }),
-);
+  });
 
-router.patch(
-  "/admin/:id",
-  authenticate,
-  requirePermission("products.manage"),
-  validate(UpdateBrandSchema),
-  catchAsync(async (req, res) => {
+export const patchAdminId = catchAsync(async (req, res) => {
     const brand = await brandService.updateBrand(
       req.params.id as string,
       req.body,
@@ -128,14 +83,9 @@ router.patch(
       message: "Cập nhật thương hiệu thành công",
       brand,
     });
-  }),
-);
+  });
 
-router.delete(
-  "/admin/:id",
-  authenticate,
-  requirePermission("products.manage"),
-  catchAsync(async (req, res) => {
+export const deleteAdminId = catchAsync(async (req, res) => {
     const brand = await brandService.getBrandDetail(req.params.id as string);
     await brandService.deleteBrand(req.params.id as string);
     await logAction(
@@ -147,7 +97,4 @@ router.delete(
       req.ip || "127.0.0.1",
     );
     return response.success(res, { message: "Xóa thương hiệu thành công" });
-  }),
-);
-
-export default router;
+  });

@@ -37,6 +37,8 @@ export const findOne = (query: Record<string, any>) => Review.findOne(query);
 export const create = (data: {
   userId: mongoose.Types.ObjectId;
   productId: mongoose.Types.ObjectId;
+  variantId?: mongoose.Types.ObjectId;
+  variantName?: string;
   rating: number;
   comment?: string;
   images?: string[];
@@ -45,15 +47,29 @@ export const create = (data: {
 
 export const save = (review: any) => review.save();
 
-/** Aggregate avg rating + total reviews cho một product */
+/** Aggregate avg rating + total reviews + rating breakdown cho một product */
 export const aggregateStats = (productId: mongoose.Types.ObjectId) =>
   Review.aggregate([
     { $match: { productId } },
     {
-      $group: {
-        _id: null,
-        averageRating: { $avg: "$rating" },
-        totalReviews: { $sum: 1 },
+      $facet: {
+        overall: [
+          {
+            $group: {
+              _id: null,
+              averageRating: { $avg: "$rating" },
+              totalReviews: { $sum: 1 },
+            },
+          },
+        ],
+        breakdown: [
+          {
+            $group: {
+              _id: "$rating",
+              count: { $sum: 1 },
+            },
+          },
+        ],
       },
     },
   ]);

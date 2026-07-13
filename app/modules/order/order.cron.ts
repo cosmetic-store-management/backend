@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import Order from "./models/order.schema.js";
-import { abandonPendingOrder } from "./order.service.js";
+import { cancelPendingOrder } from "./order.service.js";
 
 // Chạy mỗi phút 1 lần
 const CRON_INTERVAL = 60 * 1000;
@@ -28,8 +28,8 @@ export const startOrderCron = () => {
 
       for (const order of expiredOrders) {
         try {
-          await abandonPendingOrder(order.code);
-          console.log(`[Order Cron] Đã hủy QR quá hạn (15p): ${order.code}`);
+          await cancelPendingOrder(order.code, "Hủy tự động do quá hạn thanh toán");
+          console.log(`[Order Cron] Đã hủy đơn hàng quá hạn (15p): ${order.code}`);
         } catch (err: any) {
           console.error(`[Order Cron] Lỗi khi hủy đơn hàng ${order.code}:`, err.message);
         }

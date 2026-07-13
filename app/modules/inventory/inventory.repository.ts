@@ -212,18 +212,28 @@ export const deductBatchesFIFO = async (
   for (const batch of batches) {
     if (remainingToDeduct <= 0) break;
 
-    const available = batch.remainingQty;
-    const deductAmount = Math.min(available, remainingToDeduct);
-    
-    batch.remainingQty -= deductAmount;
-    await Batch.updateOne(
-      { _id: batch._id },
-      { $inc: { remainingQty: -deductAmount } },
-      { session }
+    // Use atomic findOneAndUpdate with an aggregation pipeline to deduct remainingQty safely
+    const updatedBatch = await Batch.findOneAndUpdate(
+      { _id: batch._id, remainingQty: { $gt: 0 } },
+      [
+        {
+          $set: {
+            remainingQty: {
+              $max: [0, { $subtract: ["$remainingQty", remainingToDeduct] }]
+            }
+          }
+        }
+      ],
+      { session, new: false, updatePipeline: true } // return old document so we know the previous remainingQty
     );
-    
-    totalCost += deductAmount * (batch.importPrice || 0);
-    remainingToDeduct -= deductAmount;
+
+    if (updatedBatch) {
+      const oldRemaining = updatedBatch.remainingQty;
+      const deducted = Math.min(oldRemaining, remainingToDeduct);
+      
+      totalCost += deducted * (batch.importPrice || 0);
+      remainingToDeduct -= deducted;
+    }
   }
 
   // If there's still quantity to deduct but no batches left, we just assume cost is 0 for the remainder,

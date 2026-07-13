@@ -88,10 +88,38 @@ export const incrementFlashSaleSoldQuantity = async (
   quantity: number,
   session?: mongoose.ClientSession
 ) => {
-  return FlashSale.updateOne(
-    { _id: flashSaleId, "items.variantId": variantId },
+  const flashSale = await FlashSale.findOne({ _id: flashSaleId }).session(session || null);
+  if (!flashSale) {
+    throw new Error("Không tìm thấy chương trình Flash Sale");
+  }
+  const item = flashSale.items.find(
+    (i: any) => i.variantId.toString() === variantId.toString()
+  );
+  if (!item) {
+    throw new Error("Sản phẩm không thuộc chương trình Flash Sale");
+  }
+  if (item.soldQuantity + quantity > item.quantityLimit) {
+    throw new Error(`Sản phẩm đã vượt quá số lượng giới hạn mua Flash Sale (còn lại: ${item.quantityLimit - item.soldQuantity})`);
+  }
+
+  const result = await FlashSale.updateOne(
+    { 
+      _id: flashSaleId,
+      items: {
+        $elemMatch: {
+          variantId: variantId,
+          soldQuantity: { $lte: item.quantityLimit - quantity }
+        }
+      }
+    },
     { $inc: { "items.$.soldQuantity": quantity } },
     { session }
   );
+
+  if (result.modifiedCount === 0) {
+    throw new Error(`Sản phẩm đã vượt quá số lượng giới hạn mua Flash Sale (còn lại: ${item.quantityLimit - item.soldQuantity})`);
+  }
+
+  return result;
 };
 

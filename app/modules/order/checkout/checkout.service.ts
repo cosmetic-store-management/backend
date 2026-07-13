@@ -101,8 +101,12 @@ export const previewOrder = async (user: UserDocument | null, data: any) => {
 
     if (activeFlashSale) {
       const fsItem = activeFlashSale.items.find((fsItem: any) => fsItem.variantId._id.toString() === item.variantId);
-      if (fsItem && fsItem.soldQuantity + item.quantity <= fsItem.quantityLimit) {
-        unitPrice = fsItem.flashPrice;
+      if (fsItem) {
+        if (fsItem.soldQuantity + item.quantity <= fsItem.quantityLimit) {
+          unitPrice = fsItem.flashPrice;
+        } else {
+          throw badRequest(`Sản phẩm Flash Sale đã vượt quá lượt mua cho phép (còn lại: ${Math.max(0, fsItem.quantityLimit - fsItem.soldQuantity)}), vui lòng giảm số lượng.`);
+        }
       }
     }
 
@@ -317,8 +321,7 @@ export const createOrder = async (
           unitPrice = fsItem.flashPrice;
           isFlashSale = true;
         } else {
-          // Could throw error or just fallback to normal price. We fallback to normal price as per logic, 
-          // but we can throw error to be strict. Let's fallback.
+          throw badRequest(`Sản phẩm Flash Sale đã vượt quá lượt mua cho phép (còn lại: ${Math.max(0, fsItem.quantityLimit - fsItem.soldQuantity)}), vui lòng tải lại trang và giảm số lượng.`);
         }
       }
     }
@@ -450,11 +453,23 @@ export const createOrder = async (
       );
       item.costPriceTotal = costPriceTotal;
       orderTotalCost += costPriceTotal;
+
+      // Log inventory transactions for online checkout
+      await InventoryTransaction.create([{
+        code: `TXOUT${Math.floor(100000 + Math.random() * 900000)}`,
+        productId: item.productId,
+        variantId: item.variantId,
+        type: "out",
+        qty: item.quantity,
+        price: item.price,
+        creatorId: user._id,
+        date: new Date(),
+      }], { session });
     }
 
     // Tạo đơn hàng
     newOrder = await orderRepo.createOrder({
-      code: generateOrderCode("ONL"),
+      code: generateOrderCode("ORD"),
       receiverName,
       phone,
       province,
@@ -535,6 +550,10 @@ export const createOrder = async (
         performedBy: user._id,
       }], { session });
     }
+
+    // Clear cart within the session (ECOM-04)
+    const CartModel = (await import("../../cart/models/cart.schema.js")).default;
+    await CartModel.updateOne({ userId: user._id }, { $set: { items: [] } }, { session });
 
     await session.commitTransaction();
   } catch (error: any) {
@@ -675,7 +694,7 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
     tierDiscountAmount = calculateTierDiscount(customerTotalSpent, subtotal);
   }
 
-  const orderCode = generateOrderCode("OFF");
+  const orderCode = generateOrderCode("ORD");
 
   const providedDiscount =
     typeof data.discountAmount === "number" && data.discountAmount > 0
@@ -764,6 +783,7 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
       creatorId: operator._id as any,
       receiptNumber,
       paymentStatus: "paid",
+      completedAt: new Date(),
       earnedPoints: Math.floor(finalTotalAmount / orderSettings.pointsEarnRate),
       items: normalizedItems,
     }, session);

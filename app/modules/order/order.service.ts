@@ -231,6 +231,12 @@ export const updateOrderStatus = async (
     if (data.orderStatus === "completed" && previousStatus !== "completed") {
       order.completedAt = new Date();
     }
+    if (data.orderStatus === "cancelled" && previousStatus !== "cancelled") {
+      order.cancelledAt = new Date();
+    }
+    if (data.orderStatus === "returned" && previousStatus !== "returned") {
+      order.returnedAt = new Date();
+    }
 
     order.orderStatus = data.orderStatus;
   }
@@ -343,6 +349,12 @@ export const updateOrderStatus = async (
             order.earnedPoints &&
             order.earnedPoints > 0
           ) {
+            const currentPoints = userDoc.points || 0;
+            const pointsLeak = Math.max(0, order.earnedPoints - (currentPoints + (incQuery.points || 0)));
+            if (pointsLeak > 0) {
+              order.note = (order.note ? order.note + "\n" : "") + `[Hệ thống] Trừ ${pointsLeak.toLocaleString("vi-VN")}đ khỏi số tiền hoàn do khách đã tiêu điểm của đơn này.`;
+            }
+
             incQuery.points = (incQuery.points || 0) - order.earnedPoints;
             await PointHistory.create([{
               userId: userDoc._id,
@@ -549,6 +561,12 @@ export const approveReturnOrder = async (orderId: string, _requestUser: UserDocu
         // Revoke the points the customer earned
         const earnedPoints = order.earnedPoints || 0;
         if (earnedPoints > 0) {
+          const currentPoints = userDoc.points || 0;
+          const pointsLeak = Math.max(0, earnedPoints - (currentPoints + (incQuery.points || 0)));
+          if (pointsLeak > 0) {
+            order.note = (order.note ? order.note + "\n" : "") + `[Hệ thống] Trừ ${pointsLeak.toLocaleString("vi-VN")}đ khỏi số tiền hoàn do khách đã tiêu điểm của đơn này.`;
+          }
+
           incQuery.points = (incQuery.points || 0) - earnedPoints;
           await PointHistory.create([{
             userId: userDoc._id,
@@ -651,7 +669,7 @@ export const cancelOrder = async (
   try {
     const updatedOrder = await orderRepo.findOneAndUpdateOrder(
       { _id: order._id, orderStatus: "pending" },
-      { $set: { orderStatus: "cancelled" } },
+      { $set: { orderStatus: "cancelled", cancelledAt: new Date() } },
       { session, new: true }
     );
 
@@ -804,8 +822,10 @@ export const abandonPendingOrder = async (orderCode: string) => {
       }
     }
 
-    // Hard delete the abandoned order so it doesn't pollute the system
-    await Order.findByIdAndDelete(order._id, { session });
+    // Soft cancel the abandoned order instead of hard delete
+    order.orderStatus = "cancelled";
+    order.note = order.note || "Khách hàng hủy thanh toán hoặc quá hạn";
+    await orderRepo.saveOrder(order, session);
 
     await session.commitTransaction();
   } catch (error: any) {
@@ -815,7 +835,7 @@ export const abandonPendingOrder = async (orderCode: string) => {
     await session.endSession();
   }
 
-  return { success: true, message: "Payment QR has been cancelled" };
+  return mapOrder(order, (order as any).items || []);
 };
 
 export const updateOrderDetailsAdmin = async (
@@ -894,6 +914,11 @@ export const processPOSReturn = async (
 
   let itemsToReturn: any[] = [];
   let refundAmount = 0;
+  let pointsRefundTotal = 0;
+
+  const usedPoints = order.usedPoints || 0;
+  const cashPaid = order.totalAmount;
+  const netTotal = cashPaid + usedPoints;
 
   if (returnItems && returnItems.length > 0) {
     for (const retItem of returnItems) {
@@ -909,9 +934,14 @@ export const processPOSReturn = async (
       
       const itemPrice = originalItem.price;
       const ratio = (itemPrice * retItem.quantity) / order.subtotal;
-      const itemRefund = Math.round(itemPrice * retItem.quantity - (order.discountAmount + order.tierDiscountAmount) * ratio);
+      const itemRefundVal = Math.round(itemPrice * retItem.quantity - order.discountAmount * ratio);
       
-      refundAmount += itemRefund;
+      const itemCashRefund = netTotal > 0 ? Math.round(itemRefundVal * (cashPaid / netTotal)) : 0;
+      const itemPointsRefund = netTotal > 0 ? Math.round(itemRefundVal * (usedPoints / netTotal)) : 0;
+
+      refundAmount += itemCashRefund;
+      pointsRefundTotal += itemPointsRefund;
+
       itemsToReturn.push({
         productId: originalItem.productId,
         variantId: originalItem.variantId,
@@ -923,10 +953,13 @@ export const processPOSReturn = async (
       });
     }
     order.orderStatus = "returned";
+    order.returnedAt = new Date();
   } else {
     itemsToReturn = order.items;
-    refundAmount = order.totalAmount;
+    refundAmount = cashPaid;
+    pointsRefundTotal = usedPoints;
     order.orderStatus = "returned";
+    order.returnedAt = new Date();
   }
 
   if (returnReason && returnReason.trim()) {
@@ -947,10 +980,9 @@ export const processPOSReturn = async (
         const incQuery: any = {};
         let changed = false;
 
-        const usedPoints = order.usedPoints || 0;
         if (usedPoints > 0) {
           const pointsRefund = returnItems && returnItems.length > 0 
-            ? Math.round(usedPoints * (refundAmount / order.totalAmount))
+            ? pointsRefundTotal
             : usedPoints;
             
           if (pointsRefund > 0) {
@@ -969,7 +1001,7 @@ export const processPOSReturn = async (
         const earnedPoints = order.earnedPoints || 0;
         if (earnedPoints > 0) {
           const pointsRevoke = returnItems && returnItems.length > 0
-            ? Math.round(earnedPoints * (refundAmount / order.totalAmount))
+            ? Math.round(earnedPoints * (refundAmount / cashPaid))
             : earnedPoints;
 
           if (pointsRevoke > 0) {

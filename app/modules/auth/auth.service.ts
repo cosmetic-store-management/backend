@@ -95,9 +95,22 @@ export const sendOtp = async (data: SendOtpInput) => {
 export const verifyOtp = async (data: VerifyOtpInput) => {
   const otpRecord = await authRepo.findOtpByEmail(data.email);
   if (!otpRecord) throw notFound("No OTP request found for this email");
-  
+
+  if (otpRecord.attempts >= 5) {
+    await authRepo.deleteOtp(data.email);
+    throw badRequest("Mã OTP đã bị hủy do nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.");
+  }
+
   if (otpRecord.otpCode !== data.otpCode) {
-    throw badRequest("Incorrect OTP code");
+    const updatedRecord = await authRepo.incrementOtpAttempts(data.email);
+    const currentAttempts = updatedRecord?.attempts ?? (otpRecord.attempts + 1);
+    
+    if (currentAttempts >= 5) {
+      await authRepo.deleteOtp(data.email);
+      throw badRequest("Mã OTP đã bị hủy do nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.");
+    }
+    
+    throw badRequest(`Mã OTP không chính xác. Bạn còn ${5 - currentAttempts} lần thử.`);
   }
 
   if (new Date() > otpRecord.expiresAt) {

@@ -11,6 +11,10 @@ import mongoose from "mongoose";
 import Order from "../order/models/order.schema.js";
 import Product from "../product/models/product.schema.js";
 import User from "../user/models/user.schema.js";
+import Category from "../category/models/category.schema.js";
+
+// Ensure Category schema is registered in Mongoose and not optimized away
+const _categoryModel = Category;
 
 type DateFilter = { createdAt?: { $gte?: Date; $lte?: Date } };
 
@@ -65,10 +69,10 @@ const AGG_OPTIONS = { allowDiskUse: true } as const;
 
 export const aggregateRevenue = (dateFilter: DateFilter) => {
   const key = cacheKey("aggregateRevenue", dateFilter);
-  return withCache(key, () =>
-    Order.aggregate(
+  return withCache(key, async () => {
+    const orders = await Order.aggregate(
       [
-        { $match: { orderStatus: "completed", ...dateFilter } },
+        { $match: { orderStatus: { $in: ["completed", "returned"] }, ...dateFilter } },
         {
           $group: {
             _id: null,
@@ -79,19 +83,56 @@ export const aggregateRevenue = (dateFilter: DateFilter) => {
         },
       ],
       AGG_OPTIONS,
-    ),
-  );
+    );
+
+    const PaymentTransaction = (await import("../order/models/payment-transaction.schema.js")).default;
+    const refundDateFilter: any = {};
+    if (dateFilter && dateFilter.completedAt) {
+      refundDateFilter.createdAt = dateFilter.completedAt;
+    }
+    const refunds = await PaymentTransaction.aggregate(
+      [
+        { $match: { type: "refund", status: { $in: ["success", "pending"] }, ...refundDateFilter } },
+        { $group: { _id: null, totalRefunded: { $sum: "$amount" } } }
+      ],
+      AGG_OPTIONS
+    );
+
+    const returnedOrdersFilter: any = {};
+    if (dateFilter && dateFilter.completedAt) {
+      returnedOrdersFilter.returnedAt = dateFilter.completedAt;
+    }
+    const returnedOrders = await Order.aggregate(
+      [
+        { $match: { orderStatus: "returned", ...returnedOrdersFilter } },
+        { $group: { _id: null, totalReturnedCost: { $sum: "$totalCost" } } }
+      ],
+      AGG_OPTIONS
+    );
+
+    const totalSales = orders[0]?.totalRevenue || 0;
+    const totalCost = orders[0]?.totalCost || 0;
+    const count = orders[0]?.count || 0;
+    const totalRefunded = refunds[0]?.totalRefunded || 0;
+    const totalReturnedCost = returnedOrders[0]?.totalReturnedCost || 0;
+
+    return [{
+      totalRevenue: Math.max(0, totalSales - totalRefunded),
+      totalCost: Math.max(0, totalCost - totalReturnedCost),
+      count
+    }];
+  });
 };
 
 export const countOrders = (dateFilter: DateFilter) =>
-  Order.countDocuments(dateFilter);
+  Order.countDocuments({ orderStatus: { $in: ["completed", "returned"] }, ...dateFilter });
 
 export const aggregateSoldProducts = (dateFilter: DateFilter) => {
   const key = cacheKey("aggregateSoldProducts", dateFilter);
   return withCache(key, () =>
     Order.aggregate(
       [
-        { $match: { orderStatus: "completed", ...dateFilter } },
+        { $match: { orderStatus: { $in: ["completed", "returned"] }, ...dateFilter } },
         { $unwind: "$items" },
         { $group: { _id: null, totalSold: { $sum: "$items.quantity" } } },
       ],
@@ -106,13 +147,13 @@ export const countCustomers = (dateFilter: DateFilter) =>
 /** Thống kê cùng kỳ trước để tính % thay đổi */
 export const aggregateRevenueForPeriod = (start: Date, end: Date) => {
   const key = cacheKey("aggregateRevenueForPeriod", start, end);
-  return withCache(key, () =>
-    Order.aggregate(
+  return withCache(key, async () => {
+    const orders = await Order.aggregate(
       [
         {
           $match: {
-            orderStatus: "completed",
-            createdAt: { $gte: start, $lte: end },
+            orderStatus: { $in: ["completed", "returned"] },
+            completedAt: { $gte: start, $lte: end },
           },
         },
         {
@@ -125,14 +166,54 @@ export const aggregateRevenueForPeriod = (start: Date, end: Date) => {
         },
       ],
       AGG_OPTIONS,
-    ),
-  );
+    );
+
+    const PaymentTransaction = (await import("../order/models/payment-transaction.schema.js")).default;
+    const refunds = await PaymentTransaction.aggregate(
+      [
+        {
+          $match: {
+            type: "refund",
+            status: { $in: ["success", "pending"] },
+            createdAt: { $gte: start, $lte: end },
+          },
+        },
+        { $group: { _id: null, totalRefunded: { $sum: "$amount" } } }
+      ],
+      AGG_OPTIONS
+    );
+
+    const returnedOrders = await Order.aggregate(
+      [
+        {
+          $match: {
+            orderStatus: "returned",
+            returnedAt: { $gte: start, $lte: end },
+          },
+        },
+        { $group: { _id: null, totalReturnedCost: { $sum: "$totalCost" } } }
+      ],
+      AGG_OPTIONS
+    );
+
+    const totalSales = orders[0]?.totalRevenue || 0;
+    const totalCost = orders[0]?.totalCost || 0;
+    const count = orders[0]?.count || 0;
+    const totalRefunded = refunds[0]?.totalRefunded || 0;
+    const totalReturnedCost = returnedOrders[0]?.totalReturnedCost || 0;
+
+    return [{
+      totalRevenue: Math.max(0, totalSales - totalRefunded),
+      totalCost: Math.max(0, totalCost - totalReturnedCost),
+      count
+    }];
+  });
 };
 
 export const countOrdersForPeriod = (start: Date, end: Date) =>
   Order.countDocuments({ 
-    createdAt: { $gte: start, $lte: end },
-    note: { $ne: "System auto-cancelled due to payment timeout" }
+    orderStatus: { $in: ["completed", "returned"] },
+    completedAt: { $gte: start, $lte: end }
   });
 
 export const countCustomersForPeriod = (start: Date, end: Date) =>
@@ -163,7 +244,7 @@ export const aggregateTopProducts = (dateFilter: DateFilter, limit = 5) => {
   return withCache(key, () =>
     Order.aggregate(
       [
-        { $match: { orderStatus: "completed", ...dateFilter } },
+        { $match: { orderStatus: { $in: ["completed", "returned"] }, ...dateFilter } },
         { $unwind: "$items" },
         {
           $addFields: {
@@ -272,13 +353,13 @@ export const aggregateRevenueChart = (dateFilter: DateFilter) => {
   return withCache(key, () =>
     Order.aggregate(
       [
-        { $match: { orderStatus: "completed", ...dateFilter } },
+        { $match: { orderStatus: { $in: ["completed", "returned"] }, ...dateFilter } },
         {
           $group: {
             _id: {
               $dateToString: {
                 format: "%Y-%m-%d",
-                date: "$createdAt",
+                date: "$completedAt",
                 timezone: "Asia/Ho_Chi_Minh",
               },
             },
@@ -300,7 +381,7 @@ export const aggregateCategoryPerformance = (dateFilter: DateFilter) => {
   return withCache(key, () =>
     Order.aggregate(
       [
-        { $match: { orderStatus: "completed", ...dateFilter } },
+        { $match: { orderStatus: { $in: ["completed", "returned"] }, ...dateFilter } },
         { $unwind: "$items" },
         {
           $addFields: {
@@ -384,7 +465,7 @@ export const aggregatePaymentMethods = (dateFilter: DateFilter) => {
   return withCache(key, () =>
     Order.aggregate(
       [
-        { $match: dateFilter },
+        { $match: { orderStatus: { $in: ["completed", "returned"] }, ...dateFilter } },
         {
           $group: {
             _id: "$paymentMethod",
@@ -392,7 +473,7 @@ export const aggregatePaymentMethods = (dateFilter: DateFilter) => {
             revenue: {
               $sum: {
                 $cond: [
-                  { $eq: ["$orderStatus", "completed"] },
+                  { $in: ["$orderStatus", ["completed", "returned"]] },
                   "$totalAmount",
                   0,
                 ],
@@ -409,10 +490,10 @@ export const aggregatePaymentMethods = (dateFilter: DateFilter) => {
 
 export const aggregateChannelStats = (dateFilter: DateFilter) => {
   const key = cacheKey("aggregateChannelStats", dateFilter);
-  return withCache(key, () =>
-    Order.aggregate(
+  return withCache(key, async () => {
+    const orders = await Order.aggregate(
       [
-        { $match: { orderStatus: "completed", ...dateFilter } },
+        { $match: { orderStatus: { $in: ["completed", "returned"] }, ...dateFilter } },
         {
           $group: {
             _id: "$channel",
@@ -423,8 +504,66 @@ export const aggregateChannelStats = (dateFilter: DateFilter) => {
         },
       ],
       AGG_OPTIONS,
-    ),
-  );
+    );
+
+    const PaymentTransaction = (await import("../order/models/payment-transaction.schema.js")).default;
+    const refundDateFilter: any = {};
+    if (dateFilter && dateFilter.completedAt) {
+      refundDateFilter.createdAt = dateFilter.completedAt;
+    }
+    const refundsByChannel = await PaymentTransaction.aggregate(
+      [
+        { $match: { type: "refund", status: { $in: ["success", "pending"] }, ...refundDateFilter } },
+        {
+          $lookup: {
+            from: "orders",
+            localField: "orderId",
+            foreignField: "_id",
+            as: "order"
+          }
+        },
+        { $unwind: "$order" },
+        {
+          $group: {
+            _id: "$order.channel",
+            totalRefunded: { $sum: "$amount" }
+          }
+        }
+      ],
+      AGG_OPTIONS
+    );
+
+    const returnedOrdersFilter: any = {};
+    if (dateFilter && dateFilter.completedAt) {
+      returnedOrdersFilter.returnedAt = dateFilter.completedAt;
+    }
+    const returnedCostsByChannel = await Order.aggregate(
+      [
+        { $match: { orderStatus: "returned", ...returnedOrdersFilter } },
+        {
+          $group: {
+            _id: "$channel",
+            totalReturnedCost: { $sum: "$totalCost" }
+          }
+        }
+      ],
+      AGG_OPTIONS
+    );
+
+    return orders.map((o: any) => {
+      const refundObj = refundsByChannel.find((r: any) => r._id === o._id);
+      const retCostObj = returnedCostsByChannel.find((rc: any) => rc._id === o._id);
+      const refundAmt = refundObj?.totalRefunded || 0;
+      const retCost = retCostObj?.totalReturnedCost || 0;
+
+      return {
+        _id: o._id,
+        totalRevenue: Math.max(0, o.totalRevenue - refundAmt),
+        totalCost: Math.max(0, o.totalCost - retCost),
+        count: o.count
+      };
+    });
+  });
 };
 
 // ── Voucher Stats ─────────────────────────────────────────────────────────────

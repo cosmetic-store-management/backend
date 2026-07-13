@@ -96,7 +96,7 @@ export const requirePermission =
   (permission: string) =>
   (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) return next(unauthorized("You are not logged in"));
-    if (req.user.role === "owner") return next();
+    if (req.user.role === "owner" || req.user.role === "manager") return next();
     if (req.user.role === "customer")
       return next(
         forbidden("Customers do not have access to the admin system"),

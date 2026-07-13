@@ -115,3 +115,15 @@ export const uploadBase64 = async (
 export const getFile = async (filename: string) => {
   return await uploadRepo.getFileByFilename(filename);
 };
+
+export const deleteFileByUrl = async (url: string) => {
+  try {
+    const parts = url.split("/");
+    const filename = parts[parts.length - 1];
+    if (filename) {
+      await uploadRepo.deleteFileByFilename(filename);
+    }
+  } catch {
+    // Ignore error silently to prevent breaking cascade deletion
+  }
+};

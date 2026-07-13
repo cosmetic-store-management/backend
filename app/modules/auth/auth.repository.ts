@@ -36,7 +36,7 @@ export const findOtpByEmail = (email: string) => Otp.findOne({ email });
 export const upsertOtp = (email: string, otpCode: string, expiresAt: Date) =>
   Otp.findOneAndUpdate(
     { email },
-    { otpCode, expiresAt, isVerified: false },
+    { otpCode, expiresAt, isVerified: false, attempts: 0 },
     { upsert: true, returnDocument: "after" }
   );
 
@@ -44,3 +44,6 @@ export const markOtpVerified = (email: string) =>
   Otp.findOneAndUpdate({ email }, { isVerified: true }, { returnDocument: "after" });
 
 export const deleteOtp = (email: string) => Otp.deleteOne({ email });
+
+export const incrementOtpAttempts = (email: string) =>
+  Otp.findOneAndUpdate({ email }, { $inc: { attempts: 1 } }, { returnDocument: "after" });
