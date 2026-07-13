@@ -1,9 +1,13 @@
 import { Router } from "express";
 import { authenticate, requirePermission } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validate.middleware.js";
-import * as controller from "./category.controller.js";
 import { CreateCategorySchema, UpdateCategorySchema, UpdateCategoryStatusSchema } from "./dto/category.request.dto.js";
+import { container } from "tsyringe";
+import { CategoryController } from "./category.controller.js";
+
 const router = Router();
+const controller = container.resolve(CategoryController);
+
 router.get("/", controller.getRoot);
 router.get("/:slug", controller.getSlug);
 router.get("/admin/list", authenticate, requirePermission("products.view"), controller.getAdminList);
@@ -14,4 +18,3 @@ router.patch("/admin/:id", authenticate, requirePermission("products.manage"), v
 router.delete("/admin/:id", authenticate, requirePermission("products.manage"), controller.deleteAdminId);
 
 export default router;
-

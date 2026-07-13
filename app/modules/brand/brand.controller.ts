@@ -1,45 +1,46 @@
-
-
-
+import { injectable, inject } from "tsyringe";
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
-
 import * as response from "../../shared/helpers/response.js";
+import { BrandService } from "./brand.service.js";
+import { AuditLogService } from "../audit-log/audit-log.service.js";
 
+@injectable()
+export class BrandController {
+  constructor(
+    @inject(BrandService) private readonly brandService: BrandService,
+    @inject(AuditLogService) private readonly auditService: AuditLogService
+  ) {}
 
-import * as brandService from "./brand.service.js";
-
-import { logAction } from "../audit-log/audit-log.service.js";
-
-export const getRoot = catchAsync(async (_req, res) => {
-    const result = await brandService.getPublicBrands();
+  getRoot = catchAsync(async (_req, res) => {
+    const result = await this.brandService.getPublicBrands();
     return response.success(res, { brands: result });
   });
 
-export const getId = catchAsync(async (req, res) => {
-    const brand = await brandService.getBrandDetail(req.params.id as string);
+  getId = catchAsync(async (req, res) => {
+    const brand = await this.brandService.getBrandDetail(req.params.id as string);
     if (!brand.isActive) throw new Error("Brand is inactive");
     return response.success(res, { brand });
   });
 
-export const getAdminList = catchAsync(async (req, res) => {
-    const result = await brandService.getAdminBrands(req.query as any);
+  getAdminList = catchAsync(async (req, res) => {
+    const result = await this.brandService.getAdminBrands(req.query as any);
     return response.success(res, result);
   });
 
-export const getAdminId = catchAsync(async (req, res) => {
-    const brand = await brandService.getBrandDetail(req.params.id as string);
+  getAdminId = catchAsync(async (req, res) => {
+    const brand = await this.brandService.getBrandDetail(req.params.id as string);
     return response.success(res, { brand });
   });
 
-export const postAdmin = catchAsync(async (req, res) => {
-    const brand = await brandService.createBrand(req.body);
-    await logAction(
+  postAdmin = catchAsync(async (req, res) => {
+    const brand = await this.brandService.createBrand(req.body);
+    await this.auditService.logAction(
       req.user!._id.toString(),
       req.user!.name,
       "create",
       "catalog",
       `Tạo thương hiệu "${brand.name}"`,
-      req.ip || "127.0.0.1",
+      req.ip || "127.0.0.1"
     );
     return response.created(res, {
       message: "Brand created successfully",
@@ -47,18 +48,18 @@ export const postAdmin = catchAsync(async (req, res) => {
     });
   });
 
-export const patchAdminIdStatus = catchAsync(async (req, res) => {
-    const brand = await brandService.updateBrandStatus(
+  patchAdminIdStatus = catchAsync(async (req, res) => {
+    const brand = await this.brandService.updateBrandStatus(
       req.params.id as string,
-      req.body.isActive,
+      req.body.isActive
     );
-    await logAction(
+    await this.auditService.logAction(
       req.user!._id.toString(),
       req.user!.name,
       "update",
       "catalog",
       `Cập nhật trạng thái thương hiệu "${brand.name}" thành ${brand.isActive ? "Kích hoạt" : "Ngừng kích hoạt"}`,
-      req.ip || "127.0.0.1",
+      req.ip || "127.0.0.1"
     );
     return response.success(res, {
       message: "Cập nhật trạng thái thương hiệu thành công",
@@ -66,18 +67,18 @@ export const patchAdminIdStatus = catchAsync(async (req, res) => {
     });
   });
 
-export const patchAdminId = catchAsync(async (req, res) => {
-    const brand = await brandService.updateBrand(
+  patchAdminId = catchAsync(async (req, res) => {
+    const brand = await this.brandService.updateBrand(
       req.params.id as string,
-      req.body,
+      req.body
     );
-    await logAction(
+    await this.auditService.logAction(
       req.user!._id.toString(),
       req.user!.name,
       "update",
       "catalog",
       `Cập nhật thông tin thương hiệu "${brand.name}"`,
-      req.ip || "127.0.0.1",
+      req.ip || "127.0.0.1"
     );
     return response.success(res, {
       message: "Cập nhật thương hiệu thành công",
@@ -85,16 +86,17 @@ export const patchAdminId = catchAsync(async (req, res) => {
     });
   });
 
-export const deleteAdminId = catchAsync(async (req, res) => {
-    const brand = await brandService.getBrandDetail(req.params.id as string);
-    await brandService.deleteBrand(req.params.id as string);
-    await logAction(
+  deleteAdminId = catchAsync(async (req, res) => {
+    const brand = await this.brandService.getBrandDetail(req.params.id as string);
+    await this.brandService.deleteBrand(req.params.id as string);
+    await this.auditService.logAction(
       req.user!._id.toString(),
       req.user!.name,
       "delete",
       "catalog",
       `Xóa thương hiệu "${brand.name}"`,
-      req.ip || "127.0.0.1",
+      req.ip || "127.0.0.1"
     );
     return response.success(res, { message: "Xóa thương hiệu thành công" });
   });
+}

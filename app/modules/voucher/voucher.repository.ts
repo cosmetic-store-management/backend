@@ -2,34 +2,37 @@
  * voucher.repository.ts
  * Data access layer cho Voucher module.
  */
+import { injectable } from "tsyringe";
 import mongoose from "mongoose";
 import Voucher from "./models/voucher.schema.js";
 import User from "../user/models/user.schema.js";
 
 // ── Voucher CRUD ──────────────────────────────────────────────────────────────
 
-export const findAll = (query: Record<string, any> = {}, skip = 0, limit = 0) => {
+@injectable()
+export class VoucherRepository {
+  findAll = (query: Record<string, any> = {}, skip = 0, limit = 0) => {
   const q = Voucher.find(query).sort({ createdAt: -1 });
   if (limit > 0) q.skip(skip).limit(limit);
   return q.lean();
 };
 
-export const countDocuments = (query: Record<string, any> = {}) => Voucher.countDocuments(query);
+  countDocuments = (query: Record<string, any> = {}) => Voucher.countDocuments(query);
 
-export const findById = (id: string) => Voucher.findById(id);
+  findById = (id: string) => Voucher.findById(id);
 
-export const findByCode = (code: string) =>
+  findByCode = (code: string) =>
   Voucher.findOne({ code: code.toUpperCase() });
 
-export const findByCodeExact = (code: string) => Voucher.findOne({ code });
+  findByCodeExact = (code: string) => Voucher.findOne({ code });
 
-export const create = (data: any) => Voucher.create(data);
+  create = (data: any) => Voucher.create(data);
 
-export const save = (voucher: any) => voucher.save();
+  save = (voucher: any) => voucher.save();
 
-export const findByIdAndDelete = (id: string) => Voucher.findByIdAndDelete(id);
+  findByIdAndDelete = (id: string) => Voucher.findByIdAndDelete(id);
 
-export const atomicIncrementUsage = async (code: string, userId?: string, session?: mongoose.ClientSession, maxAllowed?: number) => {
+  atomicIncrementUsage = async (code: string, userId?: string, session?: mongoose.ClientSession, maxAllowed?: number) => {
   const update: any = { $inc: { usedCount: 1 } };
   if (userId)
     update.$addToSet = { usedBy: new mongoose.Types.ObjectId(userId) };
@@ -67,7 +70,7 @@ export const atomicIncrementUsage = async (code: string, userId?: string, sessio
  * Decrease usedCount when rolling back (order failed).
  * Guard: only decrement if usedCount > 0 to avoid negative values.
  */
-export const atomicDecrementUsage = (code: string, userId?: string, session?: mongoose.ClientSession) => {
+  atomicDecrementUsage = (code: string, userId?: string, session?: mongoose.ClientSession) => {
   const update: any = { $inc: { usedCount: -1 } };
   if (userId) update.$pull = { usedBy: new mongoose.Types.ObjectId(userId) };
   return Voucher.findOneAndUpdate(
@@ -80,7 +83,7 @@ export const atomicDecrementUsage = (code: string, userId?: string, session?: mo
 /**
  * Replace the entire usedBy array — used when an admin needs to reset the list of users who used the voucher.
  */
-export const setUsedBy = (
+  setUsedBy = (
   voucherId: any,
   objectIds: mongoose.Types.ObjectId[],
 ) =>
@@ -92,14 +95,14 @@ export const setUsedBy = (
 
 // ── Wallet (User's saved vouchers) ────────────────────────────────────────────
 
-export const findUserWithVouchers = (userId: string) =>
+  findUserWithVouchers = (userId: string) =>
   User.findById(userId).populate({
     path: "savedVouchers",
     // Populate usedBy to determine the "used" state for each user
     select: "+usedBy",
   });
 
-export const addVoucherToWallet = (
+  addVoucherToWallet = (
   userId: string,
   voucherId: mongoose.Types.ObjectId,
 ) =>
@@ -109,7 +112,7 @@ export const addVoucherToWallet = (
     { returnDocument: "after" },
   );
 
-export const removeVoucherFromWallet = (
+  removeVoucherFromWallet = (
   userId: string,
   voucherId: mongoose.Types.ObjectId,
 ) =>
@@ -118,3 +121,5 @@ export const removeVoucherFromWallet = (
     { $pull: { savedVouchers: voucherId } },
     { returnDocument: "after" },
   );
+
+}

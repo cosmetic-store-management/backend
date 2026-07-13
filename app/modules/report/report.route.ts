@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { authenticate, requirePermission } from "../../middlewares/auth.middleware.js";
-import * as controller from "./report.controller.js";
+import { container } from "tsyringe";
+import { ReportController } from "./report.controller.js";
+
 const router = Router();
+const controller = container.resolve(ReportController);
+
 router.get("/dashboard", authenticate, requirePermission("reports.view"), controller.getDashboard);
 router.get("/completion-rates", authenticate, requirePermission("reports.view"), controller.getCompletionRates);
 router.get("/vouchers", authenticate, requirePermission("reports.view"), controller.getVouchers);
@@ -11,4 +15,3 @@ router.get("/payment-methods", authenticate, requirePermission("reports.view"), 
 router.get("/export-pdf", authenticate, requirePermission("reports.view"), controller.getExportPdf);
 
 export default router;
-

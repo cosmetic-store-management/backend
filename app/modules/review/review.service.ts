@@ -1,3 +1,6 @@
+import { injectable, inject } from "tsyringe";
+import { ReviewRepository } from "./review.repository.js";
+import { OrderRepository } from "../order/order.repository.js";
 import mongoose from "mongoose";
 import {
   badRequest,
@@ -6,10 +9,10 @@ import {
 } from "../../shared/errors/httpErrors.js";
 import type { CreateReviewInput } from "./dto/review.request.dto.js";
 import { mapReview, mapAdminReview } from "./dto/review.response.dto.js";
-import * as orderRepo from "../order/order.repository.js";
-import * as reviewRepo from "./review.repository.js";
+
+
 import Product from "../product/models/product.schema.js";
-import * as uploadService from "../upload/upload.service.js";
+import { UploadService } from "../upload/upload.service.js";
 
 // ── Internal Helper ───────────────────────────────────────────────────────────
 
@@ -17,7 +20,15 @@ import * as uploadService from "../upload/upload.service.js";
  * Tính lại averageRating + numReviews cho product bằng toán học để tối ưu hiệu năng.
  * Gọi sau mỗi create/update/delete review.
  */
-export const updateProductStats = async (
+@injectable()
+export class ReviewService {
+  constructor(
+    @inject(ReviewRepository) private readonly reviewRepo: ReviewRepository,
+    @inject(OrderRepository) private readonly orderRepo: OrderRepository,
+    @inject(UploadService) private readonly uploadService: UploadService
+  ) {}
+
+  updateProductStats = async (
   productId: mongoose.Types.ObjectId,
   action: "add" | "remove" | "update",
   newRating?: number,
@@ -54,7 +65,7 @@ export const updateProductStats = async (
 
 // ── Public ────────────────────────────────────────────────────────────────────
 
-export const createReview = async (userId: string, data: CreateReviewInput) => {
+  createReview = async (userId: string, data: CreateReviewInput) => {
   if (!mongoose.Types.ObjectId.isValid(data.productId)) {
     throw badRequest("Invalid product code");
   }
@@ -67,7 +78,7 @@ export const createReview = async (userId: string, data: CreateReviewInput) => {
   if (!productExists) throw notFound("Product does not exist in the system");
 
   // 2. Anti-spam: mỗi user chỉ review 1 lần / product
-  const existingReview = await reviewRepo.findOne({
+  const existingReview = await this.reviewRepo.findOne({
     userId: uId,
     productId: pId,
   });
@@ -79,7 +90,7 @@ export const createReview = async (userId: string, data: CreateReviewInput) => {
 
   // 3. Verified Purchase enforcement:
   //    Chỉ cho phép review nếu user đã mua và nhận sản phẩm này (đơn COMPLETED).
-  const orderItem = await orderRepo.getLatestCompletedOrderItem(uId, pId);
+  const orderItem = await this.orderRepo.getLatestCompletedOrderItem(uId, pId);
 
   if (!orderItem) {
     throw forbidden(
@@ -87,7 +98,7 @@ export const createReview = async (userId: string, data: CreateReviewInput) => {
     );
   }
 
-  const newReview = await reviewRepo.create({
+  const newReview = await this.reviewRepo.create({
     userId: uId,
     productId: pId,
     variantId: orderItem.variantId,
@@ -98,11 +109,11 @@ export const createReview = async (userId: string, data: CreateReviewInput) => {
     isVerifiedPurchase: true, // luôn true vì đã pass check trên
   });
 
-  await updateProductStats(pId, "add", data.rating);
+  await this.updateProductStats(pId, "add", data.rating);
   return newReview;
 };
 
-export const getReviewsByProductId = async (
+  getReviewsByProductId = async (
   productId: string,
   page: number = 1,
   limit = 10,
@@ -121,8 +132,8 @@ export const getReviewsByProductId = async (
   if (hasImage) query.images = { $exists: true, $not: { $size: 0 } };
 
   const [result, total] = await Promise.all([
-    reviewRepo.findByProductId(query, page, parsedLimit),
-    reviewRepo.countByQuery(query),
+    this.reviewRepo.findByProductId(query, page, parsedLimit),
+    this.reviewRepo.countByQuery(query),
   ]);
 
   return {
@@ -136,12 +147,12 @@ export const getReviewsByProductId = async (
   };
 };
 
-export const getProductReviewStats = async (productId: string) => {
+  getProductReviewStats = async (productId: string) => {
   if (!mongoose.Types.ObjectId.isValid(productId)) {
     return { averageRating: 0, totalReviews: 0, ratingCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
   }
 
-  const stats = await reviewRepo.aggregateStats(
+  const stats = await this.reviewRepo.aggregateStats(
     new mongoose.Types.ObjectId(productId),
   );
   if (stats.length > 0 && stats[0].overall.length > 0) {
@@ -165,7 +176,7 @@ export const getProductReviewStats = async (productId: string) => {
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
-export const getAllReviewsAdmin = async (
+  getAllReviewsAdmin = async (
   page: number = 1,
   limit = 10,
   rating?: number,
@@ -181,13 +192,13 @@ export const getAllReviewsAdmin = async (
     query.$or = [{ adminReply: "" }, { adminReply: { $exists: false } }];
 
   if (productName?.trim()) {
-    const productIds = await reviewRepo.findProductIdsByName(productName);
+    const productIds = await this.reviewRepo.findProductIdsByName(productName);
     query.productId = { $in: productIds };
   }
 
   const [result, total] = await Promise.all([
-    reviewRepo.findAllAdmin(query, page, parsedLimit),
-    reviewRepo.countByQuery(query),
+    this.reviewRepo.findAllAdmin(query, page, parsedLimit),
+    this.reviewRepo.countByQuery(query),
   ]);
 
   return {
@@ -201,38 +212,38 @@ export const getAllReviewsAdmin = async (
   };
 };
 
-export const deleteReviewAdmin = async (reviewId: string) => {
+  deleteReviewAdmin = async (reviewId: string) => {
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
     throw badRequest("Invalid review code");
   }
 
-  const result = await reviewRepo.findByIdAndDelete(reviewId);
+  const result = await this.reviewRepo.findByIdAndDelete(reviewId);
   if (!result) throw badRequest("Review to delete was not found");
 
   // Clean up media files
   if (result.images && result.images.length > 0) {
     for (const url of result.images) {
-      await uploadService.deleteFileByUrl(url);
+      await this.uploadService.deleteFileByUrl(url);
     }
   }
   if (result.videos && result.videos.length > 0) {
     for (const url of result.videos) {
-      await uploadService.deleteFileByUrl(url);
+      await this.uploadService.deleteFileByUrl(url);
     }
   }
 
-  await updateProductStats(result.productId as mongoose.Types.ObjectId, "remove", undefined, result.rating);
+  await this.updateProductStats(result.productId as mongoose.Types.ObjectId, "remove", undefined, result.rating);
   return result;
 };
 
-export const replyReviewAdmin = async (reviewId: string, replyText: string) => {
+  replyReviewAdmin = async (reviewId: string, replyText: string) => {
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
     throw badRequest("Invalid review code");
   }
   const text = replyText?.trim() || "";
   const updateData = text ? { adminReply: text } : { $unset: { adminReply: "" } };
 
-  const result = await reviewRepo.findByIdAndUpdate(reviewId, updateData as any);
+  const result = await this.reviewRepo.findByIdAndUpdate(reviewId, updateData as any);
   if (!result) throw badRequest("Review not found");
 
   return result;
@@ -240,7 +251,7 @@ export const replyReviewAdmin = async (reviewId: string, replyText: string) => {
 
 // ── User features ─────────────────────────────────────────────────────────────
 
-export const updateReviewByUser = async (
+  updateReviewByUser = async (
   userId: string,
   reviewId: string,
   rating: number,
@@ -251,7 +262,7 @@ export const updateReviewByUser = async (
     throw badRequest("Invalid review code");
   }
 
-  const review = await reviewRepo.findOne({
+  const review = await this.reviewRepo.findOne({
     _id: reviewId,
     userId: new mongoose.Types.ObjectId(userId),
   });
@@ -265,18 +276,18 @@ export const updateReviewByUser = async (
   review.rating = rating;
   if (comment !== undefined) review.comment = comment;
   if (images !== undefined) review.images = images;
-  await reviewRepo.save(review);
+  await this.reviewRepo.save(review);
 
-  await updateProductStats(review.productId as mongoose.Types.ObjectId, "update", rating, oldRating);
+  await this.updateProductStats(review.productId as mongoose.Types.ObjectId, "update", rating, oldRating);
   return review;
 };
 
-export const deleteReviewByUser = async (userId: string, reviewId: string) => {
+  deleteReviewByUser = async (userId: string, reviewId: string) => {
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
     throw badRequest("Invalid review code");
   }
 
-  const result = await reviewRepo.findOneAndDelete({
+  const result = await this.reviewRepo.findOneAndDelete({
     _id: reviewId,
     userId: new mongoose.Types.ObjectId(userId),
   });
@@ -289,20 +300,20 @@ export const deleteReviewByUser = async (userId: string, reviewId: string) => {
   // Clean up media files
   if (result.images && result.images.length > 0) {
     for (const url of result.images) {
-      await uploadService.deleteFileByUrl(url);
+      await this.uploadService.deleteFileByUrl(url);
     }
   }
   if (result.videos && result.videos.length > 0) {
     for (const url of result.videos) {
-      await uploadService.deleteFileByUrl(url);
+      await this.uploadService.deleteFileByUrl(url);
     }
   }
 
-  await updateProductStats(result.productId as mongoose.Types.ObjectId, "remove", undefined, result.rating);
+  await this.updateProductStats(result.productId as mongoose.Types.ObjectId, "remove", undefined, result.rating);
   return { message: "Review deleted successfully" };
 };
 
-export const checkReviewEligibility = async (
+  checkReviewEligibility = async (
   userId: string,
   productId: string,
 ) => {
@@ -314,7 +325,7 @@ export const checkReviewEligibility = async (
   const uId = new mongoose.Types.ObjectId(userId);
 
   // 1. Check if user already reviewed
-  const existingReview = await reviewRepo.findOne({
+  const existingReview = await this.reviewRepo.findOne({
     userId: uId,
     productId: pId,
   });
@@ -323,7 +334,7 @@ export const checkReviewEligibility = async (
   }
 
   // 2. Check completed purchase
-  const orderItem = await orderRepo.getLatestCompletedOrderItem(uId, pId);
+  const orderItem = await this.orderRepo.getLatestCompletedOrderItem(uId, pId);
   if (!orderItem) {
     return { canReview: false, reason: "not_purchased" };
   }
@@ -334,13 +345,13 @@ export const checkReviewEligibility = async (
   };
 };
 
-export const likeReview = async (userId: string, reviewId: string) => {
+  likeReview = async (userId: string, reviewId: string) => {
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
     throw badRequest("Invalid review code");
   }
 
   const uId = new mongoose.Types.ObjectId(userId);
-  const review = await reviewRepo.findOne({ _id: new mongoose.Types.ObjectId(reviewId) });
+  const review = await this.reviewRepo.findOne({ _id: new mongoose.Types.ObjectId(reviewId) });
   if (!review) throw notFound("Review not found");
 
   if (!review.likes) review.likes = [];
@@ -360,17 +371,17 @@ export const likeReview = async (userId: string, reviewId: string) => {
     }
   }
 
-  await reviewRepo.save(review);
+  await this.reviewRepo.save(review);
   return review;
 };
 
-export const dislikeReview = async (userId: string, reviewId: string) => {
+  dislikeReview = async (userId: string, reviewId: string) => {
   if (!mongoose.Types.ObjectId.isValid(reviewId)) {
     throw badRequest("Invalid review code");
   }
 
   const uId = new mongoose.Types.ObjectId(userId);
-  const review = await reviewRepo.findOne({ _id: new mongoose.Types.ObjectId(reviewId) });
+  const review = await this.reviewRepo.findOne({ _id: new mongoose.Types.ObjectId(reviewId) });
   if (!review) throw notFound("Review not found");
 
   if (!review.likes) review.likes = [];
@@ -390,6 +401,8 @@ export const dislikeReview = async (userId: string, reviewId: string) => {
     }
   }
 
-  await reviewRepo.save(review);
+  await this.reviewRepo.save(review);
   return review;
 };
+
+}

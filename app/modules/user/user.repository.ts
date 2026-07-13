@@ -1,105 +1,134 @@
-import User, {
-  type UserDocument,
-  type IUser,
-} from "./models/user.schema.js";
+import { injectable } from "tsyringe";
+import User, { type UserDocument, type IUser } from "./models/user.schema.js";
 import Otp, { type IOtp } from "../auth/models/otp.schema.js";
 
-export const findAll = () =>
-  User.find({ isDeleted: { $ne: true } }).select("-password").sort({ createdAt: -1 }).lean();
-
-export const findStaffs = async (
-  page: number = 1,
-  limit: number = 20,
-  search?: string,
-  status?: string,
-  role?: string,
-  hiringStatus?: string,
-  workingShift?: string,
-) => {
-  const query: any = { role: { $in: ["owner", "manager", "staff"] }, isDeleted: { $ne: true } };
-
-  if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { email: { $regex: search, $options: "i" } },
-      { phone: { $regex: search, $options: "i" } },
-    ];
-  }
-
-  if (status) {
-    query.isActive = status === "active";
-  }
-
-  if (role) {
-    query.role = role;
-  }
-
-  if (hiringStatus) {
-    query.status = hiringStatus;
-  }
-
-  if (workingShift) {
-    query.workingShift = workingShift;
-  }
-
-  const skip = (page - 1) * limit;
-
-  const [users, total] = await Promise.all([
-    User.find(query)
+@injectable()
+export class UserRepository {
+  findAll() {
+    return User.find({ isDeleted: { $ne: true } })
       .select("-password")
-      .sort({ _id: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-    User.countDocuments(query),
-  ]);
+      .sort({ createdAt: -1 })
+      .lean();
+  }
 
-  const rolePriority: Record<string, number> = { owner: 3, manager: 2, staff: 1 };
-  const sortedUsers = [...users].sort((a, b) => {
-    const prioA = rolePriority[a.role] ?? 0;
-    const prioB = rolePriority[b.role] ?? 0;
-    if (prioA !== prioB) return prioB - prioA;
-    return b._id.toString().localeCompare(a._id.toString());
-  });
+  async findStaffs(
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    status?: string,
+    role?: string,
+    hiringStatus?: string,
+    workingShift?: string,
+  ) {
+    const query: any = { role: { $in: ["owner", "manager", "staff"] }, isDeleted: { $ne: true } };
 
-  const totalPages = Math.ceil(total / limit);
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+      ];
+    }
 
-  return { users: sortedUsers, total, limit, page, totalPages };
-};
+    if (status) {
+      query.isActive = status === "active";
+    }
 
-export const findById = (id: string) => User.findById(id).select("-password");
+    if (role) {
+      query.role = role;
+    }
 
-export const findByEmail = (email: string) => User.findOne({ email, isDeleted: { $ne: true } });
+    if (hiringStatus) {
+      query.status = hiringStatus;
+    }
 
-export const findByPhone = (phone: string) => User.findOne({ phone, isDeleted: { $ne: true } });
+    if (workingShift) {
+      query.workingShift = workingShift;
+    }
 
-export const create = (data: Partial<IUser>) => User.create(data);
+    const skip = (page - 1) * limit;
 
-export const save = (user: UserDocument) => user.save();
+    const [users, total] = await Promise.all([
+      User.find(query)
+        .select("-password")
+        .sort({ _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      User.countDocuments(query),
+    ]);
 
-export const deleteById = (id: string) => User.findByIdAndDelete(id);
+    const rolePriority: Record<string, number> = { owner: 3, manager: 2, staff: 1 };
+    const sortedUsers = [...users].sort((a, b) => {
+      const prioA = rolePriority[a.role] ?? 0;
+      const prioB = rolePriority[b.role] ?? 0;
+      if (prioA !== prioB) return prioB - prioA;
+      return b._id.toString().localeCompare(a._id.toString());
+    });
 
-export const updateById = (id: string, data: Partial<IUser>) =>
-  User.findByIdAndUpdate(id, data, { returnDocument: "after" })
-    .select("-password")
-    .lean();
+    const totalPages = Math.ceil(total / limit);
 
-export const findCustomers = () =>
-  User.find({ role: "customer", isDeleted: { $ne: true } })
-    .select("-password")
-    .sort({ createdAt: -1 })
-    .lean();
+    return { users: sortedUsers, total, limit, page, totalPages };
+  }
 
-export const findOtpByPhone = (phone: string) => Otp.findOne({ phone });
+  findById(id: string) {
+    return User.findById(id).select("-password");
+  }
 
-export const upsertOtp = (phone: string, otpCode: string, expiresAt: Date) =>
-  Otp.findOneAndUpdate(
-    { phone },
-    { otpCode, expiresAt, isVerified: false },
-    { upsert: true, returnDocument: "after" }
-  );
+  findByEmail(email: string) {
+    return User.findOne({ email, isDeleted: { $ne: true } });
+  }
 
-export const markOtpVerified = (phone: string) =>
-  Otp.findOneAndUpdate({ phone }, { isVerified: true }, { returnDocument: "after" });
+  findByPhone(phone: string) {
+    return User.findOne({ phone, isDeleted: { $ne: true } });
+  }
 
-export const deleteOtp = (phone: string) => Otp.findOneAndDelete({ phone });
+  create(data: Partial<IUser>) {
+    return User.create(data);
+  }
+
+  save(user: UserDocument) {
+    return user.save();
+  }
+
+  deleteById(id: string) {
+    return User.findByIdAndDelete(id);
+  }
+
+  updateById(id: string, data: Partial<IUser>) {
+    return User.findByIdAndUpdate(id, data, { returnDocument: "after" })
+      .select("-password")
+      .lean();
+  }
+
+  findCustomers() {
+    return User.find({ role: "customer", isDeleted: { $ne: true } })
+      .select("-password")
+      .sort({ createdAt: -1 })
+      .lean();
+  }
+
+  findOtpByPhone(phone: string) {
+    return Otp.findOne({ phone });
+  }
+
+  upsertOtp(phone: string, otpCode: string, expiresAt: Date) {
+    return Otp.findOneAndUpdate(
+      { phone },
+      { otpCode, expiresAt, isVerified: false },
+      { upsert: true, returnDocument: "after" }
+    );
+  }
+
+  markOtpVerified(phone: string) {
+    return Otp.findOneAndUpdate(
+      { phone },
+      { isVerified: true },
+      { returnDocument: "after" }
+    );
+  }
+
+  deleteOtp(phone: string) {
+    return Otp.findOneAndDelete({ phone });
+  }
+}

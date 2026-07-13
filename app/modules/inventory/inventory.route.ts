@@ -2,8 +2,12 @@ import { Router } from "express";
 import { authenticate, requirePermission } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validate.middleware.js";
 import { AdjustStockSchema, CreateGoodsReceiptSchema, CreateSupplierSchema, UpdateMinStockSchema, UpdateSupplierSchema } from "./dto/inventory.request.dto.js";
-import * as controller from "./inventory.controller.js";
+import { container } from "tsyringe";
+import { InventoryController } from "./inventory.controller.js";
+
 const router = Router();
+const controller = container.resolve(InventoryController);
+
 router.get("/suppliers", authenticate, requirePermission("products.view"), controller.getSuppliers);
 router.post("/suppliers", authenticate, requirePermission("products.manage"), validate(CreateSupplierSchema), controller.postSuppliers);
 router.put("/suppliers/:id", authenticate, requirePermission("products.manage"), validate(UpdateSupplierSchema), controller.putSuppliersId);
@@ -23,4 +27,3 @@ router.get("/stocktakes/:id", authenticate, requirePermission("products.view"), 
 router.post("/stocktakes", authenticate, requirePermission("products.manage"), controller.postStocktakes);
 
 export default router;
-

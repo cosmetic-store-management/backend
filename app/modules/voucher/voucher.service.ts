@@ -8,13 +8,20 @@ import type {
   CreateVoucherInput,
   UpdateVoucherInput,
 } from "./dto/voucher.request.dto.js";
-import * as voucherRepo from "./voucher.repository.js";
+import { injectable, inject } from "tsyringe";
+import { VoucherRepository } from "./voucher.repository.js";
 import VoucherReservation from "./models/voucherReservation.schema.js";
 import mongoose, { Types } from "mongoose";
 
 // ── Admin CRUD ────────────────────────────────────────────────────────────────
 
-export const getAllVouchers = async (filters: any = {}, page = 1, limit = 10) => {
+@injectable()
+export class VoucherService {
+  constructor(
+    @inject(VoucherRepository) private readonly voucherRepo: VoucherRepository
+  ) {}
+
+  getAllVouchers = async (filters: any = {}, page = 1, limit = 10) => {
   const query: any = {};
   const now = new Date();
 
@@ -52,8 +59,8 @@ export const getAllVouchers = async (filters: any = {}, page = 1, limit = 10) =>
   }
 
   const skip = (page - 1) * limit;
-  const vouchers = await voucherRepo.findAll(query, skip, limit);
-  const total = await voucherRepo.countDocuments(query);
+  const vouchers = await this.voucherRepo.findAll(query, skip, limit);
+  const total = await this.voucherRepo.countDocuments(query);
 
   return {
     items: vouchers.map(mapVoucher),
@@ -66,41 +73,41 @@ export const getAllVouchers = async (filters: any = {}, page = 1, limit = 10) =>
   };
 };
 
-export const getVoucherById = async (id: string) => {
-  const voucher = await voucherRepo.findById(id);
+  getVoucherById = async (id: string) => {
+  const voucher = await this.voucherRepo.findById(id);
   if (!voucher) throw notFound("Voucher not found");
   return mapVoucher(voucher);
 };
 
-export const updateVoucherUsedUsers = async (
+  updateVoucherUsedUsers = async (
   voucherId: any,
   usedUsers: any[],
 ) => {
-  const voucher = await voucherRepo.findById(voucherId);
+  const voucher = await this.voucherRepo.findById(voucherId);
   if (!voucher) throw notFound("Voucher does not exist");
 
   // Dùng atomic update qua repository thay vì gán trực tiếp vào document
   const objectIds = usedUsers.map((id: any) => new Types.ObjectId(id));
-  return await voucherRepo.setUsedBy(voucherId, objectIds);
+  return await this.voucherRepo.setUsedBy(voucherId, objectIds);
 };
 
-export const createVoucher = async (data: CreateVoucherInput) => {
-  const existing = await voucherRepo.findByCodeExact(data.code);
+  createVoucher = async (data: CreateVoucherInput) => {
+  const existing = await this.voucherRepo.findByCodeExact(data.code);
   if (existing) throw conflict("Voucher code already exists");
   if (new Date(data.startDate) >= new Date(data.endDate)) {
     throw badRequest("Start date must be before end date");
   }
 
-  const voucher = await voucherRepo.create(data);
+  const voucher = await this.voucherRepo.create(data);
   return mapVoucher(voucher);
 };
 
-export const updateVoucher = async (id: string, data: UpdateVoucherInput) => {
-  const voucher = await voucherRepo.findById(id);
+  updateVoucher = async (id: string, data: UpdateVoucherInput) => {
+  const voucher = await this.voucherRepo.findById(id);
   if (!voucher) throw notFound("Voucher not found");
 
   if (data.code && data.code !== voucher.code) {
-    const existing = await voucherRepo.findByCodeExact(data.code);
+    const existing = await this.voucherRepo.findByCodeExact(data.code);
     if (existing) throw conflict("Voucher code already exists");
   }
 
@@ -110,25 +117,25 @@ export const updateVoucher = async (id: string, data: UpdateVoucherInput) => {
     throw badRequest("Start date must be before end date");
   }
 
-  await voucherRepo.save(voucher);
+  await this.voucherRepo.save(voucher);
   return mapVoucher(voucher);
 };
 
-export const deleteVoucher = async (id: string) => {
-  const result = await voucherRepo.findByIdAndDelete(id);
+  deleteVoucher = async (id: string) => {
+  const result = await this.voucherRepo.findByIdAndDelete(id);
   if (!result) throw notFound("Voucher not found");
 };
 
 // ── Checkout Integration ───────────────────────────────────────────────────────
 
-export const validateVoucher = async (
+  validateVoucher = async (
   code: string,
   subtotal: number,
   shippingFee = 30000,
   userId?: string,
   channel = "online",
 ) => {
-  const voucher = await voucherRepo.findByCode(code);
+  const voucher = await this.voucherRepo.findByCode(code);
 
   if (!voucher) throw notFound("Discount code does not exist");
   if (!voucher.isActive) throw badRequest("Discount code has been disabled");
@@ -202,11 +209,11 @@ export const validateVoucher = async (
  * Atomic increment usedCount — used when an order is created successfully.
  * Tránh race condition: $inc + $addToSet trong một findOneAndUpdate.
  */
-export const incrementVoucherUsage = async (code: string, userId?: string, session?: mongoose.ClientSession) => {
+  incrementVoucherUsage = async (code: string, userId?: string, session?: mongoose.ClientSession) => {
   let maxAllowed: number | undefined = undefined;
 
   if (userId) {
-    const voucher = await voucherRepo.findByCode(code);
+    const voucher = await this.voucherRepo.findByCode(code);
     if (voucher) {
       const hasReservation = await VoucherReservation.exists({ voucherId: voucher._id, userId });
       if (hasReservation && voucher.overbookingLimit !== 0) {
@@ -215,10 +222,10 @@ export const incrementVoucherUsage = async (code: string, userId?: string, sessi
     }
   }
 
-  const result = await voucherRepo.atomicIncrementUsage(code, userId, session, maxAllowed);
+  const result = await this.voucherRepo.atomicIncrementUsage(code, userId, session, maxAllowed);
 
   if (userId) {
-    const voucher = await voucherRepo.findByCode(code);
+    const voucher = await this.voucherRepo.findByCode(code);
     if (voucher) {
       await VoucherReservation.deleteOne({ voucherId: voucher._id, userId }).session(session || null);
     }
@@ -230,13 +237,13 @@ export const incrementVoucherUsage = async (code: string, userId?: string, sessi
  * Atomic decrement usedCount — dùng khi order bị cancel/thất bại (rollback).
  * Guard: chỉ decrement nếu usedCount > 0.
  */
-export const decrementVoucherUsage = (code: string, userId?: string, session?: mongoose.ClientSession) =>
-  voucherRepo.atomicDecrementUsage(code, userId, session);
+  decrementVoucherUsage = (code: string, userId?: string, session?: mongoose.ClientSession) =>
+  this.voucherRepo.atomicDecrementUsage(code, userId, session);
 
 // ── Wallet ────────────────────────────────────────────────────────────────────
 
-export const getWalletVouchers = async (userId: string) => {
-  const user = await voucherRepo.findUserWithVouchers(userId);
+  getWalletVouchers = async (userId: string) => {
+  const user = await this.voucherRepo.findUserWithVouchers(userId);
   if (!user || !user.savedVouchers?.length) return [];
 
   const now = new Date();
@@ -262,8 +269,8 @@ export const getWalletVouchers = async (userId: string) => {
     .map(mapVoucher);
 };
 
-export const getAllWalletVouchers = async (userId: string) => {
-  const user = await voucherRepo.findUserWithVouchers(userId);
+  getAllWalletVouchers = async (userId: string) => {
+  const user = await this.voucherRepo.findUserWithVouchers(userId);
   if (!user || !user.savedVouchers?.length) return [];
 
   const now = new Date();
@@ -296,8 +303,8 @@ export const getAllWalletVouchers = async (userId: string) => {
     });
 };
 
-export const collectVoucher = async (userId: string, code: string) => {
-  const voucher = await voucherRepo.findByCode(code);
+  collectVoucher = async (userId: string, code: string) => {
+  const voucher = await this.voucherRepo.findByCode(code);
   if (!voucher) throw notFound("Discount code not found");
   if (!voucher.isActive) throw badRequest("Discount code is no longer active");
 
@@ -335,7 +342,7 @@ export const collectVoucher = async (userId: string, code: string) => {
     throw conflict("You have already saved this discount code. If you did not use it in time, it has been revoked.");
   } else {
     // Only add to the wallet if it is not already there
-    await voucherRepo.addVoucherToWallet(userId, voucher._id);
+    await this.voucherRepo.addVoucherToWallet(userId, voucher._id);
   }
 
   // Tạo Reservation với TTL (nếu có ttlMinutes > 0)
@@ -352,10 +359,12 @@ export const collectVoucher = async (userId: string, code: string) => {
   return mapVoucher(voucher);
 };
 
-export const uncollectVoucher = async (userId: string, code: string) => {
-  const voucher = await voucherRepo.findByCode(code);
+  uncollectVoucher = async (userId: string, code: string) => {
+  const voucher = await this.voucherRepo.findByCode(code);
   if (!voucher) throw notFound("Discount code not found");
 
-  await voucherRepo.removeVoucherFromWallet(userId, voucher._id);
+  await this.voucherRepo.removeVoucherFromWallet(userId, voucher._id);
   await VoucherReservation.deleteOne({ voucherId: voucher._id, userId });
 };
+
+}

@@ -1,21 +1,22 @@
-
-import * as voucherService from "./voucher.service.js";
-
-
-
-
+import { injectable, inject } from "tsyringe";
+import { VoucherService } from "./voucher.service.js";
 import * as response from "../../shared/helpers/response.js";
-
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
 
-export const getAdmin = catchAsync(async (req, res) => {
+@injectable()
+export class VoucherController {
+  constructor(
+    @inject(VoucherService) private readonly voucherService: VoucherService
+  ) {}
+
+  getAdmin = catchAsync(async (req, res) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const status = req.query.status as string;
     const type = req.query.type as string;
     const search = req.query.search as string;
     
-    const { items: vouchers, pagination } = await voucherService.getAllVouchers(
+    const { items: vouchers, pagination } = await this.voucherService.getAllVouchers(
       { status, type, search },
       page,
       limit
@@ -27,16 +28,16 @@ export const getAdmin = catchAsync(async (req, res) => {
     });
   });
 
-export const postAdmin = catchAsync(async (req, res) => {
-    const voucher = await voucherService.createVoucher(req.body);
+  postAdmin = catchAsync(async (req, res) => {
+    const voucher = await this.voucherService.createVoucher(req.body);
     return response.created(res, {
       voucher,
       message: "Voucher created successfully",
     });
   });
 
-export const putAdminId = catchAsync(async (req, res) => {
-    const voucher = await voucherService.updateVoucher(
+  putAdminId = catchAsync(async (req, res) => {
+    const voucher = await this.voucherService.updateVoucher(
       req.params.id as string,
       req.body,
     );
@@ -46,21 +47,21 @@ export const putAdminId = catchAsync(async (req, res) => {
     });
   });
 
-export const deleteAdminId = catchAsync(async (req, res) => {
-    await voucherService.deleteVoucher(req.params.id as string);
+  deleteAdminId = catchAsync(async (req, res) => {
+    await this.voucherService.deleteVoucher(req.params.id as string);
     return response.success(res, { message: "Voucher deleted successfully" });
   });
 
-export const getPublic = catchAsync(async (_req, res) => {
-    const { items: vouchers } = await voucherService.getAllVouchers(false);
+  getPublic = catchAsync(async (_req, res) => {
+    const { items: vouchers } = await this.voucherService.getAllVouchers(false);
     return response.success(res, {
       vouchers,
       message: "Available vouchers fetched successfully",
     });
   });
 
-export const getWallet = catchAsync(async (req, res) => {
-    const vouchers = await voucherService.getWalletVouchers(
+  getWallet = catchAsync(async (req, res) => {
+    const vouchers = await this.voucherService.getWalletVouchers(
       req.user!._id.toString(),
     );
     return response.success(res, {
@@ -69,8 +70,8 @@ export const getWallet = catchAsync(async (req, res) => {
     });
   });
 
-export const getWalletAll = catchAsync(async (req, res) => {
-    const vouchers = await voucherService.getAllWalletVouchers(
+  getWalletAll = catchAsync(async (req, res) => {
+    const vouchers = await this.voucherService.getAllWalletVouchers(
       req.user!._id.toString(),
     );
     return response.success(res, {
@@ -79,9 +80,9 @@ export const getWalletAll = catchAsync(async (req, res) => {
     });
   });
 
-export const postValidate = catchAsync(async (req, res) => {
+  postValidate = catchAsync(async (req, res) => {
     const { code, subtotal } = req.body;
-    const result = await voucherService.validateVoucher(
+    const result = await this.voucherService.validateVoucher(
       code,
       subtotal,
       30000,
@@ -90,8 +91,8 @@ export const postValidate = catchAsync(async (req, res) => {
     return response.success(res, { result, message: "Voucher is valid" });
   });
 
-export const postCollectCode = catchAsync(async (req, res) => {
-    const voucher = await voucherService.collectVoucher(
+  postCollectCode = catchAsync(async (req, res) => {
+    const voucher = await this.voucherService.collectVoucher(
       req.user!._id.toString(),
       req.params.code as string,
     );
@@ -101,10 +102,11 @@ export const postCollectCode = catchAsync(async (req, res) => {
     });
   });
 
-export const deleteCollectCode = catchAsync(async (req, res) => {
-    await voucherService.uncollectVoucher(
+  deleteCollectCode = catchAsync(async (req, res) => {
+    await this.voucherService.uncollectVoucher(
       req.user!._id.toString(),
       req.params.code as string,
     );
     return response.success(res, { message: "Voucher removed from wallet" });
   });
+}

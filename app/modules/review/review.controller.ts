@@ -1,18 +1,18 @@
-
-
-
+import { injectable, inject } from "tsyringe";
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
-
 import { badRequest } from "../../shared/errors/httpErrors.js";
-
 import * as response from "../../shared/helpers/response.js";
+import { ReviewService } from "./review.service.js";
+import { AuditLogService } from "../audit-log/audit-log.service.js";
 
+@injectable()
+export class ReviewController {
+  constructor(
+    @inject(ReviewService) private readonly reviewService: ReviewService,
+    @inject(AuditLogService) private readonly auditService: AuditLogService
+  ) {}
 
-import * as reviewService from "./review.service.js";
-
-import { logAction } from "../audit-log/audit-log.service.js";
-
-export const getAdminList = catchAsync(async (req, res) => {
+  getAdminList = catchAsync(async (req, res) => {
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 10;
     const rating = req.query.rating
@@ -21,41 +21,41 @@ export const getAdminList = catchAsync(async (req, res) => {
     const isReplied = req.query.isReplied as string | undefined;
     const productName = req.query.productName as string | undefined;
 
-    const result = await reviewService.getAllReviewsAdmin(
+    const result = await this.reviewService.getAllReviewsAdmin(
       page,
       limit,
       rating,
       isReplied,
-      productName,
+      productName
     );
     return response.success(res, result);
   });
 
-export const deleteAdminId = catchAsync(async (req, res) => {
+  deleteAdminId = catchAsync(async (req, res) => {
     const reviewId = req.params.id as string;
-    await reviewService.deleteReviewAdmin(reviewId);
-    await logAction(
+    await this.reviewService.deleteReviewAdmin(reviewId);
+    await this.auditService.logAction(
       req.user!._id.toString(),
       req.user!.name,
       "delete",
       "catalog",
       `Xóa đánh giá (ID: ${reviewId})`,
-      req.ip || "127.0.0.1",
+      req.ip || "127.0.0.1"
     );
     return response.success(res, { message: "Review deleted successfully" });
   });
 
-export const patchAdminIdReply = catchAsync(async (req, res) => {
+  patchAdminIdReply = catchAsync(async (req, res) => {
     const reviewId = req.params.id as string;
     const { replyText } = req.body;
-    const result = await reviewService.replyReviewAdmin(reviewId, replyText);
-    await logAction(
+    const result = await this.reviewService.replyReviewAdmin(reviewId, replyText);
+    await this.auditService.logAction(
       req.user!._id.toString(),
       req.user!.name,
       "update",
       "catalog",
       `Phản hồi đánh giá (ID: ${reviewId})`,
-      req.ip || "127.0.0.1",
+      req.ip || "127.0.0.1"
     );
     return response.success(res, {
       message: "Đã phản hồi đánh giá",
@@ -63,17 +63,17 @@ export const patchAdminIdReply = catchAsync(async (req, res) => {
     });
   });
 
-export const patchId = catchAsync(async (req, res) => {
+  patchId = catchAsync(async (req, res) => {
     const { rating, comment, images } = req.body;
     if (!rating) {
       throw badRequest("Vui lòng cung cấp điểm đánh giá");
     }
-    const result = await reviewService.updateReviewByUser(
+    const result = await this.reviewService.updateReviewByUser(
       req.user!._id.toString(),
       req.params.id as string,
       rating,
       comment,
-      images,
+      images
     );
     return response.success(res, {
       message: "Cập nhật đánh giá thành công",
@@ -81,16 +81,16 @@ export const patchId = catchAsync(async (req, res) => {
     });
   });
 
-export const deleteId = catchAsync(async (req, res) => {
+  deleteId = catchAsync(async (req, res) => {
     const { id } = req.params;
-    await reviewService.deleteReviewByUser(
+    await this.reviewService.deleteReviewByUser(
       req.user!._id.toString(),
-      id as string,
+      id as string
     );
     return response.success(res, { message: "Xóa đánh giá thành công" });
   });
 
-export const getProductProductId = catchAsync(async (req, res) => {
+  getProductProductId = catchAsync(async (req, res) => {
     const productId = req.params.productId as string;
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 10;
@@ -99,25 +99,25 @@ export const getProductProductId = catchAsync(async (req, res) => {
       : undefined;
     const hasImage = req.query.hasImage === "true";
 
-    const result = await reviewService.getReviewsByProductId(
+    const result = await this.reviewService.getReviewsByProductId(
       productId,
       page,
       limit,
       rating,
       hasImage,
-      req.user?._id?.toString(),
+      req.user?._id?.toString()
     );
 
     // Try to get stats as well
-    const stats = await reviewService.getProductReviewStats(productId);
+    const stats = await this.reviewService.getProductReviewStats(productId);
 
     return response.success(res, { ...result, stats });
   });
 
-export const postRoot = catchAsync(async (req, res) => {
-    const review = await reviewService.createReview(
+  postRoot = catchAsync(async (req, res) => {
+    const review = await this.reviewService.createReview(
       req.user!._id.toString(),
-      req.body,
+      req.body
     );
     return response.created(res, {
       message: "Đánh giá sản phẩm thành công",
@@ -125,18 +125,18 @@ export const postRoot = catchAsync(async (req, res) => {
     });
   });
 
-export const getEligibilityProductId = catchAsync(async (req, res) => {
-    const result = await reviewService.checkReviewEligibility(
+  getEligibilityProductId = catchAsync(async (req, res) => {
+    const result = await this.reviewService.checkReviewEligibility(
       req.user!._id.toString(),
-      req.params.productId as string,
+      req.params.productId as string
     );
     return response.success(res, result);
   });
 
-export const postIdLike = catchAsync(async (req, res) => {
-    const result = await reviewService.likeReview(
+  postIdLike = catchAsync(async (req, res) => {
+    const result = await this.reviewService.likeReview(
       req.user!._id.toString(),
-      req.params.id as string,
+      req.params.id as string
     );
     return response.success(res, {
       message: "Lượt thích đã được cập nhật",
@@ -145,10 +145,10 @@ export const postIdLike = catchAsync(async (req, res) => {
     });
   });
 
-export const postIdDislike = catchAsync(async (req, res) => {
-    const result = await reviewService.dislikeReview(
+  postIdDislike = catchAsync(async (req, res) => {
+    const result = await this.reviewService.dislikeReview(
       req.user!._id.toString(),
-      req.params.id as string,
+      req.params.id as string
     );
     return response.success(res, {
       message: "Lượt không thích đã được cập nhật",
@@ -156,3 +156,4 @@ export const postIdDislike = catchAsync(async (req, res) => {
       dislikesCount: result.dislikes?.length || 0,
     });
   });
+}

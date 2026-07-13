@@ -2,8 +2,12 @@ import { Router } from "express";
 import { authenticate, isAuthenticated, isManager, requirePermission } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validate.middleware.js";
 import { AddressSchema, CreateStaffSchema, UpdateProfileSchema, UpdateRoleSchema, UpdateStatusSchema } from "./dto/user.request.dto.js";
-import * as controller from "./user.controller.js";
+import { container } from "tsyringe";
+import { UserController } from "./user.controller.js";
+
 const router = Router();
+const controller = container.resolve(UserController);
+
 router.get("/", authenticate, isManager, controller.getRoot);
 router.get("/me/tier-info", authenticate, isAuthenticated, controller.getMeTierInfo);
 router.patch("/me", authenticate, isAuthenticated, validate(UpdateProfileSchema), controller.patchMe);
@@ -32,4 +36,3 @@ router.patch("/:id/points", authenticate, isManager, controller.patchIdPoints);
 router.get("/:id/points/history", authenticate, requirePermission("customers.view"), controller.getIdPointsHistory);
 
 export default router;
-

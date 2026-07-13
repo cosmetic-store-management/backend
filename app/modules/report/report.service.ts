@@ -1,7 +1,9 @@
-import * as reportRepo from "./report.repository.js";
-import { getSettings } from "../setting/setting.service.js";
+
+import { SettingService } from "../setting/setting.service.js";
 import puppeteer from "puppeteer";
 import { PassThrough } from "stream";
+import { injectable, inject } from "tsyringe";
+import { ReportRepository } from "./report.repository.js";
 import mongoose from "mongoose";
 
 /** Tỷ lệ lợi nhuận mặc định (35%) nếu chưa cấu hình trong Settings */
@@ -62,7 +64,14 @@ function getPreviousPeriod(
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
-export const getDashboardStats = async (
+@injectable()
+export class ReportService {
+  constructor(
+    @inject(ReportRepository) private readonly reportRepo: ReportRepository,
+    @inject(SettingService) private readonly settingService: SettingService
+  ) {}
+
+  getDashboardStats = async (
   startDate?: string,
   endDate?: string,
   creatorId?: string,
@@ -81,21 +90,21 @@ export const getDashboardStats = async (
     topProductsAgg,
     lowStockRaw,
   ] = await Promise.all([
-    reportRepo.aggregateRevenue(completedFilter),
-    reportRepo.countOrders(completedFilter),
-    reportRepo.aggregateSoldProducts(completedFilter),
-    reportRepo.countCustomers(generalFilter),
-    reportRepo.findRecentOrders(generalFilter, 5),
-    reportRepo.aggregateTopProducts(completedFilter, 5),
-    reportRepo.findLowStockVariants(10),
+    this.reportRepo.aggregateRevenue(completedFilter),
+    this.reportRepo.countOrders(completedFilter),
+    this.reportRepo.aggregateSoldProducts(completedFilter),
+    this.reportRepo.countCustomers(generalFilter),
+    this.reportRepo.findRecentOrders(generalFilter, 5),
+    this.reportRepo.aggregateTopProducts(completedFilter, 5),
+    this.reportRepo.findLowStockVariants(10),
   ]);
 
   // --- Kỳ trước (để tính % thay đổi) ---
   const [prevRevenueResult, prevOrdersCount, prevCustomersCount] =
     await Promise.all([
-      reportRepo.aggregateRevenueForPeriod(prevStart, prevEnd),
-      reportRepo.countOrdersForPeriod(prevStart, prevEnd),
-      reportRepo.countCustomersForPeriod(prevStart, prevEnd),
+      this.reportRepo.aggregateRevenueForPeriod(prevStart, prevEnd),
+      this.reportRepo.countOrdersForPeriod(prevStart, prevEnd),
+      this.reportRepo.countCustomersForPeriod(prevStart, prevEnd),
     ]);
 
   const totalRevenue = revenueResult[0]?.totalRevenue || 0;
@@ -133,9 +142,9 @@ export const getDashboardStats = async (
   // ── Top Products ───────────────────────────────────────────────────────────
   const topProducts = [];
   for (const agg of topProductsAgg) {
-    const prod = await reportRepo.findProductById(agg._id);
+    const prod = await this.reportRepo.findProductById(agg._id);
     if (prod) {
-      const variants = await reportRepo.findVariantsByProductId(prod._id);
+      const variants = await this.reportRepo.findVariantsByProductId(prod._id);
       const totalStock = variants.reduce((sum, v) => sum + v.stock, 0);
 
       topProducts.push({
@@ -155,7 +164,7 @@ export const getDashboardStats = async (
   // ── Low Stock ──────────────────────────────────────────────────────────────
   const lowStockItems = await Promise.all(
     lowStockRaw.map(async (v: any) => {
-      const prod = await reportRepo.findProductById(v.productId as any);
+      const prod = await this.reportRepo.findProductById(v.productId as any);
       return {
         productName: prod?.name || "Sản phẩm không rõ",
         variantName: v.name,
@@ -167,13 +176,13 @@ export const getDashboardStats = async (
   );
 
   // Đọc profitMargin từ Settings (cấu hình được qua admin UI)
-  const settings = (await getSettings()) as any;
+  const settings = (await this.settingService.getSettings()) as any;
   const profitMarginPct: number =
     typeof settings?.profitMargin === "number"
       ? settings.profitMargin / 100
       : DEFAULT_PROFIT_MARGIN;
 
-  const channelRaw = await reportRepo.aggregateChannelStats(completedFilter);
+  const channelRaw = await this.reportRepo.aggregateChannelStats(completedFilter);
   const channelStats = {
     online: { revenue: 0, orders: 0, profit: 0 },
     pos: { revenue: 0, orders: 0, profit: 0 }
@@ -208,12 +217,12 @@ export const getDashboardStats = async (
 
 // ── Completion Rates ──────────────────────────────────────────────────────────
 
-export const getCompletionRates = async (
+  getCompletionRates = async (
   startDate?: string,
   endDate?: string,
 ) => {
   const dateFilter = buildGeneralDateFilter(startDate, endDate);
-  const result = await reportRepo.aggregateCompletionRates(dateFilter);
+  const result = await this.reportRepo.aggregateCompletionRates(dateFilter);
 
   if (result.length === 0) {
     return {
@@ -241,9 +250,9 @@ export const getCompletionRates = async (
 
 // ── Revenue Chart ─────────────────────────────────────────────────────────────
 
-export const getRevenueChart = async (startDate?: string, endDate?: string) => {
+  getRevenueChart = async (startDate?: string, endDate?: string) => {
   const dateFilter = buildCompletedDateFilter(startDate, endDate);
-  const result = await reportRepo.aggregateRevenueChart(dateFilter);
+  const result = await this.reportRepo.aggregateRevenueChart(dateFilter);
   return result.map((r) => ({
     date: r._id,
     revenue: r.revenue,
@@ -253,12 +262,12 @@ export const getRevenueChart = async (startDate?: string, endDate?: string) => {
 
 // ── Category Performance ──────────────────────────────────────────────────────
 
-export const getCategoryPerformance = async (
+  getCategoryPerformance = async (
   startDate?: string,
   endDate?: string,
 ) => {
   const dateFilter = buildCompletedDateFilter(startDate, endDate);
-  const result = await reportRepo.aggregateCategoryPerformance(dateFilter);
+  const result = await this.reportRepo.aggregateCategoryPerformance(dateFilter);
   return result.map((r) => ({
     category: r._id,
     revenue: r.revenue,
@@ -268,11 +277,11 @@ export const getCategoryPerformance = async (
 
 // ── PDF Export ────────────────────────────────────────────────────────────────
 
-export const generatePdfReport = async (
+  generatePdfReport = async (
   startDate?: string,
   endDate?: string,
 ): Promise<PassThrough> => {
-  const stats = await getDashboardStats(startDate, endDate);
+  const stats = await this.getDashboardStats(startDate, endDate);
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -456,12 +465,12 @@ export const generatePdfReport = async (
 
 // ── Payment Methods ───────────────────────────────────────────────────────────
 
-export const getPaymentMethodsStats = async (
+  getPaymentMethodsStats = async (
   startDate?: string,
   endDate?: string,
 ) => {
   const dateFilter = buildCompletedDateFilter(startDate, endDate);
-  const result = await reportRepo.aggregatePaymentMethods(dateFilter);
+  const result = await this.reportRepo.aggregatePaymentMethods(dateFilter);
   return result.map((r) => ({
     method: r._id,
     count: r.count,
@@ -471,9 +480,9 @@ export const getPaymentMethodsStats = async (
 
 // ── Voucher Stats ─────────────────────────────────────────────────────────────
 
-export const getVoucherStats = async (startDate?: string, endDate?: string) => {
+  getVoucherStats = async (startDate?: string, endDate?: string) => {
   const dateFilter = buildGeneralDateFilter(startDate, endDate);
-  const vouchers = await reportRepo.findAllVouchers(dateFilter);
+  const vouchers = await this.reportRepo.findAllVouchers(dateFilter);
 
   return vouchers.map((v: any) => {
     const usageLimit = v.usageLimit || 0;
@@ -493,3 +502,5 @@ export const getVoucherStats = async (startDate?: string, endDate?: string) => {
     };
   });
 };
+
+}

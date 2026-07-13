@@ -1,4 +1,5 @@
-import { getSettings } from "../../setting/setting.service.js";
+import { SettingService } from "../../setting/setting.service.js";
+import { container } from "tsyringe";
 
 /**
  * Hàm loại bỏ dấu Tiếng Việt để so sánh chuỗi chính xác
@@ -27,7 +28,7 @@ export const calcShippingFeeFromSettings = async (
 ): Promise<number> => {
   if (channel === "pos") return 0;
 
-  const settings = (await getSettings()) as any;
+  const settings = (await container.resolve(SettingService).getSettings()) as any;
   const storeAddress = (
     settings?.storeAddress || "Hà Nội, Việt Nam"
   ).toLowerCase();

@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Order from "./models/order.schema.js";
-import { cancelPendingOrder } from "./order.service.js";
+import { container } from "tsyringe";
+import { OrderService } from "./order.service.js";
 
 // Chạy mỗi phút 1 lần
 const CRON_INTERVAL = 60 * 1000;
@@ -9,6 +10,8 @@ const EXPIRE_MINUTES = 15;
 
 export const startOrderCron = () => {
   let isRunning = false;
+  // Resolve OrderService here (lazily) to avoid circular dependencies
+  // at module initialization time.
 
   setInterval(async () => {
     if (isRunning) {
@@ -26,12 +29,15 @@ export const startOrderCron = () => {
         createdAt: { $lt: expireTime }
       }).limit(50); // Chỉ xử lý tối đa 50 đơn mỗi phút để tránh Write Conflict & SMTP Throttling
 
-      for (const order of expiredOrders) {
-        try {
-          await cancelPendingOrder(order.code, "Hủy tự động do quá hạn thanh toán");
-          console.log(`[Order Cron] Đã hủy đơn hàng quá hạn (15p): ${order.code}`);
-        } catch (err: any) {
-          console.error(`[Order Cron] Lỗi khi hủy đơn hàng ${order.code}:`, err.message);
+      if (expiredOrders.length > 0) {
+        const orderService = container.resolve(OrderService);
+        for (const order of expiredOrders) {
+          try {
+            await orderService.cancelPendingOrder(order.code, "Hủy tự động do quá hạn thanh toán");
+            console.log(`[Order Cron] Đã hủy đơn hàng quá hạn (15p): ${order.code}`);
+          } catch (err: any) {
+            console.error(`[Order Cron] Lỗi khi hủy đơn hàng ${order.code}:`, err.message);
+          }
         }
       }
     } catch (error) {

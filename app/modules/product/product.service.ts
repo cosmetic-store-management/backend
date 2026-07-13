@@ -1,5 +1,7 @@
+import { injectable, inject } from "tsyringe";
+import { ProductRepository } from "./product.repository.js";
 import mongoose from "mongoose";
-import * as productRepo from "./product.repository.js";
+
 import Variant from "./models/variant.schema.js";
 import Brand from "../brand/models/brand.schema.js";
 import Category from "../category/models/category.schema.js";
@@ -43,7 +45,24 @@ interface PublicProductQuery {
   sort?: string; // 'newest' | 'top_sales' | 'popular' | 'price_asc' | 'price_desc'
 }
 
-export const getPublicProducts = async ({
+interface AdminProductQuery {
+  search?: string;
+  category?: string;
+  brandId?: string;
+  status?: string;
+  minStock?: number;
+  maxStock?: number;
+  cursor?: string;
+  limit?: number;
+  page?: number;
+}
+@injectable()
+export class ProductService {
+  constructor(
+    @inject(ProductRepository) private readonly productRepo: ProductRepository
+  ) {}
+
+  getPublicProducts = async ({
   category,
   brandId,
   search,
@@ -120,7 +139,7 @@ export const getPublicProducts = async ({
       .filter(Boolean);
     const categoryIds = [];
     for (const slug of categorySlugs) {
-      const ids = await productRepo.findCategoryIdsWithDescendants(slug);
+      const ids = await this.productRepo.findCategoryIdsWithDescendants(slug);
       categoryIds.push(...ids);
     }
     if (categoryIds.length === 0)
@@ -198,11 +217,11 @@ export const getPublicProducts = async ({
       try {
         // Parallel metadata queries (brands + categories in products)
         const [fetchedBrands, fetchedCats] = await Promise.all([
-          productRepo.findBrandsInProducts(queryWithoutBrands).catch((e: any) => {
+          this.productRepo.findBrandsInProducts(queryWithoutBrands).catch((e: any) => {
             console.error("[findBrands]", e.message);
             return [];
           }),
-          productRepo
+          this.productRepo
             .findCategoriesInProducts(queryWithoutCategories)
             .catch((e: any) => {
               console.error("[findCats]", e.message);
@@ -265,7 +284,7 @@ export const getPublicProducts = async ({
       const pagedIds = priceSorted
         .slice(skip, skip + parsedLimit)
         .map((r: any) => r._id);
-      const products = await productRepo.findPublicByIds(pagedIds);
+      const products = await this.productRepo.findPublicByIds(pagedIds);
 
       return {
         products: products.map(mapProduct),
@@ -282,8 +301,8 @@ export const getPublicProducts = async ({
 
     // ── Standard sort (newest / top_sales / popular) ───────────────────────
     const [products, total] = await Promise.all([
-      productRepo.findPublic(query, skip, parsedLimit, mongoSort),
-      productRepo.countAll(query),
+      this.productRepo.findPublic(query, skip, parsedLimit, mongoSort),
+      this.productRepo.countAll(query),
     ]);
 
     return {
@@ -307,14 +326,14 @@ export const getPublicProducts = async ({
   }
 };
 
-export const getPublicProductDetail = async (slugOrId: string) => {
+  getPublicProductDetail = async (slugOrId: string) => {
   // Hỗ trợ cả slug lẫn MongoDB ObjectId (backward compat với cart items cũ)
   let product = null;
   if (mongoose.Types.ObjectId.isValid(slugOrId)) {
-    product = await productRepo.findById(slugOrId);
+    product = await this.productRepo.findById(slugOrId);
   }
   if (!product) {
-    product = await productRepo.findBySlug(slugOrId);
+    product = await this.productRepo.findBySlug(slugOrId);
   }
   if (!product) throw notFound("Product not found");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -323,7 +342,7 @@ export const getPublicProductDetail = async (slugOrId: string) => {
   return mapProduct(product);
 };
 
-export const getRecommendedProducts = async (
+  getRecommendedProducts = async (
   productId: string,
   limit: number = 10,
 ) => {
@@ -331,7 +350,7 @@ export const getRecommendedProducts = async (
     throw badRequest("Invalid product ID");
   const pId = new mongoose.Types.ObjectId(productId);
 
-  const product = await productRepo.findById(productId);
+  const product = await this.productRepo.findById(productId);
   if (!product) throw notFound("Product not found");
 
   const { default: Order } = await import("../order/models/order.schema.js");
@@ -346,12 +365,12 @@ export const getRecommendedProducts = async (
     { $limit: limit }
   ]);
 
-  const sortedIds = ordersAggregation.map(doc => doc._id);
+  const sortedIds = ordersAggregation.map((doc: any) => doc._id);
 
   const recommendedProducts: any[] = [];
 
   if (sortedIds.length > 0) {
-    const collabProducts = await productRepo.findPublic(
+    const collabProducts = await this.productRepo.findPublic(
       { _id: { $in: sortedIds }, isActive: true },
       0,
       limit,
@@ -371,7 +390,7 @@ export const getRecommendedProducts = async (
     const existingIds = recommendedProducts.map((p) => p._id);
     existingIds.push(pId); // exclude current product
 
-    const fallbackProducts = await productRepo.findPublic(
+    const fallbackProducts = await this.productRepo.findPublic(
       {
         categoryId: product.categoryId,
         _id: { $nin: existingIds },
@@ -382,7 +401,7 @@ export const getRecommendedProducts = async (
     );
 
     // Sort fallback by reviews/rating in memory to show the best related products
-    fallbackProducts.sort((a, b) => (b.numReviews || 0) - (a.numReviews || 0));
+    fallbackProducts.sort((a: any, b: any) => (b.numReviews || 0) - (a.numReviews || 0));
 
     recommendedProducts.push(...fallbackProducts);
   }
@@ -392,19 +411,9 @@ export const getRecommendedProducts = async (
 
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 
-interface AdminProductQuery {
-  search?: string;
-  category?: string;
-  brandId?: string;
-  status?: string;
-  minStock?: number;
-  maxStock?: number;
-  cursor?: string;
-  limit?: number;
-  page?: number;
-}
 
-export const getAdminProducts = async ({
+
+  getAdminProducts = async ({
   search,
   category,
   brandId,
@@ -464,7 +473,7 @@ export const getAdminProducts = async ({
 
   if (category) {
     const categoryIds =
-      await productRepo.findCategoryIdsWithDescendants(category);
+      await this.productRepo.findCategoryIdsWithDescendants(category);
     if (categoryIds.length === 0)
       return {
         products: [],
@@ -482,8 +491,8 @@ export const getAdminProducts = async ({
   }
 
   const [result, total] = await Promise.all([
-    productRepo.findAdmin(query, cursor || null, parsedLimit, page ? Number(page) : undefined),
-    productRepo.countAll(query),
+    this.productRepo.findAdmin(query, cursor || null, parsedLimit, page ? Number(page) : undefined),
+    this.productRepo.countAll(query),
   ]);
 
   return {
@@ -497,16 +506,16 @@ export const getAdminProducts = async ({
   };
 };
 
-export const getAdminProductDetail = async (
+  getAdminProductDetail = async (
   id: string,
 ) => {
-  const product = await productRepo.findById(id);
+  const product = await this.productRepo.findById(id);
   if (!product) throw notFound("Product not found");
   return mapProduct(product as any);
 };
 
-export const createProduct = async (data: CreateProductInput) => {
-  const category = await productRepo.findCategoryById(data.categoryId);
+  createProduct = async (data: CreateProductInput) => {
+  const category = await this.productRepo.findCategoryById(data.categoryId);
   if (!category) throw badRequest("Category does not exist");
 
   const { default: Brand } =
@@ -517,20 +526,20 @@ export const createProduct = async (data: CreateProductInput) => {
   // Validate secondary categories if provided
   if (data.categoryIds && data.categoryIds.length > 0) {
     const validCategories = await Promise.all(
-      data.categoryIds.map((id) => productRepo.findCategoryById(id)),
+      data.categoryIds.map((id) => this.productRepo.findCategoryById(id)),
     );
     if (validCategories.some((c) => !c))
       throw badRequest("One or more subcategories do not exist");
   }
 
   const slug = slugify(data.name);
-  const existing = await productRepo.findOneBy({
+  const existing = await this.productRepo.findOneBy({
     slug,
     categoryId: data.categoryId,
   });
   if (existing) throw conflict("Product slug already exists in this category");
 
-  const newProduct = await productRepo.create({
+  const newProduct = await this.productRepo.create({
     ...data,
     slug,
     description: sanitizeRichText(data.description ?? ""), // XSS protection
@@ -595,19 +604,19 @@ export const createProduct = async (data: CreateProductInput) => {
     }
   }
 
-  const created = await productRepo.findById(newProduct._id.toString());
+  const created = await this.productRepo.findById(newProduct._id.toString());
   return mapProduct(created!);
 };
 
-export const updateProduct = async (id: string, data: UpdateProductInput) => {
-  const product = await productRepo.findDocumentById(id);
+  updateProduct = async (id: string, data: UpdateProductInput) => {
+  const product = await this.productRepo.findDocumentById(id);
   if (!product)
     throw notFound("Product not found or you do not have permission to update");
 
   let nextCategoryId = product.categoryId;
 
   if (data.categoryId !== undefined) {
-    const category = await productRepo.findCategoryById(data.categoryId);
+    const category = await this.productRepo.findCategoryById(data.categoryId);
     if (!category) throw badRequest("Category does not exist");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     product.categoryId = data.categoryId as any;
@@ -618,7 +627,7 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
   if (data.categoryIds !== undefined) {
     if (data.categoryIds.length > 0) {
       const validCategories = await Promise.all(
-        data.categoryIds.map((cid) => productRepo.findCategoryById(cid)),
+        data.categoryIds.map((cid) => this.productRepo.findCategoryById(cid)),
       );
       if (validCategories.some((c) => !c))
         throw badRequest("One or more subcategories do not exist");
@@ -629,7 +638,7 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
 
   if (data.name !== undefined) {
     const nextSlug = slugify(data.name);
-    const existing = await productRepo.findOneBy({
+    const existing = await this.productRepo.findOneBy({
       slug: nextSlug,
       categoryId: nextCategoryId,
       _id: { $ne: product._id },
@@ -654,7 +663,7 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
   if (data.imageUrls !== undefined) product.imageUrls = data.imageUrls as any;
   if (data.isActive !== undefined) product.isActive = data.isActive;
 
-  await productRepo.save(product);
+  await this.productRepo.save(product);
 
   if (data.variants && data.variants.length > 0) {
     const { default: Brand } =
@@ -721,27 +730,27 @@ export const updateProduct = async (id: string, data: UpdateProductInput) => {
     }
   }
 
-  const updated = await productRepo.findById(product._id.toString());
+  const updated = await this.productRepo.findById(product._id.toString());
   return mapProduct(updated!);
 };
 
-export const updateProductStatus = async (
+  updateProductStatus = async (
   id: string,
   isActive: boolean,
 ) => {
   const query: any = { _id: id };
-  const product = await productRepo.findDocumentBy(query);
+  const product = await this.productRepo.findDocumentBy(query);
   if (!product)
     throw notFound("Product not found or you do not have permission to update");
   product.isActive = isActive;
-  await productRepo.save(product);
-  const updated = await productRepo.findById(product._id.toString());
+  await this.productRepo.save(product);
+  const updated = await this.productRepo.findById(product._id.toString());
   return mapProduct(updated!);
 };
 
-export const deleteProduct = async (id: string) => {
+  deleteProduct = async (id: string) => {
   const query: any = { _id: id };
-  const product = await productRepo.findOneBy(query);
+  const product = await this.productRepo.findOneBy(query);
   if (!product)
     throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền xóa");
 
@@ -775,7 +784,7 @@ export const deleteProduct = async (id: string) => {
     }
   }
 
-  await productRepo.findByIdAndDelete(id);
+  await this.productRepo.findByIdAndDelete(id);
   const { default: Variant } = await import("./models/variant.schema.js");
   await Variant.deleteMany({ productId: id });
 
@@ -783,7 +792,7 @@ export const deleteProduct = async (id: string) => {
   await Review.deleteMany({ productId: id });
 };
 
-export const batchImportProducts = async (productsData: any[]) => {
+  batchImportProducts = async (productsData: any[]) => {
   let totalProcessed = 0;
 
   const productGroups = new Map<string, any[]>();
@@ -915,3 +924,5 @@ export const batchImportProducts = async (productsData: any[]) => {
 
   return { totalProcessed };
 };
+
+}

@@ -1,3 +1,4 @@
+import { injectable, container } from "tsyringe";
 import Order, {
   type OrderDocument,
   type IOrder,
@@ -8,127 +9,142 @@ import mongoose, { type Types } from "mongoose";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Query = Record<string, any>;
 
-// ── Order ─────────────────────────────────────────────────────────────────────
+@injectable()
+export class OrderRepository {
+  async findOrders(query: Query, page: number, limit: number) {
+    const skip = (page - 1) * limit;
+    const [orders, total] = await Promise.all([
+      Order.find(query).sort({ _id: -1 }).skip(skip).limit(limit).lean(),
+      Order.countDocuments(query),
+    ]);
+    
+    const totalPages = Math.ceil(total / limit);
 
-export const findOrders = async (query: Query, page: number, limit: number) => {
-  const skip = (page - 1) * limit;
-  const [orders, total] = await Promise.all([
-    Order.find(query).sort({ _id: -1 }).skip(skip).limit(limit).lean(),
-    Order.countDocuments(query),
-  ]);
-  
-  const totalPages = Math.ceil(total / limit);
+    return { orders, total, limit, page, totalPages };
+  }
 
-  return { orders, total, limit, page, totalPages };
-};
+  countOrders(query: Query) {
+    return Order.countDocuments(query);
+  }
 
-export const countOrders = (query: Query) => Order.countDocuments(query);
+  findOrderById(id: string) {
+    return Order.findById(id);
+  }
 
-export const findOrderById = (id: string) => Order.findById(id);
+  findOne(query: Query) {
+    return Order.findOne(query);
+  }
 
-export const findOne = (query: Query) => Order.findOne(query);
+  findOrderByCode(code: string) {
+    return Order.findOne({ code });
+  }
 
-export const findOrderByCode = (code: string) => Order.findOne({ code });
+  findOrdersByUserId(userId: string | Types.ObjectId) {
+    return Order.find({ 
+      userId,
+      note: { $ne: "System auto-cancelled due to payment timeout" }
+    }).sort({ createdAt: -1 }).lean();
+  }
 
-export const findOrdersByUserId = (userId: string | Types.ObjectId) =>
-  Order.find({ 
-    userId,
-    note: { $ne: "System auto-cancelled due to payment timeout" }
-  }).sort({ createdAt: -1 }).lean();
+  async createOrder(data: Partial<IOrder>, session?: mongoose.ClientSession) {
+    const result = await Order.create([data], { session });
+    return result[0];
+  }
 
-export const createOrder = async (data: Partial<IOrder>, session?: mongoose.ClientSession) => {
-  const result = await Order.create([data], { session });
-  return result[0];
-};
+  saveOrder(order: OrderDocument, session?: mongoose.ClientSession) {
+    return order.save({ session });
+  }
 
-export const saveOrder = (order: OrderDocument, session?: mongoose.ClientSession) => order.save({ session });
+  findOneAndUpdateOrder(query: Query, update: any, options?: any) {
+    return Order.findOneAndUpdate(query, update, options);
+  }
 
-export const findOneAndUpdateOrder = (query: Query, update: any, options?: any) => Order.findOneAndUpdate(query, update, options);
+  findProductById(id: string) {
+    return Product.findById(id).populate("categoryId", "name slug imageUrl isActive");
+  }
 
-// ── Product & Variant (stock management) ──────────────────────────────────────
+  findProductsByIds(ids: string[]) {
+    return Product.find({ _id: { $in: ids } }).populate("categoryId", "name slug imageUrl isActive");
+  }
 
-export const findProductById = (id: string) =>
-  Product.findById(id).populate("categoryId", "name slug imageUrl isActive");
+  async findVariantById(id: string) {
+    const Variant = (await import("../product/models/variant.schema.js"))
+      .default;
+    return Variant.findById(id);
+  }
 
-export const findProductsByIds = (ids: string[]) =>
-  Product.find({ _id: { $in: ids } }).populate("categoryId", "name slug imageUrl isActive");
+  async findVariantsByIds(ids: string[]) {
+    const Variant = (await import("../product/models/variant.schema.js"))
+      .default;
+    return Variant.find({ _id: { $in: ids } });
+  }
 
-export const findVariantById = async (id: string) => {
-  const Variant = (await import("../product/models/variant.schema.js"))
-    .default;
-  return Variant.findById(id);
-};
+  async decrementVariantStock(
+    variantId: string,
+    quantity: number,
+    session?: mongoose.ClientSession
+  ) {
+    const Variant = (await import("../product/models/variant.schema.js"))
+      .default;
+    const updated = await Variant.findOneAndUpdate(
+      { _id: variantId, stock: { $gte: quantity } },
+      { $inc: { stock: -quantity } },
+      { session, returnDocument: "after" },
+    );
+    if (!updated) {
+      throw new Error(
+        "Không đủ số lượng trong tồn kho hoặc biến thể không tồn tại",
+      );
+    }
+    
+    import("../inventory/inventory.service.js")
+      .then(module => {
+        const service = container.resolve(module.InventoryService);
+        service.checkAndTriggerLowStockAlert(updated);
+      })
+      .catch(err => console.error("Error triggering low stock alert:", err));
 
-export const findVariantsByIds = async (ids: string[]) => {
-  const Variant = (await import("../product/models/variant.schema.js"))
-    .default;
-  return Variant.find({ _id: { $in: ids } });
-};
+    return updated;
+  }
 
-export const decrementVariantStock = async (
-  variantId: string,
-  quantity: number,
-  session?: mongoose.ClientSession
-) => {
-  const Variant = (await import("../product/models/variant.schema.js"))
-    .default;
-  const updated = await Variant.findOneAndUpdate(
-    { _id: variantId, stock: { $gte: quantity } },
-    { $inc: { stock: -quantity } },
-    { session, returnDocument: "after" },
-  );
-  if (!updated) {
-    throw new Error(
-      "Không đủ số lượng trong tồn kho hoặc biến thể không tồn tại",
+  async incrementVariantStock(
+    variantId: string,
+    quantity: number,
+    session?: mongoose.ClientSession
+  ) {
+    const Variant = (await import("../product/models/variant.schema.js"))
+      .default;
+    return Variant.findByIdAndUpdate(
+      variantId, 
+      { $inc: { stock: quantity } },
+      { session }
     );
   }
-  
-  import("../inventory/inventory.service.js")
-    .then(service => service.checkAndTriggerLowStockAlert(updated))
-    .catch(err => console.error("Error triggering low stock alert:", err));
 
-  return updated;
-};
+  async hasCompletedPurchase(
+    userId: string | mongoose.Types.ObjectId,
+    productId: string | mongoose.Types.ObjectId,
+  ): Promise<boolean> {
+    const exists = await Order.exists({
+      userId,
+      orderStatus: "completed",
+      "items.productId": productId,
+    });
+    return !!exists;
+  }
 
-export const incrementVariantStock = async (
-  variantId: string,
-  quantity: number,
-  session?: mongoose.ClientSession
-) => {
-  const Variant = (await import("../product/models/variant.schema.js"))
-    .default;
-  return Variant.findByIdAndUpdate(
-    variantId, 
-    { $inc: { stock: quantity } },
-    { session }
-  );
-};
+  async getLatestCompletedOrderItem(
+    userId: string | mongoose.Types.ObjectId,
+    productId: string | mongoose.Types.ObjectId,
+  ) {
+    const order = await Order.findOne({
+      userId,
+      orderStatus: "completed",
+      "items.productId": productId,
+    })
+      .sort({ completedAt: -1, createdAt: -1 })
+      .lean();
 
-export const hasCompletedPurchase = async (
-  userId: string | mongoose.Types.ObjectId,
-  productId: string | mongoose.Types.ObjectId,
-): Promise<boolean> => {
-  const exists = await Order.exists({
-    userId,
-    orderStatus: "completed",
-    "items.productId": productId,
-  });
-  return !!exists;
-};
-
-export const getLatestCompletedOrderItem = async (
-  userId: string | mongoose.Types.ObjectId,
-  productId: string | mongoose.Types.ObjectId,
-) => {
-  const order = await Order.findOne({
-    userId,
-    orderStatus: "completed",
-    "items.productId": productId,
-  })
-    .sort({ completedAt: -1, createdAt: -1 })
-    .lean();
-
-  return order?.items.find((item: any) => item.productId.toString() === productId.toString()) || null;
-};
-
-
+    return order?.items.find((item: any) => item.productId.toString() === productId.toString()) || null;
+  }
+}

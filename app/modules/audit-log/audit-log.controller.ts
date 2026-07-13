@@ -1,14 +1,17 @@
-
-
+import { injectable, inject } from "tsyringe";
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
-
 import * as response from "../../shared/helpers/response.js";
+import { AuditLogService } from "./audit-log.service.js";
 
-import * as auditService from "./audit-log.service.js";
+@injectable()
+export class AuditLogController {
+  constructor(
+    @inject(AuditLogService) private readonly auditService: AuditLogService
+  ) {}
 
-export const getRoot = catchAsync(async (req, res) => {
+  getRoot = catchAsync(async (req, res) => {
     const { search, domain, startDate, endDate, page, limit = "20" } = req.query;
-    const result = await auditService.getAuditLogs(
+    const result = await this.auditService.getAuditLogs(
       search as string,
       domain as string,
       startDate as string,
@@ -18,3 +21,4 @@ export const getRoot = catchAsync(async (req, res) => {
     );
     return response.success(res, result);
   });
+}

@@ -1,3 +1,4 @@
+import "reflect-metadata";
 import "dotenv/config";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";

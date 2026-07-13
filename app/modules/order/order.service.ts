@@ -1,9 +1,10 @@
 import Order, { OrderDocument } from "./models/order.schema.js";
 import PaymentTransaction from "./models/payment-transaction.schema.js";
-import * as orderRepo from "./order.repository.js";
+import { injectable, inject, container } from "tsyringe";
+import { OrderRepository } from "./order.repository.js";
 import { mapOrder, mapPublicOrder } from "./dto/order.response.dto.js";
 
-import * as inventoryRepo from "../inventory/inventory.repository.js";
+import { InventoryRepository } from "../inventory/inventory.repository.js";
 import {
   notFound,
   forbidden,
@@ -15,9 +16,7 @@ import {
   UpdateOrderDetailsInput,
 } from "./dto/order.request.dto.js";
 import mongoose from "mongoose";
-import {
-  decrementVoucherUsage,
-} from "../voucher/voucher.service.js";
+import { VoucherService } from "../voucher/voucher.service.js";
 import { refundPayment } from "./payment/payment.service.js";
 import PointHistory from "../user/models/point-history.schema.js";
 import Product from "../product/models/product.schema.js";
@@ -40,12 +39,40 @@ import {
 // Re-export helpers for backward compatibility
 export { POINTS_EARN_RATE, MAX_POINTS_PCT, ALLOWED_TRANSITIONS };
 
-export const attachItemsToOrders = async (orders: OrderDocument[]) => {
+interface AdminOrderQuery {
+  orderStatus?: string;
+  channel?: string;
+  userId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+  paymentStatus?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export {
+  getOrderActivities,
+  logOrderActivity,
+} from "./order-activity.service.js";
+import { getOrderActivities } from "./order-activity.service.js";
+
+@injectable()
+export class OrderService {
+  public getOrderActivities = getOrderActivities;
+  constructor(
+    @inject(OrderRepository) private readonly orderRepo: OrderRepository,
+    @inject(InventoryRepository) private readonly inventoryRepo: InventoryRepository,
+    // use lazy/container for VoucherService to avoid cycle if needed, but lets just inject it
+    @inject(VoucherService) private readonly voucherService: VoucherService
+  ) {}
+
+  attachItemsToOrders = async (orders: OrderDocument[]) => {
   if (orders.length === 0) return [];
   return orders.map((order) => mapOrder(order, (order as any).items || []));
 };
 
-export const restoreStock = async (
+  restoreStock = async (
   items: any[],
   session?: mongoose.ClientSession,
   operatorId?: string,
@@ -58,7 +85,7 @@ export const restoreStock = async (
 
   for (const item of sortedItems) {
     if (item.variantId) {
-      await orderRepo.incrementVariantStock(
+      await this.orderRepo.incrementVariantStock(
         item.variantId.toString(),
         item.quantity,
         session
@@ -69,7 +96,7 @@ export const restoreStock = async (
         ? item.costPriceTotal / item.quantity
         : 0;
 
-      await inventoryRepo.createBatch(
+      await this.inventoryRepo.createBatch(
         {
           variantId: item.variantId,
           goodsReceiptId: null,
@@ -96,19 +123,9 @@ export const restoreStock = async (
 };
 
 // ── Source: order-query.service.ts ──────────────────────────────
-interface AdminOrderQuery {
-  orderStatus?: string;
-  channel?: string;
-  userId?: string;
-  search?: string;
-  page?: number;
-  limit?: number;
-  paymentStatus?: string;
-  dateFrom?: string;
-  dateTo?: string;
-}
 
-export const getOrdersForAdmin = async ({
+
+  getOrdersForAdmin = async ({
   orderStatus,
   channel,
   userId,
@@ -158,11 +175,11 @@ export const getOrdersForAdmin = async ({
   }
 
   const [result, total] = await Promise.all([
-    orderRepo.findOrders(query, parsedPage, parsedLimit),
-    orderRepo.countOrders(query),
+    this.orderRepo.findOrders(query, parsedPage, parsedLimit),
+    this.orderRepo.countOrders(query),
   ]);
 
-  const mappedOrders = await attachItemsToOrders(result.orders);
+  const mappedOrders = await this.attachItemsToOrders(result.orders);
   return {
     orders: mappedOrders,
     pagination: {
@@ -174,13 +191,13 @@ export const getOrdersForAdmin = async ({
   };
 };
 
-export const getMyOrders = async (userId: string) => {
-  const orders = await orderRepo.findOrdersByUserId(userId);
-  return attachItemsToOrders(orders);
+  getMyOrders = async (userId: string) => {
+  const orders = await this.orderRepo.findOrdersByUserId(userId);
+  return this.attachItemsToOrders(orders);
 };
 
-export const getOrder = async (orderId: string, requestUser: UserDocument) => {
-  const order = await orderRepo.findOrderById(orderId);
+  getOrder = async (orderId: string, requestUser: UserDocument) => {
+  const order = await this.orderRepo.findOrderById(orderId);
   if (!order) throw notFound("Order not found");
 
   const isAdmin = requestUser.role === "owner" || requestUser.role === "staff";
@@ -192,8 +209,8 @@ export const getOrder = async (orderId: string, requestUser: UserDocument) => {
   return mapOrder(order, items);
 };
 
-export const trackOrder = async (orderCode: string) => {
-  const order = await orderRepo.findOne({ code: orderCode.toUpperCase() });
+  trackOrder = async (orderCode: string) => {
+  const order = await this.orderRepo.findOne({ code: orderCode.toUpperCase() });
   if (!order) throw notFound("Order not found");
 
   const items = (order as any).items || [];
@@ -201,7 +218,7 @@ export const trackOrder = async (orderCode: string) => {
 };
 
 // ── Source: order-management.service.ts ──────────────────────────────
-export const updateOrderStatus = async (
+  updateOrderStatus = async (
   orderId: string,
   data: UpdateOrderStatusInput & {
     receiverName?: string;
@@ -212,7 +229,7 @@ export const updateOrderStatus = async (
 ) => {
   const query: any = { _id: orderId };
 
-  let order: any = await orderRepo.findOne(query);
+  let order: any = await this.orderRepo.findOne(query);
   if (!order)
     throw notFound(
       "Order not found or the order does not belong to your system",
@@ -268,7 +285,7 @@ export const updateOrderStatus = async (
       completedAt: order.completedAt,
     };
 
-    const updatedOrder = await orderRepo.findOneAndUpdateOrder(
+    const updatedOrder = await this.orderRepo.findOneAndUpdateOrder(
       { _id: order._id, orderStatus: previousStatus },
       { $set: updateObj },
       { session, new: true }
@@ -321,9 +338,9 @@ export const updateOrderStatus = async (
         order.paymentStatus = "refund_pending";
       }
 
-      await restoreStock(items, session, requestUser?._id?.toString());
+      await this.restoreStock(items, session, requestUser?._id?.toString());
       if (order.voucherCode) {
-        await decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
+        await this.voucherService.decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
       }
 
       if (order.userId) {
@@ -372,7 +389,7 @@ export const updateOrderStatus = async (
               [{ $set: { points: { $max: [0, { $add: ["$points", incQuery.points || 0] }] } } }],
               { session }
             );
-            await orderRepo.saveOrder(order, session);
+            await this.orderRepo.saveOrder(order, session);
           }
         }
       }
@@ -417,7 +434,7 @@ export const updateOrderStatus = async (
           }], { session });
 
           order.earnedPoints = pointsEarned;
-          await orderRepo.saveOrder(order, session);
+          await this.orderRepo.saveOrder(order, session);
         }
       }
 
@@ -478,7 +495,7 @@ export const updateOrderStatus = async (
   return mapOrder(order, (order as any).items || []);
 };
 
-export const requestReturnOrder = async (
+  requestReturnOrder = async (
   orderId: string,
   requestUser: UserDocument,
   reason: string,
@@ -488,7 +505,7 @@ export const requestReturnOrder = async (
     throw badRequest("Please enter a return reason");
   }
 
-  const order = await orderRepo.findOrderById(orderId);
+  const order = await this.orderRepo.findOrderById(orderId);
   if (!order) throw notFound("Order not found");
 
   if (order.userId?.toString() !== requestUser._id.toString())
@@ -515,8 +532,8 @@ export const requestReturnOrder = async (
   return mapOrder(order, (order as any).items || []);
 };
 
-export const approveReturnOrder = async (orderId: string, _requestUser: UserDocument) => {
-  const order = await orderRepo.findOrderById(orderId);
+  approveReturnOrder = async (orderId: string, _requestUser: UserDocument) => {
+  const order = await this.orderRepo.findOrderById(orderId);
   if (!order) throw notFound("Order not found");
 
   if (order.orderStatus !== "return_pending") {
@@ -535,7 +552,7 @@ export const approveReturnOrder = async (orderId: string, _requestUser: UserDocu
 
     // Khôi phục kho
     const items = (order as any).items || [];
-    await restoreStock(items, session, _requestUser?._id?.toString());
+    await this.restoreStock(items, session, _requestUser?._id?.toString());
 
     // Xử lý Điểm
     if (order.userId) {
@@ -600,7 +617,7 @@ export const approveReturnOrder = async (orderId: string, _requestUser: UserDocu
       }
     }
 
-    await orderRepo.saveOrder(order, session);
+    await this.orderRepo.saveOrder(order, session);
     await session.commitTransaction();
   } catch (error: any) {
     await session.abortTransaction();
@@ -620,12 +637,12 @@ export const approveReturnOrder = async (orderId: string, _requestUser: UserDocu
   return mapOrder(order, (order as any).items || []);
 };
 
-export const rejectReturnOrder = async (orderId: string, _requestUser: UserDocument, rejectReason: string) => {
+  rejectReturnOrder = async (orderId: string, _requestUser: UserDocument, rejectReason: string) => {
   if (!rejectReason || rejectReason.trim() === "") {
     throw badRequest("Please enter a rejection reason");
   }
 
-  const order = await orderRepo.findOrderById(orderId);
+  const order = await this.orderRepo.findOrderById(orderId);
   if (!order) throw notFound("Order not found");
 
   if (order.orderStatus !== "return_pending") {
@@ -648,11 +665,11 @@ export const rejectReturnOrder = async (orderId: string, _requestUser: UserDocum
   return mapOrder(order, (order as any).items || []);
 };
 
-export const cancelOrder = async (
+  cancelOrder = async (
   orderId: string,
   requestUser: UserDocument,
 ) => {
-  let order: any = await orderRepo.findOrderById(orderId);
+  let order: any = await this.orderRepo.findOrderById(orderId);
   if (!order) throw notFound("Order not found");
 
   const isAdmin = ["owner", "manager", "staff"].includes(requestUser.role);
@@ -667,7 +684,7 @@ export const cancelOrder = async (
   session.startTransaction();
 
   try {
-    const updatedOrder = await orderRepo.findOneAndUpdateOrder(
+    const updatedOrder = await this.orderRepo.findOneAndUpdateOrder(
       { _id: order._id, orderStatus: "pending" },
       { $set: { orderStatus: "cancelled", cancelledAt: new Date() } },
       { session, new: true }
@@ -680,10 +697,10 @@ export const cancelOrder = async (
     order = updatedOrder as any;
 
     const items = (order as any).items || [];
-    await restoreStock(items, session, requestUser?._id?.toString());
+    await this.restoreStock(items, session, requestUser?._id?.toString());
 
     if (order.voucherCode) {
-      await decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
+      await this.voucherService.decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
     }
 
     if ((order.usedPoints || 0) > 0 && order.userId) {
@@ -697,7 +714,7 @@ export const cancelOrder = async (
           performedBy: requestUser?._id,
         }], { session });
         order.usedPoints = 0;
-        await orderRepo.saveOrder(order, session);
+        await this.orderRepo.saveOrder(order, session);
       }
     }
 
@@ -724,11 +741,11 @@ export const cancelOrder = async (
   return mapOrder(order, (order as any).items || []);
 };
 
-export const cancelPendingOrder = async (
+  cancelPendingOrder = async (
   orderCode: string,
   reason: string = "Khách hàng hủy thanh toán"
 ) => {
-  let order: any = await orderRepo.findOne({ code: orderCode.toUpperCase() });
+  let order: any = await this.orderRepo.findOne({ code: orderCode.toUpperCase() });
   if (!order) throw notFound("Order not found");
 
   if (order.orderStatus !== "pending")
@@ -740,7 +757,7 @@ export const cancelPendingOrder = async (
   try {
     // We can use note to store cancellation reason if we want, or just leave it.
     const note = order.note ? order.note : reason;
-    const updatedOrder = await orderRepo.findOneAndUpdateOrder(
+    const updatedOrder = await this.orderRepo.findOneAndUpdateOrder(
       { _id: order._id, orderStatus: "pending" },
       { $set: { orderStatus: "cancelled", note } },
       { session, new: true }
@@ -753,10 +770,10 @@ export const cancelPendingOrder = async (
     order = updatedOrder as any;
 
     const items = (order as any).items || [];
-    await restoreStock(items, session, order.userId?.toString());
+    await this.restoreStock(items, session, order.userId?.toString());
 
     if (order.voucherCode) {
-      await decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
+      await this.voucherService.decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
     }
 
     if ((order.usedPoints || 0) > 0 && order.userId) {
@@ -770,7 +787,7 @@ export const cancelPendingOrder = async (
           // performedBy is null or user id
         }], { session });
         order.usedPoints = 0;
-        await orderRepo.saveOrder(order, session);
+        await this.orderRepo.saveOrder(order, session);
       }
     }
 
@@ -792,8 +809,8 @@ export const cancelPendingOrder = async (
   return mapOrder(order as any, (order as any).items || []);
 };
 
-export const abandonPendingOrder = async (orderCode: string) => {
-  const order = await orderRepo.findOne({ code: orderCode.toUpperCase() });
+  abandonPendingOrder = async (orderCode: string) => {
+  const order = await this.orderRepo.findOne({ code: orderCode.toUpperCase() });
   if (!order) throw notFound("Order not found");
 
   if (order.orderStatus !== "pending")
@@ -804,10 +821,10 @@ export const abandonPendingOrder = async (orderCode: string) => {
 
   try {
     const items = (order as any).items || [];
-    await restoreStock(items, session, order.userId?.toString());
+    await this.restoreStock(items, session, order.userId?.toString());
 
     if (order.voucherCode) {
-      await decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
+      await this.voucherService.decrementVoucherUsage(order.voucherCode, order.userId?.toString(), session);
     }
 
     if ((order.usedPoints || 0) > 0 && order.userId) {
@@ -825,7 +842,7 @@ export const abandonPendingOrder = async (orderCode: string) => {
     // Soft cancel the abandoned order instead of hard delete
     order.orderStatus = "cancelled";
     order.note = order.note || "Khách hàng hủy thanh toán hoặc quá hạn";
-    await orderRepo.saveOrder(order, session);
+    await this.orderRepo.saveOrder(order, session);
 
     await session.commitTransaction();
   } catch (error: any) {
@@ -838,18 +855,18 @@ export const abandonPendingOrder = async (orderCode: string) => {
   return mapOrder(order, (order as any).items || []);
 };
 
-export const updateOrderDetailsAdmin = async (
+  updateOrderDetailsAdmin = async (
   orderId: string,
   data: UpdateOrderDetailsInput,
 ) => {
-  const order = await orderRepo.findOne({ _id: orderId });
+  const order = await this.orderRepo.findOne({ _id: orderId });
   if (!order) throw notFound("Order not found");
 
   if (["completed", "cancelled", "returned"].includes(order.orderStatus)) {
     throw badRequest("Cannot edit a closed order");
   }
 
-  const updatedOrder = await orderRepo.findOneAndUpdateOrder(
+  const updatedOrder = await this.orderRepo.findOneAndUpdateOrder(
     { _id: orderId },
     { $set: data },
     { new: true }
@@ -859,10 +876,10 @@ export const updateOrderDetailsAdmin = async (
   return mapOrder(updatedOrder as any, (updatedOrder as any).items || []);
 };
 
-export const refundOrderAdmin = async (
+  refundOrderAdmin = async (
   orderId: string,
 ) => {
-  const order = await orderRepo.findOne({ _id: orderId });
+  const order = await this.orderRepo.findOne({ _id: orderId });
   if (!order) throw notFound("Order not found");
 
   if (order.paymentStatus !== "refund_pending") {
@@ -879,7 +896,7 @@ export const refundOrderAdmin = async (
       updateObj.orderStatus = "returned";
     }
 
-    const updatedOrder = await orderRepo.findOneAndUpdateOrder(
+    const updatedOrder = await this.orderRepo.findOneAndUpdateOrder(
       { _id: orderId, paymentStatus: "refund_pending" },
       { $set: updateObj },
       { session, new: true }
@@ -899,13 +916,13 @@ export const refundOrderAdmin = async (
   }
 };
 
-export const processPOSReturn = async (
+  processPOSReturn = async (
   orderId: string,
   requester: UserDocument,
   returnItems?: Array<{ productId: string; variantId: string; quantity: number }>,
   returnReason?: string,
 ) => {
-  const order = await orderRepo.findOrderById(orderId);
+  const order = await this.orderRepo.findOrderById(orderId);
   if (!order) throw notFound("Order not found");
 
   if (order.orderStatus === "returned") {
@@ -972,7 +989,7 @@ export const processPOSReturn = async (
   try {
     order.paymentStatus = "refunded";
 
-    await restoreStock(itemsToReturn, session, requester?._id?.toString());
+    await this.restoreStock(itemsToReturn, session, requester?._id?.toString());
 
     if (order.userId) {
       const userDoc = await User.findById(order.userId);
@@ -1057,7 +1074,7 @@ export const processPOSReturn = async (
       session
     );
 
-    await orderRepo.saveOrder(order, session);
+    await this.orderRepo.saveOrder(order, session);
     await session.commitTransaction();
   } catch (error: any) {
     await session.abortTransaction();
@@ -1069,14 +1086,8 @@ export const processPOSReturn = async (
   return mapOrder(order, order.items);
 };
 
-export {
-  getUserTotalSpent,
-  previewOrder,
-  createOrder,
-  createPOSOrder,
-} from "./checkout/checkout.service.js";
 
-export {
-  getOrderActivities,
-  logOrderActivity,
-} from "./order-activity.service.js";
+
+
+
+}

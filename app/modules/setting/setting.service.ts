@@ -1,3 +1,4 @@
+import { injectable } from "tsyringe";
 import Setting from "./models/setting.schema.js";
 
 const DEFAULT_SETTINGS = {
@@ -31,30 +32,33 @@ const DEFAULT_SETTINGS = {
   bankQrCodeUrl: "",
 };
 
-export const getSettings = async () => {
-  let doc = await Setting.findOne({ key: "general_settings" });
-  if (!doc) {
-    doc = await Setting.create({
-      key: "general_settings",
-      value: DEFAULT_SETTINGS,
-      description: "General system configuration and payment options",
-    });
-  }
-  return doc.value;
-};
+@injectable()
+export class SettingService {
+  getSettings = async () => {
+    let doc = await Setting.findOne({ key: "general_settings" });
+    if (!doc) {
+      doc = await Setting.create({
+        key: "general_settings",
+        value: DEFAULT_SETTINGS,
+        description: "General system configuration and payment options",
+      });
+    }
+    return doc.value;
+  };
 
-export const updateSettings = async (value: any) => {
-  let doc = await Setting.findOne({ key: "general_settings" });
-  if (!doc) {
-    doc = await Setting.create({
-      key: "general_settings",
-      value: { ...DEFAULT_SETTINGS, ...value },
-      description: "General system configuration and payment options",
-    });
-  } else {
-    doc.value = { ...doc.value, ...value };
-    doc.markModified("value");
-    await doc.save();
-  }
-  return doc.value;
-};
+  updateSettings = async (value: any) => {
+    let doc = await Setting.findOne({ key: "general_settings" });
+    if (!doc) {
+      doc = await Setting.create({
+        key: "general_settings",
+        value: { ...DEFAULT_SETTINGS, ...value },
+        description: "General system configuration and payment options",
+      });
+    } else {
+      doc.value = { ...doc.value, ...value };
+      doc.markModified("value");
+      await doc.save();
+    }
+    return doc.value;
+  };
+}

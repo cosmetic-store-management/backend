@@ -1,10 +1,11 @@
-import { getSettings } from "../../setting/setting.service.js";
+import { SettingService } from "../../setting/setting.service.js";
+import { container } from "tsyringe";
 
 export const POINTS_EARN_RATE = 100;
 export const MAX_POINTS_PCT = 0.5;
 
 export const getOrderSettings = async () => {
-  const s = (await getSettings()) as any;
+  const s = (await container.resolve(SettingService).getSettings()) as any;
   return {
     pointsEarnRate: (s?.pointsEarnRate ?? POINTS_EARN_RATE) as number,
     maxPointsPct: ((s?.maxPointsPct ?? 50) / 100) as number,

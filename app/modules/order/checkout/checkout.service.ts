@@ -1,17 +1,19 @@
+import { injectable, inject } from "tsyringe";
+import { OrderRepository } from "../order.repository.js";
+import { InventoryRepository } from "../../inventory/inventory.repository.js";
+import { VoucherService } from "../../voucher/voucher.service.js";
+import { FlashSaleRepository } from "../../marketing/flash-sale.repository.js";
 import mongoose from "mongoose";
 import Order from "../models/order.schema.js";
 import User, { UserDocument } from "../../user/models/user.schema.js";
 import Product from "../../product/models/product.schema.js";
 import PointHistory from "../../user/models/point-history.schema.js";
 import InventoryTransaction from "../../inventory/models/inventory-transaction.schema.js";
-import * as inventoryRepo from "../../inventory/inventory.repository.js";
+
 import { mapOrder } from "../dto/order.response.dto.js";
 import { badRequest, notFound } from "../../../shared/errors/httpErrors.js";
 import { CreateOrderInput } from "../dto/order.request.dto.js";
-import {
-  validateVoucher,
-  incrementVoucherUsage,
-} from "../../voucher/voucher.service.js";
+
 
 import {
   calculateTierDiscount,
@@ -21,8 +23,8 @@ import {
 import { logOrderActivity } from "../order-activity.service.js";
 import { calcShippingFeeFromSettings } from "../shipping/shipping.service.js";
 import { sendOrderSuccessEmail } from "../../../shared/email/email.service.js";
-import * as orderRepo from "../order.repository.js";
-import { findActiveFlashSale, incrementFlashSaleSoldQuantity } from "../../marketing/flash-sale.repository.js";
+
+
 
 const paymentMethodLabel: Record<string, string> = {
   cod: "Cash on Delivery",
@@ -36,7 +38,7 @@ const paymentMethodLabel: Record<string, string> = {
   transfer: "QR Transfer",
 };
 
-export const getUserTotalSpent = async (
+const getUserTotalSpent = async (
   userId: mongoose.Types.ObjectId | string,
 ): Promise<number> => {
   const [result] = await Order.aggregate([
@@ -51,7 +53,16 @@ export const getUserTotalSpent = async (
   return result?.totalSpent ?? 0;
 };
 
-export const previewOrder = async (user: UserDocument | null, data: any) => {
+@injectable()
+export class CheckoutService {
+  constructor(
+    @inject(OrderRepository) private readonly orderRepo: OrderRepository,
+    @inject(InventoryRepository) private readonly inventoryRepo: InventoryRepository,
+    @inject(VoucherService) private readonly voucherService: VoucherService,
+    @inject(FlashSaleRepository) private readonly flashSaleRepo: FlashSaleRepository
+  ) {}
+
+  previewOrder = async (user: UserDocument | null, data: any) => {
   if (data.items && Array.isArray(data.items)) {
     data.items = data.items.reduce((acc: any[], item: any) => {
       const existing = acc.find((i) => i.variantId === item.variantId);
@@ -75,8 +86,8 @@ export const previewOrder = async (user: UserDocument | null, data: any) => {
 
   const variantIds = Array.from(new Set(data.items.map((i: any) => i.variantId)));
   const [variantsList, activeFlashSale] = await Promise.all([
-    orderRepo.findVariantsByIds(variantIds as string[]),
-    findActiveFlashSale(),
+    this.orderRepo.findVariantsByIds(variantIds as string[]),
+    this.flashSaleRepo.findActiveFlashSale(),
   ]);
   const variantMap = new Map(variantsList.map(v => [v._id.toString(), v]));
 
@@ -164,7 +175,7 @@ export const previewOrder = async (user: UserDocument | null, data: any) => {
     voucherDiscountAmount = data.discountAmount; // POS dùng manual discount
   } else if (data.voucherCode) {
     try {
-      const voucherRes = await validateVoucher(
+      const voucherRes = await this.voucherService.validateVoucher(
         data.voucherCode,
         subtotal,
         shippingFee,
@@ -231,7 +242,7 @@ export const previewOrder = async (user: UserDocument | null, data: any) => {
   };
 };
 
-export const createOrder = async (
+  createOrder = async (
   user: UserDocument,
   data: CreateOrderInput & { idempotencyKey?: string },
 ) => {
@@ -278,9 +289,9 @@ export const createOrder = async (
   const variantIds = Array.from(new Set(data.items.map((i: any) => i.variantId)));
 
   const [productsList, variantsList, activeFlashSale] = await Promise.all([
-    orderRepo.findProductsByIds(productIds as string[]),
-    orderRepo.findVariantsByIds(variantIds as string[]),
-    findActiveFlashSale(),
+    this.orderRepo.findProductsByIds(productIds as string[]),
+    this.orderRepo.findVariantsByIds(variantIds as string[]),
+    this.flashSaleRepo.findActiveFlashSale(),
   ]);
   const productMap = new Map(productsList.map(p => [p._id.toString(), p]));
   const variantMap = new Map(variantsList.map(v => [v._id.toString(), v]));
@@ -374,7 +385,7 @@ export const createOrder = async (
   let finalVoucherCode = "";
   if (data.voucherCode) {
     try {
-      const voucherRes = await validateVoucher(
+      const voucherRes = await this.voucherService.validateVoucher(
         data.voucherCode,
         subtotal,
         shippingFee,
@@ -440,13 +451,13 @@ export const createOrder = async (
       a.variantId.toString().localeCompare(b.variantId.toString())
     );
     for (const item of sortedItemsToDeduct) {
-      await orderRepo.decrementVariantStock(
+      await this.orderRepo.decrementVariantStock(
         item.variantId.toString(),
         item.quantity,
         session
       );
 
-      const costPriceTotal = await inventoryRepo.deductBatchesFIFO(
+      const costPriceTotal = await this.inventoryRepo.deductBatchesFIFO(
         item.variantId,
         item.quantity,
         session
@@ -468,7 +479,7 @@ export const createOrder = async (
     }
 
     // Tạo đơn hàng
-    newOrder = await orderRepo.createOrder({
+    newOrder = await this.orderRepo.createOrder({
       code: generateOrderCode("ORD"),
       receiverName,
       phone,
@@ -510,7 +521,7 @@ export const createOrder = async (
 
     // Tăng lượt sử dụng voucher
     if (finalVoucherCode) {
-      await incrementVoucherUsage(finalVoucherCode, user._id.toString(), session);
+      await this.voucherService.incrementVoucherUsage(finalVoucherCode, user._id.toString(), session);
     }
 
     // Tăng soldQuantity cho Flash Sale nếu có
@@ -520,7 +531,7 @@ export const createOrder = async (
           (fsItem: any) => fsItem.variantId._id.toString() === item.variantId
         );
         if (fsItem && fsItem.soldQuantity + item.quantity <= fsItem.quantityLimit) {
-          await incrementFlashSaleSoldQuantity(
+          await this.flashSaleRepo.incrementFlashSaleSoldQuantity(
             activeFlashSale._id.toString(),
             item.variantId,
             item.quantity,
@@ -587,7 +598,7 @@ export const createOrder = async (
   return mappedOrder;
 };
 
-export const createPOSOrder = async (operator: UserDocument, data: any) => {
+  createPOSOrder = async (operator: UserDocument, data: any) => {
   // Generate POS Receipt Number
   const today = new Date();
   const dateStr = today.toISOString().slice(0, 10).replace(/-/g, ""); // e.g., 20260708
@@ -639,8 +650,8 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
   const variantIds = Array.from(new Set(data.items.map((i: any) => i.variantId)));
 
   const [productsList, variantsList] = await Promise.all([
-    orderRepo.findProductsByIds(productIds as string[]),
-    orderRepo.findVariantsByIds(variantIds as string[])
+    this.orderRepo.findProductsByIds(productIds as string[]),
+    this.orderRepo.findVariantsByIds(variantIds as string[])
   ]);
   const productMap = new Map(productsList.map(p => [p._id.toString(), p]));
   const variantMap = new Map(variantsList.map(v => [v._id.toString(), v]));
@@ -743,13 +754,13 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
       a.variantId.toString().localeCompare(b.variantId.toString())
     );
     for (const item of sortedItemsToDeduct) {
-      await orderRepo.decrementVariantStock(
+      await this.orderRepo.decrementVariantStock(
         item.variantId.toString(),
         item.quantity,
         session
       );
 
-      const costPriceTotal = await inventoryRepo.deductBatchesFIFO(
+      const costPriceTotal = await this.inventoryRepo.deductBatchesFIFO(
         item.variantId,
         item.quantity,
         session
@@ -759,7 +770,7 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
     }
 
     // Tạo đơn hàng
-    newOrder = await orderRepo.createOrder({
+    newOrder = await this.orderRepo.createOrder({
       code: orderCode,
       receiverName: customerUser ? customerUser.name : "Khách lẻ tại quầy",
       phone: customerUser ? customerUser.phone : "0000000000",
@@ -883,3 +894,5 @@ export const createPOSOrder = async (operator: UserDocument, data: any) => {
 
   return mapOrder(newOrder, orderItems);
 };
+
+}

@@ -1,5 +1,7 @@
+import { injectable, inject } from "tsyringe";
+import { UploadRepository } from "./upload.repository.js";
 import { badRequest } from "../../shared/errors/httpErrors.js";
-import * as uploadRepo from "./upload.repository.js";
+
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -48,7 +50,13 @@ function validateMagicBytes(buffer: Buffer, mimeType: string): boolean {
   );
 }
 
-const getExtension = (mimeType: string) => {
+@injectable()
+export class UploadService {
+  constructor(
+    @inject(UploadRepository) private readonly uploadRepo: UploadRepository
+  ) {}
+
+  getExtension = (mimeType: string) => {
   const extMap: Record<string, string> = {
     "image/jpeg": "jpg",
     "image/png": "png",
@@ -60,7 +68,7 @@ const getExtension = (mimeType: string) => {
   return extMap[mimeType] || "bin";
 };
 
-export const uploadBuffer = async (
+  uploadBuffer = async (
   buffer: Buffer,
   mimeType: string,
   host: string,
@@ -85,17 +93,17 @@ export const uploadBuffer = async (
     throw badRequest("File content is invalid or the format was spoofed");
   }
 
-  const extension = getExtension(mimeType);
+  const extension = this.getExtension(mimeType);
   const prefix = isVideo ? "vid" : "img";
   const filename = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}.${extension}`;
 
-  await uploadRepo.saveFile(filename, mimeType, buffer.byteLength, buffer);
+  await this.uploadRepo.saveFile(filename, mimeType, buffer.byteLength, buffer);
 
   const url = `${protocol}://${host}/api/uploads/${filename}`;
   return url;
 };
 
-export const uploadBase64 = async (
+  uploadBase64 = async (
   base64: string,
   host: string,
   protocol: string,
@@ -109,21 +117,23 @@ export const uploadBase64 = async (
   const base64Data = matches[2];
   const buffer = Buffer.from(base64Data, "base64");
 
-  return await uploadBuffer(buffer, mimeType, host, protocol);
+  return await this.uploadBuffer(buffer, mimeType, host, protocol);
 };
 
-export const getFile = async (filename: string) => {
-  return await uploadRepo.getFileByFilename(filename);
+  getFile = async (filename: string) => {
+  return await this.uploadRepo.getFileByFilename(filename);
 };
 
-export const deleteFileByUrl = async (url: string) => {
+  deleteFileByUrl = async (url: string) => {
   try {
     const parts = url.split("/");
     const filename = parts[parts.length - 1];
     if (filename) {
-      await uploadRepo.deleteFileByFilename(filename);
+      await this.uploadRepo.deleteFileByFilename(filename);
     }
   } catch {
     // Ignore error silently to prevent breaking cascade deletion
   }
 };
+
+}

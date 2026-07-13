@@ -6,8 +6,9 @@ import { unauthorized, forbidden } from "../shared/errors/httpErrors.js";
 // Extend Express Request to include `user`
 declare global {
   namespace Express {
+    interface User extends UserDocument {}
     interface Request {
-      user?: UserDocument;
+      user?: User;
     }
   }
 }

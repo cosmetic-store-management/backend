@@ -2,8 +2,12 @@ import { Router } from "express";
 import { authenticate, isAuthenticated, requirePermission } from "../../middlewares/auth.middleware.js";
 import { validate } from "../../middlewares/validate.middleware.js";
 import { UpdateOrderDetailsSchema, UpdateOrderStatusSchema } from "./dto/order.request.dto.js";
-import * as controller from "./order.controller.js";
+import { container } from "tsyringe";
+import { OrderController } from "./order.controller.js";
+
 const router = Router();
+const controller = container.resolve(OrderController);
+
 router.get("/admin/list", authenticate, requirePermission("orders.view"), controller.getAdminList);
 router.patch("/admin/:id/status", authenticate, requirePermission("orders.manage"), validate(UpdateOrderStatusSchema), controller.patchAdminIdStatus);
 router.patch("/admin/:id/details", authenticate, requirePermission("orders.manage"), validate(UpdateOrderDetailsSchema), controller.patchAdminIdDetails);
@@ -19,4 +23,3 @@ router.get("/my-orders", authenticate, controller.getMyOrders);
 router.get("/:id", authenticate, controller.getId);
 
 export default router;
-

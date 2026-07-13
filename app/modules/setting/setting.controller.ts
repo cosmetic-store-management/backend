@@ -1,17 +1,11 @@
-
 import mongoose from "mongoose";
-
 import { z } from "zod";
-
+import { injectable, inject } from "tsyringe";
 
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
-
 import * as response from "../../shared/helpers/response.js";
-
-import * as settingService from "./setting.service.js";
-
-import { logAction } from "../audit-log/audit-log.service.js";
-
+import { SettingService } from "./setting.service.js";
+import { AuditLogService } from "../audit-log/audit-log.service.js";
 import { badRequest } from "../../shared/errors/httpErrors.js";
 
 const UpdateSettingsSchema = z
@@ -56,8 +50,15 @@ const UpdateSettingsSchema = z
   })
   .strict();
 
-export const getPublic = catchAsync(async (_req, res) => {
-    const all = await settingService.getSettings();
+@injectable()
+export class SettingController {
+  constructor(
+    @inject(SettingService) private readonly settingService: SettingService,
+    @inject(AuditLogService) private readonly auditService: AuditLogService
+  ) {}
+
+  getPublic = catchAsync(async (_req, res) => {
+    const all = await this.settingService.getSettings();
     // Chỉ expose các field an toàn — bao gồm chi tiết ngân hàng để checkout hiển thị
     const {
       storeName,
@@ -106,7 +107,7 @@ export const getPublic = catchAsync(async (_req, res) => {
     return response.success(res, publicSettings);
   });
 
-export const getPublicStats = catchAsync(async (_req, res) => {
+  getPublicStats = catchAsync(async (_req, res) => {
     try {
       const [productsCount, customersCount, ratingResult] = await Promise.all([
         mongoose.model("Product").countDocuments({ isActive: true }),
@@ -133,12 +134,12 @@ export const getPublicStats = catchAsync(async (_req, res) => {
     }
   });
 
-export const getRoot = catchAsync(async (_req, res) => {
-    const settings = await settingService.getSettings();
+  getRoot = catchAsync(async (_req, res) => {
+    const settings = await this.settingService.getSettings();
     return response.success(res, { settings });
   });
 
-export const putRoot = catchAsync(async (req, res) => {
+  putRoot = catchAsync(async (req, res) => {
     const parsed = UpdateSettingsSchema.safeParse(req.body);
     if (!parsed.success) {
       const msg = parsed.error.issues
@@ -147,8 +148,8 @@ export const putRoot = catchAsync(async (req, res) => {
       throw badRequest(`Dữ liệu cấu hình không hợp lệ: ${msg}`);
     }
 
-    const settings = await settingService.updateSettings(parsed.data);
-    await logAction(
+    const settings = await this.settingService.updateSettings(parsed.data);
+    await this.auditService.logAction(
       req.user!._id.toString(),
       req.user!.name,
       "update",
@@ -161,3 +162,4 @@ export const putRoot = catchAsync(async (req, res) => {
       settings,
     });
   });
+}

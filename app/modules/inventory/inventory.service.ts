@@ -1,5 +1,8 @@
+import { sendLowStockAlertEmail } from "../../shared/email/email.service.js";
+import User from "../user/models/user.schema.js";
 import { badRequest, notFound } from "../../shared/errors/httpErrors.js";
-import * as inventoryRepo from "./inventory.repository.js";
+import { injectable, inject } from "tsyringe";
+import { InventoryRepository } from "./inventory.repository.js";
 import {
   mapGoodsReceipt,
   mapStocktake,
@@ -20,17 +23,21 @@ const TX_CODE_RANGE = 900000;
 
 // ── SUPPLIERS ─────────────────────────────────────────────────────────────────
 
-export const getSuppliers = () => inventoryRepo.findAllSuppliers();
+@injectable()
+export class InventoryService {
+  constructor(@inject(InventoryRepository) private readonly inventoryRepo: InventoryRepository) {}
 
-export const createSupplier = async (data: any) => {
+  getSuppliers = () => this.inventoryRepo.findAllSuppliers();
+
+  createSupplier = async (data: any) => {
   if (!data.name?.trim() || !data.phone?.trim()) {
     throw badRequest("Tên và số điện thoại nhà cung cấp là bắt buộc");
   }
-  return inventoryRepo.createSupplier(data);
+  return this.inventoryRepo.createSupplier(data);
 };
 
-export const updateSupplier = async (id: string, data: any) => {
-  const supplier = await inventoryRepo.findSupplierById(id);
+  updateSupplier = async (id: string, data: any) => {
+  const supplier = await this.inventoryRepo.findSupplierById(id);
   if (!supplier) throw notFound("Supplier not found");
 
   if (data.name !== undefined) {
@@ -79,8 +86,8 @@ export const updateSupplier = async (id: string, data: any) => {
   return supplier;
 };
 
-export const deleteSupplier = async (id: string) => {
-  const supplier = await inventoryRepo.findSupplierById(id);
+  deleteSupplier = async (id: string) => {
+  const supplier = await this.inventoryRepo.findSupplierById(id);
   if (!supplier) throw notFound("Supplier not found");
 
   const { default: Brand } = await import("../brand/models/brand.schema.js");
@@ -100,7 +107,7 @@ export const deleteSupplier = async (id: string) => {
 
 // ── STOCK ─────────────────────────────────────────────────────────────────────
 
-export const getStockList = async (
+  getStockList = async (
   search?: string,
   page = 1,
   limit = 10,
@@ -117,7 +124,7 @@ export const getStockList = async (
   const query: Record<string, any> = {};
 
   if (search) {
-    const productIds = await inventoryRepo.findProductIdsByName(search);
+    const productIds = await this.inventoryRepo.findProductIdsByName(search);
     query.$or = [
       { name: { $regex: search.trim(), $options: "i" } },
       { sku: { $regex: search.trim(), $options: "i" } },
@@ -145,13 +152,13 @@ export const getStockList = async (
   }
 
   const [result, totalItems] = await Promise.all([
-    inventoryRepo.findVariantsByQuery(query, page, limit),
-    inventoryRepo.countVariantsByQuery(query),
+    this.inventoryRepo.findVariantsByQuery(query, page, limit),
+    this.inventoryRepo.countVariantsByQuery(query),
   ]);
   const variants = result.variants;
 
   const variantIds = variants.map((v) => v._id);
-  const activeBatches = await inventoryRepo.findActiveBatchesByVariants(variantIds);
+  const activeBatches = await this.inventoryRepo.findActiveBatchesByVariants(variantIds);
   const currentCostMap = new Map<string, {cost: number, mfgDate: any, expDate: any}>();
   const expiringBatchesMap = new Map<string, number>();
   
@@ -227,12 +234,12 @@ export const getStockList = async (
   };
 };
 
-export const getInventoryStats = async () => {
+  getInventoryStats = async () => {
   const [totalSKUs, outOfStock, lowStock, totalValue] = await Promise.all([
-    inventoryRepo.countTotalSKUs(),
-    inventoryRepo.countOutOfStock(),
-    inventoryRepo.countLowStock(),
-    inventoryRepo.aggregateTotalInventoryValue(),
+    this.inventoryRepo.countTotalSKUs(),
+    this.inventoryRepo.countOutOfStock(),
+    this.inventoryRepo.countLowStock(),
+    this.inventoryRepo.aggregateTotalInventoryValue(),
   ]);
 
   return {
@@ -245,7 +252,7 @@ export const getInventoryStats = async () => {
 
 // ── TRANSACTIONS ──────────────────────────────────────────────────────────────
 
-export const getTransactions = async (
+  getTransactions = async (
   page = 1,
   limit: number,
   type?: string,
@@ -259,7 +266,7 @@ export const getTransactions = async (
     totalPages: number;
   };
 }> => {
-  const result = await inventoryRepo.findTransactions(page, limit, type, variantId);
+  const result = await this.inventoryRepo.findTransactions(page, limit, type, variantId);
   const txs = result.transactions;
   const totalItems = result.total;
 
@@ -298,11 +305,11 @@ export const getTransactions = async (
 
 // ── BATCHES ───────────────────────────────────────────────────────────────────
 
-export const getVariantBatches = async (variantId: string) => {
-  return await inventoryRepo.findActiveBatchesByVariant(variantId);
+  getVariantBatches = async (variantId: string) => {
+  return await this.inventoryRepo.findActiveBatchesByVariant(variantId);
 };
 
-export const updateBatch = async (batchId: string, data: any) => {
+  updateBatch = async (batchId: string, data: any) => {
   const { default: Batch } = await import("./models/batch.schema.js");
   const { default: GoodsReceipt } = await import("./models/goods-receipt.schema.js");
   const { default: InventoryTransaction } = await import("./models/inventory-transaction.schema.js");
@@ -333,7 +340,7 @@ export const updateBatch = async (batchId: string, data: any) => {
       }
       
       // Update variant's total stock
-      await inventoryRepo.atomicUpdateStock(oldBatch.variantId, qtyDiff, session);
+      await this.inventoryRepo.atomicUpdateStock(oldBatch.variantId, qtyDiff, session);
 
       // Set remainingQty in update data
       data.remainingQty = oldBatch.remainingQty + qtyDiff;
@@ -396,7 +403,7 @@ export const updateBatch = async (batchId: string, data: any) => {
 
 // ── GOODS RECEIPTS ────────────────────────────────────────────────────────────
 
-export const createGoodsReceipt = async (
+  createGoodsReceipt = async (
   operator: any,
   data: any,
 ): Promise<GoodsReceiptResponse> => {
@@ -406,7 +413,7 @@ export const createGoodsReceipt = async (
     throw badRequest("Import order must have at least one product");
   }
 
-  const supplier = await inventoryRepo.findSupplierById(supplierId);
+  const supplier = await this.inventoryRepo.findSupplierById(supplierId);
   if (!supplier) throw notFound("Supplier not found");
   if (!supplier.isActive) {
     throw badRequest("Nhà cung cấp này đang tạm ngưng hoạt động, không thể nhập hàng.");
@@ -428,10 +435,10 @@ export const createGoodsReceipt = async (
       throw badRequest("Invalid inventory item information");
     }
 
-    const variant = await inventoryRepo.findVariantById(variantId);
+    const variant = await this.inventoryRepo.findVariantById(variantId);
     if (!variant) throw notFound(`Variant ${variantId} not found`);
 
-    const product = await inventoryRepo.findProductById(
+    const product = await this.inventoryRepo.findProductById(
       variant.productId.toString(),
     );
     if (!product)
@@ -459,7 +466,7 @@ export const createGoodsReceipt = async (
   try {
     session.startTransaction();
 
-    receipt = await inventoryRepo.createGoodsReceipt(
+    receipt = await this.inventoryRepo.createGoodsReceipt(
       {
         code: receiptCode,
         supplierId: supplier._id,
@@ -472,17 +479,17 @@ export const createGoodsReceipt = async (
 
     // Cộng tồn kho + ghi transaction cho từng dòng hàng
     for (const item of receiptItems) {
-      const variant = await inventoryRepo.findVariantById(
+      const variant = await this.inventoryRepo.findVariantById(
         item.variantId.toString(),
       );
       if (variant) {
-        await inventoryRepo.atomicUpdateStock(
+        await this.inventoryRepo.atomicUpdateStock(
           variant._id,
           item.quantity,
           session,
         );
 
-        await inventoryRepo.createTransaction(
+        await this.inventoryRepo.createTransaction(
           {
             code: `TXIN${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
             productId: item.productId,
@@ -496,7 +503,7 @@ export const createGoodsReceipt = async (
           session,
         );
 
-        await inventoryRepo.createBatch(
+        await this.inventoryRepo.createBatch(
           {
             variantId: item.variantId,
             goodsReceiptId: receipt._id,
@@ -525,13 +532,13 @@ export const createGoodsReceipt = async (
 
 // ── ADJUST STOCK (KIỂM KHO) ──────────────────────────────────────────────────
 
-export const adjustStock = async (
+  adjustStock = async (
   operator: any,
   data: any,
 ): Promise<any> => {
   const { variantId, actualStock, minStock } = data;
 
-  const variant = await inventoryRepo.findVariantById(variantId);
+  const variant = await this.inventoryRepo.findVariantById(variantId);
   if (!variant) throw notFound(`Không tìm thấy biến thể ${variantId}`);
 
   let diff = actualStock !== undefined ? actualStock - variant.stock : 0;
@@ -546,7 +553,7 @@ export const adjustStock = async (
   try {
     session.startTransaction();
 
-    updatedVariant = await inventoryRepo.atomicUpdateStock(
+    updatedVariant = await this.inventoryRepo.atomicUpdateStock(
       variant._id,
       diff,
       session,
@@ -554,7 +561,7 @@ export const adjustStock = async (
 
     let importPrice = data.costPrice;
     if (!importPrice) {
-      const activeBatches = await inventoryRepo.findActiveBatchesByVariants([variant._id]);
+      const activeBatches = await this.inventoryRepo.findActiveBatchesByVariants([variant._id]);
       if (activeBatches && activeBatches.length > 0) {
         importPrice = activeBatches[0].importPrice;
       } else {
@@ -563,9 +570,9 @@ export const adjustStock = async (
     }
 
     if (diff < 0) {
-      await inventoryRepo.deductBatchesFIFO(variant._id, Math.abs(diff), session);
+      await this.inventoryRepo.deductBatchesFIFO(variant._id, Math.abs(diff), session);
     } else if (diff > 0) {
-      await inventoryRepo.createBatch(
+      await this.inventoryRepo.createBatch(
         {
           variantId: variant._id,
           goodsReceiptId: null,
@@ -588,7 +595,7 @@ export const adjustStock = async (
       }
     }
 
-    await inventoryRepo.createTransaction(
+    await this.inventoryRepo.createTransaction(
       {
         code: `TXADJ${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
         productId: variant.productId,
@@ -615,7 +622,7 @@ export const adjustStock = async (
 
 // ── GOODS RECEIPTS QUERY & DETAIL ─────────────────────────────────────────────
 
-export const getGoodsReceipts = async (
+  getGoodsReceipts = async (
   page = 1,
   limit = 10,
   search?: string,
@@ -624,7 +631,7 @@ export const getGoodsReceipts = async (
   if (search) {
     query.code = { $regex: new RegExp(search, "i") };
   }
-  const result = await inventoryRepo.findGoodsReceipts(page, limit, query);
+  const result = await this.inventoryRepo.findGoodsReceipts(page, limit, query);
   return {
     receipts: result.receipts.map(mapGoodsReceipt),
     pagination: {
@@ -636,15 +643,15 @@ export const getGoodsReceipts = async (
   };
 };
 
-export const getGoodsReceiptDetail = async (id: string): Promise<GoodsReceiptResponse> => {
-  const doc = await inventoryRepo.findGoodsReceiptById(id);
+  getGoodsReceiptDetail = async (id: string): Promise<GoodsReceiptResponse> => {
+  const doc = await this.inventoryRepo.findGoodsReceiptById(id);
   if (!doc) throw notFound("Goods receipt not found");
   return mapGoodsReceipt(doc);
 };
 
 // ── STOCKTAKES (KIỂM KHO HÀNG LOẠT VÀ CÂN BẰNG) ───────────────────────────────
 
-export const getStocktakes = async (
+  getStocktakes = async (
   page = 1,
   limit = 10,
   search?: string,
@@ -653,7 +660,7 @@ export const getStocktakes = async (
   if (search) {
     query.code = { $regex: new RegExp(search, "i") };
   }
-  const result = await inventoryRepo.findStocktakes(page, limit, query);
+  const result = await this.inventoryRepo.findStocktakes(page, limit, query);
   return {
     stocktakes: result.stocktakes.map(mapStocktake),
     pagination: {
@@ -665,13 +672,13 @@ export const getStocktakes = async (
   };
 };
 
-export const getStocktakeDetail = async (id: string): Promise<StocktakeResponse> => {
-  const doc = await inventoryRepo.findStocktakeById(id);
+  getStocktakeDetail = async (id: string): Promise<StocktakeResponse> => {
+  const doc = await this.inventoryRepo.findStocktakeById(id);
   if (!doc) throw notFound("Stocktake record not found");
   return mapStocktake(doc);
 };
 
-export const createStocktake = async (
+  createStocktake = async (
   operator: any,
   data: any,
 ): Promise<StocktakeResponse> => {
@@ -691,16 +698,16 @@ export const createStocktake = async (
       throw badRequest("Invalid stocktake item parameters");
     }
 
-    const variant = await inventoryRepo.findVariantById(variantId);
+    const variant = await this.inventoryRepo.findVariantById(variantId);
     if (!variant) throw notFound(`Variant ${variantId} not found`);
 
-    const product = await inventoryRepo.findProductById(variant.productId.toString());
+    const product = await this.inventoryRepo.findProductById(variant.productId.toString());
     if (!product) throw notFound(`Product for variant ${variantId} not found`);
 
     const systemQty = variant.stock;
     const variance = actualQty - systemQty;
 
-    const activeBatches = await inventoryRepo.findActiveBatchesByVariant(variantId);
+    const activeBatches = await this.inventoryRepo.findActiveBatchesByVariant(variantId);
     const costPrice = activeBatches.length > 0 ? activeBatches[0].importPrice : Math.round(variant.price * 0.6);
     const adjustmentValue = variance * costPrice;
 
@@ -727,7 +734,7 @@ export const createStocktake = async (
     session.startTransaction();
 
     // Create Stocktake document
-    stocktake = await inventoryRepo.createStocktake(
+    stocktake = await this.inventoryRepo.createStocktake(
       {
         code: stocktakeCode,
         items: stocktakeItems,
@@ -743,14 +750,14 @@ export const createStocktake = async (
     for (const item of stocktakeItems) {
       if (item.variance !== 0) {
         // Update Stock level
-        await inventoryRepo.atomicUpdateStock(
+        await this.inventoryRepo.atomicUpdateStock(
           item.variantId,
           item.variance, // could be negative or positive
           session,
         );
 
         // Log transaction
-        await inventoryRepo.createTransaction(
+        await this.inventoryRepo.createTransaction(
           {
             code: `TXADJ${Math.floor(TX_CODE_MIN + Math.random() * TX_CODE_RANGE)}`,
             productId: item.productId,
@@ -766,14 +773,14 @@ export const createStocktake = async (
 
         // If variance is negative, deduct batches (FIFO)
         if (item.variance < 0) {
-          await inventoryRepo.deductBatchesFIFO(
+          await this.inventoryRepo.deductBatchesFIFO(
             item.variantId,
             Math.abs(item.variance),
             session,
           );
         } else {
           // If variance is positive, create a dummy batch to balance stock
-          await inventoryRepo.createBatch(
+          await this.inventoryRepo.createBatch(
             {
               variantId: item.variantId,
               goodsReceiptId: null,
@@ -796,12 +803,12 @@ export const createStocktake = async (
   }
 
   // Populate creator details for mapping
-  const populatedStocktake = await inventoryRepo.findStocktakeById(stocktake._id);
+  const populatedStocktake = await this.inventoryRepo.findStocktakeById(stocktake._id);
   return mapStocktake(populatedStocktake);
 };
 
 // ── UPDATE MIN STOCK ────────────────────────────────────────────────────────
-export const updateMinStock = async (operator: any, data: any) => {
+  updateMinStock = async (operator: any, data: any) => {
   const { variantId, minStock } = data;
 
   const variant = await Variant.findById(variantId);
@@ -813,10 +820,10 @@ export const updateMinStock = async (operator: any, data: any) => {
   return variant;
 };
 
-import { sendLowStockAlertEmail } from "../../shared/email/email.service.js";
-import User from "../user/models/user.schema.js";
 
-export const checkAndTriggerLowStockAlert = async (variant: any) => {
+
+
+  checkAndTriggerLowStockAlert = async (variant: any) => {
   if (!variant || variant.stock > variant.minStock) return;
 
   try {
@@ -838,3 +845,5 @@ export const checkAndTriggerLowStockAlert = async (variant: any) => {
     console.error("[Low Stock Alert] Failed to trigger low-stock alert:", error);
   }
 };
+
+}

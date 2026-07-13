@@ -1,14 +1,10 @@
-
-
+import { injectable, inject } from "tsyringe";
 import { catchAsync } from "../../shared/helpers/catchAsync.js";
-
 import * as response from "../../shared/helpers/response.js";
-
 import { badRequest } from "../../shared/errors/httpErrors.js";
-
 import multer from "multer";
-
-import * as uploadService from "./upload.service.js";
+import { UploadService } from "./upload.service.js";
+import { Request, Response, NextFunction } from "express";
 
 const storage = multer.memoryStorage();
 
@@ -34,8 +30,6 @@ export const upload = multer({
   },
 });
 
-import { Request, Response, NextFunction } from "express";
-
 export const uploadMediaMiddleware = (req: Request, res: Response, next: NextFunction) => {
   upload.single("file")(req, res, (err: any) => {
     if (err) {
@@ -51,9 +45,15 @@ export const uploadMediaMiddleware = (req: Request, res: Response, next: NextFun
   });
 };
 
-export const getFilename = catchAsync(async (req, res) => {
+@injectable()
+export class UploadController {
+  constructor(
+    @inject(UploadService) private readonly uploadService: UploadService
+  ) {}
+
+  getFilename = catchAsync(async (req, res) => {
     const filename = req.params.filename as string;
-    const file = await uploadService.getFile(filename);
+    const file = await this.uploadService.getFile(filename);
 
     if (!file) {
       return res.status(404).send("File not found");
@@ -65,7 +65,7 @@ export const getFilename = catchAsync(async (req, res) => {
     res.send(file.data);
   });
 
-export const postRoot = catchAsync(async (req, res) => {
+  postRoot = catchAsync(async (req, res) => {
     const { base64 } = req.body;
     if (!base64) throw badRequest("Missing image data (base64)");
 
@@ -76,7 +76,7 @@ export const postRoot = catchAsync(async (req, res) => {
         ? "https"
         : "http";
 
-    const url = await uploadService.uploadBase64(base64, host, protocol);
+    const url = await this.uploadService.uploadBase64(base64, host, protocol);
 
     return response.created(res, {
       message: "Image uploaded successfully",
@@ -84,7 +84,7 @@ export const postRoot = catchAsync(async (req, res) => {
     });
   });
 
-export const postMedia = catchAsync(async (req, res) => {
+  postMedia = catchAsync(async (req, res) => {
     if (!req.file) throw badRequest("No file was uploaded");
 
     const host =
@@ -94,7 +94,7 @@ export const postMedia = catchAsync(async (req, res) => {
         ? "https"
         : "http";
 
-    const url = await uploadService.uploadBuffer(
+    const url = await this.uploadService.uploadBuffer(
       req.file.buffer,
       req.file.mimetype,
       host,
@@ -106,3 +106,4 @@ export const postMedia = catchAsync(async (req, res) => {
       url,
     });
   });
+}

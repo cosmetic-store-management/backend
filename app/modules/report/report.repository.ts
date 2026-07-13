@@ -7,6 +7,7 @@
  *   - allowDiskUse: true  → tránh OOM với dataset lớn
  *   - In-memory cache TTL 5 phút → dashboard không cần realtime tuyệt đối
  */
+import { injectable } from "tsyringe";
 import mongoose from "mongoose";
 import Order from "../order/models/order.schema.js";
 import Product from "../product/models/product.schema.js";
@@ -67,7 +68,9 @@ const AGG_OPTIONS = { allowDiskUse: true } as const;
 
 // ── Revenue & Orders ──────────────────────────────────────────────────────────
 
-export const aggregateRevenue = (dateFilter: DateFilter) => {
+@injectable()
+export class ReportRepository {
+  aggregateRevenue = (dateFilter: any) => {
   const key = cacheKey("aggregateRevenue", dateFilter);
   return withCache(key, async () => {
     const orders = await Order.aggregate(
@@ -124,10 +127,10 @@ export const aggregateRevenue = (dateFilter: DateFilter) => {
   });
 };
 
-export const countOrders = (dateFilter: DateFilter) =>
+  countOrders = (dateFilter: any) =>
   Order.countDocuments({ orderStatus: { $in: ["completed", "returned"] }, ...dateFilter });
 
-export const aggregateSoldProducts = (dateFilter: DateFilter) => {
+  aggregateSoldProducts = (dateFilter: any) => {
   const key = cacheKey("aggregateSoldProducts", dateFilter);
   return withCache(key, () =>
     Order.aggregate(
@@ -141,11 +144,11 @@ export const aggregateSoldProducts = (dateFilter: DateFilter) => {
   );
 };
 
-export const countCustomers = (dateFilter: DateFilter) =>
+  countCustomers = (dateFilter: any) =>
   User.countDocuments({ role: "customer", ...dateFilter });
 
 /** Thống kê cùng kỳ trước để tính % thay đổi */
-export const aggregateRevenueForPeriod = (start: Date, end: Date) => {
+  aggregateRevenueForPeriod = (start: Date, end: Date) => {
   const key = cacheKey("aggregateRevenueForPeriod", start, end);
   return withCache(key, async () => {
     const orders = await Order.aggregate(
@@ -153,7 +156,7 @@ export const aggregateRevenueForPeriod = (start: Date, end: Date) => {
         {
           $match: {
             orderStatus: { $in: ["completed", "returned"] },
-            completedAt: { $gte: start, $lte: end },
+            date: { $gte: start, $lte: end },
           },
         },
         {
@@ -210,13 +213,13 @@ export const aggregateRevenueForPeriod = (start: Date, end: Date) => {
   });
 };
 
-export const countOrdersForPeriod = (start: Date, end: Date) =>
+  countOrdersForPeriod = (start: Date, end: Date) =>
   Order.countDocuments({ 
     orderStatus: { $in: ["completed", "returned"] },
-    completedAt: { $gte: start, $lte: end }
+    date: { $gte: start, $lte: end }
   });
 
-export const countCustomersForPeriod = (start: Date, end: Date) =>
+  countCustomersForPeriod = (start: Date, end: Date) =>
   User.countDocuments({
     role: "customer",
     createdAt: { $gte: start, $lte: end },
@@ -224,7 +227,7 @@ export const countCustomersForPeriod = (start: Date, end: Date) =>
 
 // ── Recent Orders ─────────────────────────────────────────────────────────────
 
-export const findRecentOrders = (dateFilter: DateFilter, limit: number = 5) => {
+  findRecentOrders = (dateFilter: any, limit: number = 5) => {
   const key = cacheKey("findRecentOrders", dateFilter, limit);
   return withCache(key, () =>
     Order.find({
@@ -239,7 +242,7 @@ export const findRecentOrders = (dateFilter: DateFilter, limit: number = 5) => {
 
 // ── Top Selling Products ──────────────────────────────────────────────────────
 
-export const aggregateTopProducts = (dateFilter: DateFilter, limit = 5) => {
+  aggregateTopProducts = (dateFilter: any, limit = 5) => {
   const key = cacheKey("aggregateTopProducts", dateFilter, limit);
   return withCache(key, () =>
     Order.aggregate(
@@ -271,12 +274,12 @@ export const aggregateTopProducts = (dateFilter: DateFilter, limit = 5) => {
   );
 };
 
-export const findProductById = (id: mongoose.Types.ObjectId | string) =>
+  findProductById = (id: mongoose.Types.ObjectId | string) =>
   Product.findById(id).populate("categoryId").lean();
 
 // ── Low Stock ─────────────────────────────────────────────────────────────────
 
-export const findLowStockVariants = async (limit = 10) => {
+  findLowStockVariants = async (limit = 10) => {
   const Variant = (await import("../product/models/variant.schema.js"))
     .default;
   return Variant.find({ $expr: { $lte: ["$stock", "$minStock"] } })
@@ -284,7 +287,7 @@ export const findLowStockVariants = async (limit = 10) => {
     .lean();
 };
 
-export const findVariantsByProductId = async (
+  findVariantsByProductId = async (
   productId: mongoose.Types.ObjectId,
 ) => {
   const Variant = (await import("../product/models/variant.schema.js"))
@@ -294,7 +297,7 @@ export const findVariantsByProductId = async (
 
 // ── Completion Rates ──────────────────────────────────────────────────────────
 
-export const aggregateCompletionRates = (dateFilter: DateFilter) => {
+  aggregateCompletionRates = (dateFilter: any) => {
   const key = cacheKey("aggregateCompletionRates", dateFilter);
   return withCache(key, () =>
     Order.aggregate(
@@ -348,7 +351,7 @@ export const aggregateCompletionRates = (dateFilter: DateFilter) => {
 
 // ── Revenue Chart ─────────────────────────────────────────────────────────────
 
-export const aggregateRevenueChart = (dateFilter: DateFilter) => {
+  aggregateRevenueChart = (dateFilter: any) => {
   const key = cacheKey("aggregateRevenueChart", dateFilter);
   return withCache(key, () =>
     Order.aggregate(
@@ -376,7 +379,7 @@ export const aggregateRevenueChart = (dateFilter: DateFilter) => {
 
 // ── Category Performance ──────────────────────────────────────────────────────
 
-export const aggregateCategoryPerformance = (dateFilter: DateFilter) => {
+  aggregateCategoryPerformance = (dateFilter: any) => {
   const key = cacheKey("aggregateCategoryPerformance", dateFilter);
   return withCache(key, () =>
     Order.aggregate(
@@ -460,7 +463,7 @@ export const aggregateCategoryPerformance = (dateFilter: DateFilter) => {
 
 // ── Payment Methods ───────────────────────────────────────────────────────────
 
-export const aggregatePaymentMethods = (dateFilter: DateFilter) => {
+  aggregatePaymentMethods = (dateFilter: any) => {
   const key = cacheKey("aggregatePaymentMethods", dateFilter);
   return withCache(key, () =>
     Order.aggregate(
@@ -488,7 +491,7 @@ export const aggregatePaymentMethods = (dateFilter: DateFilter) => {
   );
 };
 
-export const aggregateChannelStats = (dateFilter: DateFilter) => {
+  aggregateChannelStats = (dateFilter: any) => {
   const key = cacheKey("aggregateChannelStats", dateFilter);
   return withCache(key, async () => {
     const orders = await Order.aggregate(
@@ -568,8 +571,10 @@ export const aggregateChannelStats = (dateFilter: DateFilter) => {
 
 // ── Voucher Stats ─────────────────────────────────────────────────────────────
 
-export const findAllVouchers = async (dateFilter: DateFilter) => {
+  findAllVouchers = async (dateFilter: any) => {
   const Voucher = (await import("../voucher/models/voucher.schema.js"))
     .default;
   return Voucher.find(dateFilter).lean();
 };
+
+}
