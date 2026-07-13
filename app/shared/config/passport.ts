@@ -1,7 +1,7 @@
 import passport, { Profile } from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as FacebookStrategy, Profile as FacebookProfile } from "passport-facebook";
-import User from "../../modules/user/models/user.schema.js";
+import User from "../../contexts/identity/user/models/user.schema.js";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID as string;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET as string;

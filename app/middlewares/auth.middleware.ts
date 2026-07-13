@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
-import User, { type UserDocument } from "../modules/user/models/user.schema.js";
+import User, { type UserDocument } from "../contexts/identity/user/models/user.schema.js";
 import { unauthorized, forbidden } from "../shared/errors/httpErrors.js";
 
 // Extend Express Request to include `user`

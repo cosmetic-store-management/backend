@@ -18,26 +18,26 @@ import { globalLimiter } from "./app/middlewares/rateLimit.middleware.js";
 
 import connectDB from "./app/config/db.js";
 import healthRouter from "./app/config/health.js";
-import authRoutes from "./app/modules/auth/auth.route.js";
-import userRoutes from "./app/modules/user/user.route.js";
-import productRoutes from "./app/modules/product/product.route.js";
-import categoryRoutes from "./app/modules/category/category.route.js";
-import orderRoutes from "./app/modules/order/order.route.js";
-import brandRoutes from "./app/modules/brand/brand.route.js";
-import inventoryRoutes from "./app/modules/inventory/inventory.route.js";
-import reportRoutes from "./app/modules/report/report.route.js";
-import auditLogRoutes from "./app/modules/audit-log/audit-log.route.js";
-import settingRoutes from "./app/modules/setting/setting.route.js";
-import uploadRoutes from "./app/modules/upload/upload.route.js";
-import voucherRoutes from "./app/modules/voucher/voucher.route.js";
-import reviewRoutes from "./app/modules/review/review.route.js";
+import authRoutes from "./app/contexts/identity/auth/auth.route.js";
+import userRoutes from "./app/contexts/identity/user/user.route.js";
+import productRoutes from "./app/contexts/catalog/product/product.route.js";
+import categoryRoutes from "./app/contexts/catalog/category/category.route.js";
+import orderRoutes from "./app/contexts/sales/order/order.route.js";
+import brandRoutes from "./app/contexts/catalog/brand/brand.route.js";
+import inventoryRoutes from "./app/contexts/catalog/inventory/inventory.route.js";
+import reportRoutes from "./app/contexts/shared/report/report.route.js";
+import auditLogRoutes from "./app/contexts/identity/audit-log/audit-log.route.js";
+import settingRoutes from "./app/contexts/shared/setting/setting.route.js";
+import uploadRoutes from "./app/contexts/shared/upload/upload.route.js";
+import voucherRoutes from "./app/contexts/sales/voucher/voucher.route.js";
+import reviewRoutes from "./app/contexts/engagement/review/review.route.js";
 
-import cartRoutes from "./app/modules/cart/cart.route.js";
-import flashSaleRoutes from "./app/modules/marketing/flash-sale.route.js";
-import checkoutRoutes from "./app/modules/order/checkout/checkout.route.js";
-import paymentRoutes from "./app/modules/order/payment/payment.route.js";
-import shippingRoutes from "./app/modules/order/shipping/shipping.route.js";
-import transactionRoutes from "./app/modules/order/transaction/transaction.route.js";
+import cartRoutes from "./app/contexts/sales/cart/cart.route.js";
+import flashSaleRoutes from "./app/contexts/engagement/marketing/flash-sale.route.js";
+import checkoutRoutes from "./app/contexts/sales/order/checkout/checkout.route.js";
+import paymentRoutes from "./app/contexts/sales/order/payment/payment.route.js";
+import shippingRoutes from "./app/contexts/sales/order/shipping/shipping.route.js";
+import transactionRoutes from "./app/contexts/sales/order/transaction/transaction.route.js";
 import { errorHandler } from "./app/middlewares/errorHandler.middleware.js";
 import passport from "./app/shared/config/passport.js";
 
@@ -89,7 +89,7 @@ app.use(
   }),
 );
 
-import { stripeWebhook } from "./app/modules/order/payment/payment.controller.js";
+import { stripeWebhook } from "./app/contexts/sales/order/payment/payment.controller.js";
 
 // ── [3] Stripe Webhook ──────────────────────────────
 app.post(
@@ -140,7 +140,6 @@ app.use("/api/checkout", checkoutRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/shipping", shippingRoutes);
 app.use("/api/transactions", transactionRoutes);
-app.use("/api/uploads", uploadRoutes);
 
 // ── [8] 404 Handler ───────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -155,8 +154,9 @@ app.use((req, res) => {
 // ── [9] Global Error Handler ──────────────────────────────────────────────────
 app.use(errorHandler);
 
-import { startOrderCron } from "./app/modules/order/order.cron.js";
-import "./app/modules/cart/cart.cron.js";
+import { startOrderCron } from "./app/contexts/sales/order/order.cron.js";
+import "./app/contexts/sales/cart/cart.cron.js";
+import { startAuditLogArchiverCron } from "./app/contexts/identity/audit-log/audit-log.cron.js";
 
 if (process.env.NODE_ENV !== "test") {
   const server = app.listen(PORT, () => {
@@ -165,6 +165,7 @@ if (process.env.NODE_ENV !== "test") {
 
   // Start cron jobs
   startOrderCron();
+  startAuditLogArchiverCron();
 
   // ── [11] Graceful Shutdown ────────────────────────────────────────────────────
   const gracefulShutdown = (signal: string): void => {
