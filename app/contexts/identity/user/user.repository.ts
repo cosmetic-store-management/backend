@@ -1,5 +1,6 @@
 import { injectable } from "tsyringe";
 import User, { type UserDocument, type IUser } from "./models/user.schema.js";
+import mongoose from "mongoose";
 import Otp, { type IOtp } from "../auth/models/otp.schema.js";
 
 @injectable()
@@ -83,6 +84,10 @@ export class UserRepository {
     return User.findOne({ phone, isDeleted: { $ne: true } });
   }
 
+  findOneBy(query: any) {
+    return User.findOne(query);
+  }
+
   create(data: Partial<IUser>) {
     return User.create(data);
   }
@@ -95,10 +100,24 @@ export class UserRepository {
     return User.findByIdAndDelete(id);
   }
 
-  updateById(id: string, data: Partial<IUser>) {
-    return User.findByIdAndUpdate(id, data, { returnDocument: "after" })
-      .select("-password")
-      .lean();
+  async updateById(id: string, data: Partial<IUser>): Promise<UserDocument | null> {
+    return User.findByIdAndUpdate(id, data, { new: true }).lean();
+  }
+
+  async addSavedVoucher(userId: string, voucherId: mongoose.Types.ObjectId): Promise<UserDocument | null> {
+    return User.findByIdAndUpdate(
+      userId,
+      { $addToSet: { savedVouchers: voucherId } } as any,
+      { new: true }
+    ).lean();
+  }
+
+  async removeSavedVoucher(userId: string, voucherId: mongoose.Types.ObjectId): Promise<UserDocument | null> {
+    return User.findByIdAndUpdate(
+      userId,
+      { $pull: { savedVouchers: voucherId } } as any,
+      { new: true }
+    ).lean();
   }
 
   findCustomers() {

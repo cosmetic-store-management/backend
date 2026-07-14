@@ -14,6 +14,7 @@ import cors from "cors";
 import helmet from "helmet";
 import mongoSanitize from "express-mongo-sanitize";
 import morgan from "morgan";
+import compression from "compression";
 import { globalLimiter } from "./app/middlewares/rateLimit.middleware.js";
 
 import connectDB from "./app/config/db.js";
@@ -89,13 +90,15 @@ app.use(
   }),
 );
 
-import { stripeWebhook } from "./app/contexts/sales/order/payment/payment.controller.js";
+import { container } from "tsyringe";
+import { PaymentController } from "./app/contexts/sales/order/payment/payment.controller.js";
 
 // ── [3] Stripe Webhook ──────────────────────────────
+const paymentController = container.resolve(PaymentController);
 app.post(
   "/api/payments/webhook",
   express.raw({ type: "application/json" }),
-  stripeWebhook,
+  paymentController.stripeWebhook.bind(paymentController),
 );
 
 // ── [4] Global Rate Limiter ──────────────────────────────────────
@@ -103,6 +106,8 @@ app.use(globalLimiter);
 // Body Parser
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+app.use(compression());
 
 // ── [5] NoSQL Injection Protection ───────────────────────────────────────────
 
@@ -157,10 +162,11 @@ app.use(errorHandler);
 import { startOrderCron } from "./app/contexts/sales/order/order.cron.js";
 import "./app/contexts/sales/cart/cart.cron.js";
 import { startAuditLogArchiverCron } from "./app/contexts/identity/audit-log/audit-log.cron.js";
+import { logger } from "./app/shared/logger/index.js";
 
 if (process.env.NODE_ENV !== "test") {
   const server = app.listen(PORT, () => {
-    console.log(`🚀 Server running at http://localhost:${PORT} [${NODE_ENV}]`);
+    logger.info(`🚀 Server running at http://localhost:${PORT} [${NODE_ENV}]`);
   });
 
   // Start cron jobs
@@ -169,20 +175,20 @@ if (process.env.NODE_ENV !== "test") {
 
   // ── [11] Graceful Shutdown ────────────────────────────────────────────────────
   const gracefulShutdown = (signal: string): void => {
-    console.log(`\n${signal} received. Shutting down gracefully...`);
+    logger.info(`\n${signal} received. Shutting down gracefully...`);
     server.close(async () => {
-      console.log("HTTP server closed");
+      logger.info("HTTP server closed");
       try {
         const mongoose = (await import("mongoose")).default;
         await mongoose.connection.close();
-        console.log("MongoDB connection closed");
+        logger.info("MongoDB connection closed");
       } catch (err) {
-        console.error("Error closing MongoDB connection:", err);
+        logger.error({ err: err }, "Error closing MongoDB connection:");
       }
       process.exit(0);
     });
     setTimeout(() => {
-      console.error("Forced shutdown after 10s");
+      logger.error("Forced shutdown after 10s");
       process.exit(1);
     }, 10000);
   };
@@ -195,9 +201,9 @@ export { app };
 
 // ── [12] Process Error Handlers ───────────────────────────────────────────────
 process.on("unhandledRejection", (reason) => {
-  console.error("❌ Unhandled Promise Rejection:", reason);
+  logger.error({ err: reason }, "❌ Unhandled Promise Rejection:");
 });
 process.on("uncaughtException", (err) => {
-  console.error("❌ Uncaught Exception:", err);
+  logger.error({ err: err }, "❌ Uncaught Exception:");
   process.exit(1);
 });

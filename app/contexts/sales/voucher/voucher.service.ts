@@ -10,7 +10,6 @@ import type {
 } from "./dto/voucher.request.dto.js";
 import { injectable, inject } from "tsyringe";
 import { VoucherRepository } from "./voucher.repository.js";
-import VoucherReservation from "./models/voucherReservation.schema.js";
 import mongoose, { Types } from "mongoose";
 
 // ── Admin CRUD ────────────────────────────────────────────────────────────────
@@ -155,13 +154,13 @@ export class VoucherService {
     throw badRequest("Discount code is not yet active");
   if (now > voucher.endDate) throw badRequest("Discount code has expired");
 
-  const userHasReservation = userId
-    ? await VoucherReservation.exists({ voucherId: voucher._id, userId })
+  const hasReservation = userId
+    ? await this.voucherRepo.checkReservationExists(voucher._id, userId)
     : false;
 
   if (voucher.usageLimit > 0 && voucher.usedCount >= voucher.usageLimit) {
     let allowedToBypass = false;
-    if (userHasReservation && voucher.overbookingLimit !== 0) {
+    if (hasReservation && voucher.overbookingLimit !== 0) {
       if (voucher.overbookingLimit === -1) {
         allowedToBypass = true;
       } else if (voucher.usedCount < voucher.usageLimit + voucher.overbookingLimit) {
@@ -215,7 +214,7 @@ export class VoucherService {
   if (userId) {
     const voucher = await this.voucherRepo.findByCode(code);
     if (voucher) {
-      const hasReservation = await VoucherReservation.exists({ voucherId: voucher._id, userId });
+      const hasReservation = await this.voucherRepo.checkReservationExists(voucher._id, userId);
       if (hasReservation && voucher.overbookingLimit !== 0) {
         maxAllowed = voucher.overbookingLimit === -1 ? -1 : voucher.usageLimit + voucher.overbookingLimit;
       }
@@ -227,7 +226,7 @@ export class VoucherService {
   if (userId) {
     const voucher = await this.voucherRepo.findByCode(code);
     if (voucher) {
-      await VoucherReservation.deleteOne({ voucherId: voucher._id, userId }).session(session || null);
+      await this.voucherRepo.deleteReservation(voucher._id, userId, session || undefined);
     }
   }
   return result;
@@ -249,10 +248,7 @@ export class VoucherService {
   const now = new Date();
 
   // Get the list of vouchers currently reserved by this user
-  const activeReservations = await VoucherReservation.find({ 
-    userId,
-    $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }, { expiresAt: { $exists: false } }]
-  }).select('voucherId').lean();
+  const activeReservations = await this.voucherRepo.findUserReservations(userId);
   const reservedVoucherIds = new Set(activeReservations.map(r => r.voucherId.toString()));
 
   return (user.savedVouchers as any[])
@@ -275,10 +271,7 @@ export class VoucherService {
 
   const now = new Date();
 
-  const activeReservations = await VoucherReservation.find({ 
-    userId,
-    $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }, { expiresAt: { $exists: false } }]
-  }).select('voucherId expiresAt').lean();
+  const activeReservations = await this.voucherRepo.findUserReservations(userId);
   const reservationMap = new Map(activeReservations.map(r => [r.voucherId.toString(), r.expiresAt]));
 
   return (user.savedVouchers as any[])
@@ -314,24 +307,21 @@ export class VoucherService {
     throw badRequest("Discount code is not yet active");
 
   if (voucher.usageLimit > 0) {
-    const activeReservations = await VoucherReservation.countDocuments({ 
-      voucherId: voucher._id,
-      $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }, { expiresAt: { $exists: false } }]
-    });
+    const activeReservationsCount = await this.voucherRepo.countActiveReservations(voucher._id);
 
     // Giới hạn số lượng Lưu = usageLimit + overbookingLimit
     const maxCollect = voucher.overbookingLimit === -1
       ? Infinity
       : voucher.usageLimit + (voucher.overbookingLimit || 0);
 
-    if (voucher.usedCount + activeReservations >= maxCollect) {
+    if (voucher.usedCount + activeReservationsCount >= maxCollect) {
       throw badRequest("Discount code usage limit reached or fully reserved");
     }
   }
 
   // findUserWithVouchers uses populate — lazy load is needed to check alreadySaved
-  const { default: User } = await import("../../identity/user/models/user.schema.js");
-  const user = await User.findById(userId);
+  // Cleaned User dependency in repo
+  const user = await this.voucherRepo.findUserById(userId);
   if (!user) throw notFound("User not found");
 
   const alreadySaved = user.savedVouchers?.some(
@@ -350,10 +340,10 @@ export class VoucherService {
     ? new Date(now.getTime() + voucher.ttlMinutes * 60000)
     : undefined;
 
-  await VoucherReservation.create({
+  await this.voucherRepo.createReservation({
     voucherId: voucher._id,
     userId,
-    expiresAt
+    expiresAt,
   });
 
   return mapVoucher(voucher);
@@ -364,7 +354,7 @@ export class VoucherService {
   if (!voucher) throw notFound("Discount code not found");
 
   await this.voucherRepo.removeVoucherFromWallet(userId, voucher._id);
-  await VoucherReservation.deleteOne({ voucherId: voucher._id, userId });
+  await this.voucherRepo.deleteReservation(voucher._id, userId);
 };
 
 }

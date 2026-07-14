@@ -1,3 +1,4 @@
+import { logger } from "../shared/logger/index.js";
 const REQUIRED_VARS = [
   "MONGODB_URI",
   "JWT_SECRET",
@@ -11,8 +12,8 @@ const REQUIRED_VARS = [
 export function validateEnv(): void {
   const missing = REQUIRED_VARS.filter((key) => !process.env[key]);
   if (missing.length > 0) {
-    console.error(`❌ Missing required env vars: ${missing.join(", ")}`);
+    logger.error(`❌ Missing required env vars: ${missing.join(", ")}`);
     process.exit(1);
   }
-  console.log("✅ Env variables OK");
+  logger.info("✅ Env variables OK");
 }

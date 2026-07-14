@@ -8,6 +8,7 @@ import { unauthorized, notFound, badRequest, conflict } from "../../../shared/er
 import { sendResetPasswordEmail, sendOtpVerificationEmail, sendWelcomeEmail } from "../../../shared/email/email.service.js";
 import type { UserDocument } from "../user/models/user.schema.js";
 import type { RegisterInput, LoginInput, ChangePasswordInput, ForgotPasswordInput, ResetPasswordInput, SendOtpInput, VerifyOtpInput } from "./dto/auth.request.dto.js";
+import { logger } from "../../../shared/logger/index.js";
 
 @injectable()
 export class AuthService {
@@ -56,8 +57,8 @@ export class AuthService {
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + this.OTP_EXPIRY_MS);
     await this.authRepo.upsertOtp(data.email, otpCode, expiresAt);
-    console.log(`\n================================\n🚀 [DEV MODE] MÃ OTP CỦA BẠN LÀ: ${otpCode}\n📧 Gửi cho email: ${data.email}\n================================\n`);
-    sendOtpVerificationEmail(data.email, otpCode).catch((err) => { console.error("Failed to send OTP email", err); });
+    logger.info(`\n================================\n🚀 [DEV MODE] MÃ OTP CỦA BẠN LÀ: ${otpCode}\n📧 Gửi cho email: ${data.email}\n================================\n`);
+    sendOtpVerificationEmail(data.email, otpCode).catch((err) => { logger.error("Failed to send OTP email", err); });
     return { message: "OTP code has been sent to your email." };
   }
 
@@ -109,7 +110,7 @@ export class AuthService {
     if (user.refreshTokens.length > 5) user.refreshTokens.shift();
     await this.authRepo.save(user);
     if (data.email) {
-      sendWelcomeEmail(data.email, user.name).catch((err) => console.error("Failed to send welcome email:", err));
+      sendWelcomeEmail(data.email, user.name).catch((err) => logger.error("Failed to send welcome email:", err));
     }
     return { user: mapUser(user), accessToken, refreshToken };
   }

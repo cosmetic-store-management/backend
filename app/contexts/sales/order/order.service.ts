@@ -1,13 +1,14 @@
 import Order, { OrderDocument } from "./models/order.schema.js";
-import PaymentTransaction from "./models/payment-transaction.schema.js";
+import { TransactionRepository } from "./transaction/transaction.repository.js";
 import { injectable, inject, container } from "tsyringe";
 import { OrderRepository } from "./order.repository.js";
 import { eventBus } from "../../shared/event-bus/index.js";
 import type { UserDocument } from "../../identity/user/models/user.schema.js";
 import { UserService } from "../../identity/user/user.service.js";
 import { mapOrder, mapPublicOrder } from "./dto/order.response.dto.js";
-
+import { OrderActivityService } from "./order-activity.service.js";
 import { InventoryRepository } from "../../catalog/inventory/inventory.repository.js";
+import { PaymentService } from "./payment/payment.service.js";
 import {
   notFound,
   forbidden,
@@ -19,8 +20,6 @@ import {
 } from "./dto/order.request.dto.js";
 import mongoose from "mongoose";
 import { VoucherService } from "../voucher/voucher.service.js";
-import { refundPayment } from "./payment/payment.service.js";
-import { logOrderActivity } from "./order-activity.service.js";
 
 import {
   POINTS_EARN_RATE,
@@ -51,20 +50,19 @@ interface AdminOrderQuery {
   dateTo?: string;
 }
 
-export {
-  getOrderActivities,
-  logOrderActivity,
-} from "./order-activity.service.js";
-import { getOrderActivities } from "./order-activity.service.js";
+// no exports here
 
 @injectable()
 export class OrderService {
-  public getOrderActivities = getOrderActivities;
+  public getOrderActivities = async (orderId: string | mongoose.Types.ObjectId) => this.orderActivityService.getOrderActivities(orderId);
   constructor(
     @inject(OrderRepository) private readonly orderRepo: OrderRepository,
     @inject(InventoryRepository) private readonly inventoryRepo: InventoryRepository,
     // use lazy/container for VoucherService to avoid cycle if needed, but lets just inject it
-    @inject(VoucherService) private readonly voucherService: VoucherService
+    @inject(VoucherService) private readonly voucherService: VoucherService,
+    @inject(TransactionRepository) private readonly transactionRepo: TransactionRepository,
+    @inject(PaymentService) private readonly paymentService: PaymentService,
+    @inject(OrderActivityService) private readonly orderActivityService: OrderActivityService
   ) {}
 
   attachItemsToOrders = async (orders: OrderDocument[]) => {
@@ -109,6 +107,10 @@ export class OrderService {
 };
 
 // ── Source: order-query.service.ts ──────────────────────────────
+  getCollaborativeProductIds = async (productId: string, limit: number): Promise<string[]> => {
+    return this.orderRepo.getCollaborativeProductIds(productId, limit);
+  };
+
 
 
   getOrdersForAdmin = async ({
@@ -284,7 +286,7 @@ export class OrderService {
     order = updatedOrder as any;
 
     if (data.orderStatus && data.orderStatus !== previousStatus) {
-      await logOrderActivity(
+      await this.orderActivityService.logOrderActivity(
         order._id,
         "status_changed",
         {
@@ -299,7 +301,7 @@ export class OrderService {
     }
 
     if (data.receiverName && data.receiverName !== order.receiverName) {
-      await logOrderActivity(
+      await this.orderActivityService.logOrderActivity(
         order._id,
         "detail_updated",
         {
@@ -718,8 +720,7 @@ export class OrderService {
   }
 
   if (order.paymentStatus === "paid") {
-    // Process refund asynchronously or await it
-    await refundPayment(order._id.toString()).catch(console.error);
+    await this.paymentService.refundPayment(order._id as any).catch(console.error);
   }
 
   return mapOrder(order, (order as any).items || []);
@@ -1028,18 +1029,18 @@ export class OrderService {
       }
     }
 
-    await PaymentTransaction.create([{
-      orderId: order._id,
-      paymentMethod: order.paymentMethod,
+    await this.transactionRepo.createTransactions([{
+      orderId: order._id as any,
+      paymentMethod: order.paymentMethod as any,
       providerTransactionId: `REFUND-POS-${Date.now()}`,
       amount: refundAmount,
       currency: "VND",
       type: "refund",
       status: "success",
       metaData: { refundedBy: requester.name },
-    }], { session });
+    }], session);
 
-    await logOrderActivity(
+    await this.orderActivityService.logOrderActivity(
       order._id,
       "returned",
       {

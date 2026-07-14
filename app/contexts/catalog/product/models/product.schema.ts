@@ -13,6 +13,8 @@ export interface IProduct {
   averageRating: number;
   numReviews: number;
   soldCount: number;
+  minPrice: number;
+  maxPrice: number;
   metaTitle?: string;
   metaDescription?: string;
   metaKeywords?: string;
@@ -49,6 +51,8 @@ const productSchema = new Schema<ProductDocument>(
     averageRating: { type: Number, default: 0 },
     numReviews: { type: Number, default: 0 },
     soldCount: { type: Number, default: 0 },
+    minPrice: { type: Number, default: 0 },
+    maxPrice: { type: Number, default: 0 },
     metaTitle: { type: String, trim: true, default: "" },
     metaDescription: { type: String, trim: true, default: "" },
     metaKeywords: { type: String, trim: true, default: "" },
@@ -67,6 +71,9 @@ productSchema.index({ isActive: 1, categoryId: 1, soldCount: -1 });
 productSchema.index({ isActive: 1, brandId: 1, soldCount: -1 });
 // Catalog: sắp xếp theo đánh giá
 productSchema.index({ isActive: 1, averageRating: -1 });
+// Catalog: sắp xếp theo giá
+productSchema.index({ isActive: 1, minPrice: 1 });
+productSchema.index({ isActive: 1, categoryId: 1, minPrice: 1 });
 // Secondary categories (cross-sell filter)
 productSchema.index({ categoryIds: 1, isActive: 1 });
 // Text search: tìm kiếm sản phẩm theo tên

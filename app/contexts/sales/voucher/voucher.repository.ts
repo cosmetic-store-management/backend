@@ -5,12 +5,15 @@
 import { injectable } from "tsyringe";
 import mongoose from "mongoose";
 import Voucher from "./models/voucher.schema.js";
-import User from "../../identity/user/models/user.schema.js";
+import VoucherReservation from "./models/voucherReservation.schema.js";
+import { UserRepository } from "../../identity/user/user.repository.js";
 
 // ── Voucher CRUD ──────────────────────────────────────────────────────────────
 
 @injectable()
 export class VoucherRepository {
+  constructor(private readonly userRepository: UserRepository) {}
+
   findAll = (query: Record<string, any> = {}, skip = 0, limit = 0) => {
   const q = Voucher.find(query).sort({ createdAt: -1 });
   if (limit > 0) q.skip(skip).limit(limit);
@@ -95,31 +98,55 @@ export class VoucherRepository {
 
 // ── Wallet (User's saved vouchers) ────────────────────────────────────────────
 
-  findUserWithVouchers = (userId: string) =>
-  User.findById(userId).populate({
-    path: "savedVouchers",
-    // Populate usedBy to determine the "used" state for each user
-    select: "+usedBy",
-  });
+  findUserWithVouchers = (userId: string) => {
+    return this.userRepository.findById(userId).populate({
+      path: "savedVouchers",
+      // Populate usedBy to determine the "used" state for each user
+      select: "+usedBy",
+    });
+  }
 
   addVoucherToWallet = (
   userId: string,
   voucherId: mongoose.Types.ObjectId,
 ) =>
-  User.findByIdAndUpdate(
-    userId,
-    { $addToSet: { savedVouchers: voucherId } },
-    { returnDocument: "after" },
-  );
+  this.userRepository.addSavedVoucher(userId, voucherId);
 
   removeVoucherFromWallet = (
   userId: string,
   voucherId: mongoose.Types.ObjectId,
 ) =>
-  User.findByIdAndUpdate(
-    userId,
-    { $pull: { savedVouchers: voucherId } },
-    { returnDocument: "after" },
-  );
+  this.userRepository.removeSavedVoucher(userId, voucherId);
+
+// ── Voucher Reservation ───────────────────────────────────────────────────────
+
+  checkReservationExists = (voucherId: any, userId: string) => 
+    VoucherReservation.exists({ voucherId, userId });
+
+  deleteReservation = (voucherId: any, userId: string, session?: mongoose.ClientSession) =>
+    VoucherReservation.deleteOne({ voucherId, userId }).session(session || null);
+
+  findActiveReservations = (voucherId: any) =>
+    VoucherReservation.find({ 
+      voucherId, 
+      expiresAt: { $gt: new Date() },
+      status: "reserved" 
+    });
+
+  findUserReservations = (userId: string) =>
+    VoucherReservation.find({ 
+      userId, 
+      $or: [{ expiresAt: { $gt: new Date() } }, { expiresAt: null }, { expiresAt: { $exists: false } }]
+    }).lean();
+
+  countActiveReservations = (voucherId: any) =>
+    VoucherReservation.countDocuments({ 
+      voucherId, 
+      $or: [{ expiresAt: { $gt: new Date() } }, { expiresAt: null }, { expiresAt: { $exists: false } }]
+    });
+
+  findUserById = (userId: string) => this.userRepository.findById(userId);
+
+  createReservation = (data: any) => VoucherReservation.create(data);
 
 }

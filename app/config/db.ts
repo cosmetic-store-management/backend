@@ -1,8 +1,9 @@
 import mongoose from "mongoose";
+import { logger } from "../shared/logger/index.js";
 
 const connectDB = async (uri: string): Promise<void> => {
   if (!uri) {
-    console.error("MongoDB connection failed: MONGODB_URI is missing");
+    logger.error("MongoDB connection failed: MONGODB_URI is missing");
     process.exit(1);
   }
 
@@ -13,16 +14,16 @@ const connectDB = async (uri: string): Promise<void> => {
     minPoolSize: 20,
   });
 
-  console.log("✅ MongoDB connected");
+  logger.info("✅ MongoDB connected");
 
   mongoose.connection.on("disconnected", () =>
     console.warn("⚠️  MongoDB disconnected"),
   );
   mongoose.connection.on("reconnected", () =>
-    console.log("✅ MongoDB reconnected"),
+    logger.info("✅ MongoDB reconnected"),
   );
   mongoose.connection.on("error", (err: Error) =>
-    console.error("❌ MongoDB error:", err.message),
+    logger.error({ err: err.message }, "❌ MongoDB error:"),
   );
 };
 

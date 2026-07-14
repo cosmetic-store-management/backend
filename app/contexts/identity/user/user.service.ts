@@ -90,6 +90,10 @@ export class UserService {
     });
   }
 
+  async getUserByRole(role: string) {
+    return this.userRepo.findOneBy({ role });
+  }
+
   async getMyTierInfo(userId: string): Promise<TierInfoResponse> {
     const [result] = await Order.aggregate([
       { $match: { userId: new mongoose.Types.ObjectId(userId), orderStatus: "completed" } },

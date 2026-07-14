@@ -1,21 +1,29 @@
-import PaymentTransaction from "../models/payment-transaction.schema.js";
+import { injectable, inject } from "tsyringe";
+import { TransactionRepository } from "./transaction.repository.js";
 
-export const createTransaction = async (data: any) => {
-  return PaymentTransaction.create(data);
-};
+@injectable()
+export class TransactionService {
+  constructor(
+    @inject(TransactionRepository) private readonly transactionRepo: TransactionRepository
+  ) {}
 
-export const updateTransactionStatus = async (
-  providerTransactionId: string,
-  status: string,
-  metaData?: any,
-) => {
-  return PaymentTransaction.findOneAndUpdate(
-    { providerTransactionId },
-    { status, ...(metaData ? { metaData } : {}) },
-    { returnDocument: "after" },
-  );
-};
+  logTransaction = async (data: any) => {
+    return this.transactionRepo.createTransaction(data);
+  };
 
-export const getTransactionsByOrderId = async (orderId: string) => {
-  return PaymentTransaction.find({ orderId }).sort({ createdAt: -1 });
-};
+  updateTransactionStatus = async (
+    providerTransactionId: string,
+    status: string,
+    metaData?: any,
+  ) => {
+    return this.transactionRepo.findOneAndUpdate(
+      { providerTransactionId },
+      { status, ...(metaData ? { metaData } : {}) },
+      { returnDocument: "after" }
+    );
+  };
+
+  getTransactionsByOrderId = async (orderId: string) => {
+    return this.transactionRepo.findTransactionsByOrderId(orderId);
+  };
+}

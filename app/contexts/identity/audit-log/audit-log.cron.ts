@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import AuditLog from "./models/audit-log.schema.js";
+import { logger } from "../../../shared/logger/index.js";
 
 // Chạy cronjob định kỳ 1 lần mỗi ngày (24 giờ)
 const CRON_INTERVAL = 24 * 60 * 60 * 1000;
@@ -12,7 +13,7 @@ export const startAuditLogArchiverCron = () => {
 
   setInterval(async () => {
     if (isRunning) {
-      console.log("[AuditLog Cron] Đang chạy dở tiến trình trước, bỏ qua...");
+      logger.info("[AuditLog Cron] Đang chạy dở tiến trình trước, bỏ qua...");
       return;
     }
 
@@ -28,7 +29,7 @@ export const startAuditLogArchiverCron = () => {
         return;
       }
 
-      console.log(`[AuditLog Cron] Tìm thấy ${oldLogsCount} logs quá hạn (> ${RETENTION_MONTHS} tháng). Tiến hành Archive...`);
+      logger.info(`[AuditLog Cron] Tìm thấy ${oldLogsCount} logs quá hạn (> ${RETENTION_MONTHS} tháng). Tiến hành Archive...`);
 
       // Lấy toàn bộ log cũ theo từng chunk (tránh RAM overload nếu quá nhiều)
       const logsToArchive = await AuditLog.find({ createdAt: { $lt: expirationDate } }).lean();
@@ -45,18 +46,18 @@ export const startAuditLogArchiverCron = () => {
 
       // Ghi ra file
       fs.writeFileSync(backupFilePath, JSON.stringify(logsToArchive, null, 2), "utf8");
-      console.log(`[AuditLog Cron] Đã lưu ${oldLogsCount} logs vào file backup: ${backupFilePath}`);
+      logger.info(`[AuditLog Cron] Đã lưu ${oldLogsCount} logs vào file backup: ${backupFilePath}`);
 
       // Xoá log cũ khỏi DB sau khi đã backup thành công
       const deleteResult = await AuditLog.deleteMany({ createdAt: { $lt: expirationDate } });
-      console.log(`[AuditLog Cron] Đã dọn dẹp thành công ${deleteResult.deletedCount} logs khỏi cơ sở dữ liệu.`);
+      logger.info(`[AuditLog Cron] Đã dọn dẹp thành công ${deleteResult.deletedCount} logs khỏi cơ sở dữ liệu.`);
 
     } catch (error) {
-      console.error("[AuditLog Cron] Lỗi trong quá trình Archive Audit Logs:", error);
+      logger.error({ err: error }, "[AuditLog Cron] Lỗi trong quá trình Archive Audit Logs:");
     } finally {
       isRunning = false;
     }
   }, CRON_INTERVAL);
 
-  console.log(`[AuditLog Cron] Đã khởi chạy cron dọn dẹp Audit Logs cũ (Chu kỳ: 1 ngày, Retention: ${RETENTION_MONTHS} tháng)`);
+  logger.info(`[AuditLog Cron] Đã khởi chạy cron dọn dẹp Audit Logs cũ (Chu kỳ: 1 ngày, Retention: ${RETENTION_MONTHS} tháng)`);
 };

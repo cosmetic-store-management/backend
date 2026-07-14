@@ -25,13 +25,19 @@ const TX_CODE_RANGE = 900000;
 
 import { eventBus } from "../../shared/event-bus/index.js";
 import InventoryTransaction from "./models/inventory-transaction.schema.js";
+import { logger } from "../../../shared/logger/index.js";
+
+import { BrandRepository } from "../brand/brand.repository.js";
 
 @injectable()
 export class InventoryService {
-  constructor(@inject(InventoryRepository) private readonly inventoryRepo: InventoryRepository) {
-    eventBus.on("inventory.stock.decremented", (variant) => {
+  constructor(
+    @inject(InventoryRepository) private readonly inventoryRepo: InventoryRepository,
+    @inject(BrandRepository) private readonly brandRepo: BrandRepository
+  ) {
+    eventBus.on("inventory.stock.decremented", (variant: any) => {
       this.checkAndTriggerLowStockAlert(variant).catch(err => 
-        console.error("Error handling inventory.stock.decremented:", err)
+        logger.error({ err: err }, "Error handling inventory.stock.decremented:")
       );
     });
 
@@ -61,7 +67,7 @@ export class InventoryService {
           date: new Date(),
         }], { session });
       } catch (error) {
-        console.error("Error handling inventory.stock.restored:", error);
+        logger.error({ err: error }, "Error handling inventory.stock.restored:");
       }
     });
 
@@ -80,7 +86,7 @@ export class InventoryService {
           date: new Date(),
         }], { session });
       } catch (error) {
-        console.error("Error handling inventory.stock.deducted:", error);
+        logger.error({ err: error }, "Error handling inventory.stock.deducted:");
       }
     });
   }
@@ -122,8 +128,7 @@ export class InventoryService {
   if (data.isActive !== undefined) {
     const nextStatus = !!data.isActive;
     if (!nextStatus) {
-      const { default: Brand } = await import("../brand/models/brand.schema.js");
-      const activeBrandsCount = await Brand.countDocuments({ supplierId: id, isActive: true });
+      const activeBrandsCount = await this.brandRepo.countBySupplierId(id, true);
       if (activeBrandsCount > 0) {
         throw badRequest(`Không thể tắt hoạt động nhà cung cấp này vì đang liên kết với ${activeBrandsCount} thương hiệu đang hoạt động.`);
       }
@@ -133,17 +138,11 @@ export class InventoryService {
 
   await supplier.save();
 
-  const { default: Brand } = await import("../brand/models/brand.schema.js");
-  await Brand.updateMany(
-    { supplierId: id },
-    {
-      $set: {
-        supplierName: supplier.name,
-        contactPhone: supplier.contactPhone || supplier.phone,
-        contactEmail: supplier.contactEmail || supplier.email,
-      },
-    },
-  );
+  await this.brandRepo.updateSupplierInfo(id, {
+    supplierName: supplier.name,
+    contactPhone: supplier.contactPhone || supplier.phone,
+    contactEmail: supplier.contactEmail || supplier.email,
+  });
 
   return supplier;
 };
@@ -152,14 +151,12 @@ export class InventoryService {
   const supplier = await this.inventoryRepo.findSupplierById(id);
   if (!supplier) throw notFound("Supplier not found");
 
-  const { default: Brand } = await import("../brand/models/brand.schema.js");
-  const linkedBrandsCount = await Brand.countDocuments({ supplierId: id });
+  const linkedBrandsCount = await this.brandRepo.countBySupplierId(id);
   if (linkedBrandsCount > 0) {
     throw badRequest(`Không thể xóa nhà cung cấp này vì đang liên kết với ${linkedBrandsCount} thương hiệu.`);
   }
 
-  const { default: GoodsReceipt } = await import("./models/goods-receipt.schema.js");
-  const linkedReceiptsCount = await GoodsReceipt.countDocuments({ supplierId: id });
+  const linkedReceiptsCount = await this.inventoryRepo.countGoodsReceiptsBySupplierId(id);
   if (linkedReceiptsCount > 0) {
     throw badRequest(`Không thể xóa nhà cung cấp này vì đã phát sinh ${linkedReceiptsCount} đơn nhập hàng.`);
   }
@@ -902,9 +899,9 @@ export class InventoryService {
     for (const email of emails) {
       await sendLowStockAlertEmail(email, variant.name, variant.stock, variant.minStock);
     }
-    console.log(`[Low Stock Alert] Emailed low stock alert for variant ${variant.name} (Stock: ${variant.stock}/${variant.minStock})`);
+    logger.info(`[Low Stock Alert] Emailed low stock alert for variant ${variant.name} (Stock: ${variant.stock}/${variant.minStock})`);
   } catch (error) {
-    console.error("[Low Stock Alert] Failed to trigger low-stock alert:", error);
+    logger.error({ err: error }, "[Low Stock Alert] Failed to trigger low-stock alert:");
   }
 };
 

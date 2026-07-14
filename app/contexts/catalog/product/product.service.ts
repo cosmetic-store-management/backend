@@ -1,11 +1,14 @@
 import { injectable, inject } from "tsyringe";
 import { ProductRepository } from "./product.repository.js";
 import mongoose from "mongoose";
+import NodeCache from "node-cache";
 
-import Variant from "./models/variant.schema.js";
-import Brand from "../brand/models/brand.schema.js";
-import Category from "../category/models/category.schema.js";
-import Product from "./models/product.schema.js";
+const metadataCache = new NodeCache({ stdTTL: 3600, checkperiod: 600, useClones: false });
+
+import { BrandRepository } from "../brand/brand.repository.js";
+import { OrderService } from "../../sales/order/order.service.js";
+import { UserService } from "../../identity/user/user.service.js";
+import { InventoryRepository } from "../inventory/inventory.repository.js";
 import { mapProduct } from "./dto/product.response.dto.js";
 import {
   badRequest,
@@ -60,14 +63,17 @@ interface AdminProductQuery {
 @injectable()
 export class ProductService {
   constructor(
-    @inject(ProductRepository) private readonly productRepo: ProductRepository
+    @inject(ProductRepository) private readonly productRepo: ProductRepository,
+    @inject(BrandRepository) private readonly brandRepo: BrandRepository,
+    @inject(OrderService) private readonly orderService: OrderService,
+    @inject(UserService) private readonly userService: UserService,
+    @inject(InventoryRepository) private readonly inventoryRepo: InventoryRepository
   ) {
     eventBus.on("product.soldCount.decremented", async (payload: { productId: string; quantity: number; session?: mongoose.ClientSession }) => {
       try {
-        await Product.findByIdAndUpdate(
+        await this.productRepo.updateById(
           payload.productId,
-          { $inc: { soldCount: -Math.abs(payload.quantity) } },
-          { session: payload.session }
+          { $inc: { soldCount: -Math.abs(payload.quantity) } } as any
         );
       } catch (err) {
         console.error("Error in product.soldCount.decremented:", err);
@@ -76,10 +82,9 @@ export class ProductService {
 
     eventBus.on("product.soldCount.incremented", async (payload: { productId: string; quantity: number; session?: mongoose.ClientSession }) => {
       try {
-        await Product.findByIdAndUpdate(
+        await this.productRepo.updateById(
           payload.productId,
-          { $inc: { soldCount: Math.abs(payload.quantity) } },
-          { session: payload.session }
+          { $inc: { soldCount: Math.abs(payload.quantity) } } as any
         );
       } catch (err) {
         console.error("Error in product.soldCount.incremented:", err);
@@ -88,13 +93,12 @@ export class ProductService {
 
     eventBus.on("product.rating.updated", async (payload: { productId: string; averageRating: number; numReviews: number; session?: mongoose.ClientSession }) => {
       try {
-        await Product.updateOne(
-          { _id: payload.productId },
+        await this.productRepo.updateById(
+          payload.productId,
           { 
             averageRating: payload.averageRating, 
             numReviews: payload.numReviews 
-          },
-          { session: payload.session }
+          }
         );
       } catch (err) {
         console.error("Error in product.rating.updated:", err);
@@ -102,7 +106,27 @@ export class ProductService {
     });
   }
 
-  getPublicProducts = async ({
+  invalidatePublicCache = () => {
+    const keys = metadataCache.keys();
+    keys.forEach((key) => {
+      if (key.startsWith("public_products:")) {
+        metadataCache.del(key);
+      }
+    });
+  };
+
+  getPublicProducts = async (params: PublicProductQuery) => {
+    const cacheKey = "public_products:" + JSON.stringify(params);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hit = metadataCache.get<any>(cacheKey);
+    if (hit) return hit;
+
+    const result = await this._getPublicProductsRaw(params);
+    metadataCache.set(cacheKey, result);
+    return result;
+  };
+
+  private _getPublicProductsRaw = async ({
   category,
   brandId,
   search,
@@ -121,16 +145,10 @@ export class ProductService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const query: Record<string, any> = { isActive: true };
 
-  if (search) query.name = { $regex: search.trim(), $options: "i" };
+  if (search) query.$text = { $search: search.trim() };
 
   if (onSale === "true") {
-    const saleVariants = await Variant.find(
-      { discountPrice: { $gt: 0 } },
-      { productId: 1 },
-    ).lean();
-    const saleProductIds = [
-      ...new Set(saleVariants.map((v: any) => v.productId.toString())),
-    ];
+    const saleProductIds = await this.productRepo.findSaleProductIds();
     query._id = { $in: saleProductIds };
   }
 
@@ -139,35 +157,10 @@ export class ProductService {
     const maxP =
       maxPrice !== undefined ? Number(maxPrice) : Number.MAX_SAFE_INTEGER;
 
-    // Find variants where effective price (discountPrice > 0 ? discountPrice : price) is within range
-    const variantsInRange = await Variant.aggregate([
-      {
-        $addFields: {
-          effectivePrice: {
-            $cond: [
-              {
-                $and: [
-                  { $gt: ["$discountPrice", 0] },
-                  { $ne: ["$discountPrice", null] },
-                ],
-              },
-              "$discountPrice",
-              "$price",
-            ],
-          },
-        },
-      },
-      {
-        $match: {
-          effectivePrice: { $gte: minP, $lte: maxP },
-        },
-      },
-      {
-        $project: { productId: 1 },
-      },
-    ]);
-    const productIds = variantsInRange.map((v) => v.productId);
-    query._id = { $in: productIds };
+    // OPTIMIZATION: Filter directly on Product collection instead of aggregating Variants
+    // This uses the minPrice/maxPrice fields that are kept in sync by syncProductPrices
+    query.minPrice = { $lte: maxP };
+    query.maxPrice = { $gte: minP };
   }
 
   const queryWithoutCategories = { ...query };
@@ -177,11 +170,13 @@ export class ProductService {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    const categoryIds = [];
-    for (const slug of categorySlugs) {
-      const ids = await this.productRepo.findCategoryIdsWithDescendants(slug);
-      categoryIds.push(...ids);
-    }
+    
+    const nestedIds = await Promise.all(
+      categorySlugs.map((slug) =>
+        this.productRepo.findCategoryIdsWithDescendants(slug)
+      )
+    );
+    const categoryIds = nestedIds.flat();
     if (categoryIds.length === 0)
       return {
         products: [],
@@ -219,9 +214,14 @@ export class ProductService {
       .map((b) => b.trim())
       .filter(Boolean);
     if (brandArr.length > 0) {
-      query.brand = {
-        $in: brandArr.map((b) => new RegExp("^" + b + "$", "i")),
-      };
+      const matchedBrandIds = await this.brandRepo.findIdsBySlugs(brandArr);
+      
+      if (matchedBrandIds.length > 0) {
+        query.brandId = { $in: matchedBrandIds };
+      } else {
+        // If slugs are provided but none exist, return no products
+        query.brandId = null;
+      }
     }
   }
 
@@ -233,24 +233,21 @@ export class ProductService {
     newest: { createdAt: -1 },
     top_sales: { soldCount: -1, createdAt: -1 },
     popular: { soldCount: -1, numReviews: -1, createdAt: -1 },
+    price_asc: { minPrice: 1, _id: 1 },
+    price_desc: { minPrice: -1, _id: 1 },
   };
   const mongoSort = sortMap[sort ?? "newest"] ?? { createdAt: -1 };
 
   try {
     // ── Cache for Metadata Aggregations ──────────────────────────────────────────
-    // Key: query hash, Value: { brands, categories, expiresAt }
+    // Key: query hash, Value: { brands, categories }
     const metadataCacheKey = JSON.stringify(queryWithoutBrands) + "|" + JSON.stringify(queryWithoutCategories);
-    const now = Date.now();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const filterCache = (global as any).__filterCache || new Map();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global as any).__filterCache = filterCache;
 
     let availableBrands: any[] = [];
     let availableCategoryIds: string[] = [];
 
-    const cachedMeta = filterCache.get(metadataCacheKey);
-    if (cachedMeta && cachedMeta.expiresAt > now) {
+    const cachedMeta = metadataCache.get<{brands: any[], categories: string[]}>(metadataCacheKey);
+    if (cachedMeta) {
       availableBrands = cachedMeta.brands;
       availableCategoryIds = cachedMeta.categories;
     } else {
@@ -270,76 +267,17 @@ export class ProductService {
         ]);
         availableBrands = fetchedBrands;
         availableCategoryIds = fetchedCats;
-        // Cache for 60 seconds
-        filterCache.set(metadataCacheKey, {
+        // Cache for 60 seconds (handled by NodeCache stdTTL)
+        metadataCache.set(metadataCacheKey, {
           brands: availableBrands,
           categories: availableCategoryIds,
-          expiresAt: now + 60000,
         });
-
-        // Simple cache cleanup
-        if (filterCache.size > 1000) filterCache.clear();
       } catch (e: any) {
         console.error("Metadata fetch error:", e.message);
       }
     }
 
-    // ── Price sort: aggregate variant min prices ───────────────────────────
-    if (isPrice) {
-      const priceOrder = sort === "price_asc" ? 1 : -1;
-
-      // Get ALL matching product IDs
-      const matchingDocs = await mongoose
-        .model("Product")
-        .find(query)
-        .select("_id")
-        .lean();
-      const matchingIds = matchingDocs.map((d: any) => d._id);
-
-      const priceSorted = await Variant.aggregate([
-        { $match: { productId: { $in: matchingIds } } },
-        {
-          $addFields: {
-            effectivePrice: {
-              $cond: [
-                {
-                  $and: [
-                    { $gt: ["$discountPrice", 0] },
-                    { $ne: ["$discountPrice", null] },
-                  ],
-                },
-                "$discountPrice",
-                "$price",
-              ],
-            },
-          },
-        },
-        {
-          $group: { _id: "$productId", minPrice: { $min: "$effectivePrice" } },
-        },
-        { $sort: { minPrice: priceOrder } },
-      ]);
-
-      const total = priceSorted.length;
-      const pagedIds = priceSorted
-        .slice(skip, skip + parsedLimit)
-        .map((r: any) => r._id);
-      const products = await this.productRepo.findPublicByIds(pagedIds);
-
-      return {
-        products: products.map(mapProduct),
-        availableBrands,
-        availableCategoryIds,
-        pagination: {
-          page: parsedPage,
-          limit: parsedLimit,
-          total,
-          totalPages: Math.ceil(total / parsedLimit),
-        },
-      };
-    }
-
-    // ── Standard sort (newest / top_sales / popular) ───────────────────────
+    // ── Standard sort (newest / top_sales / popular / price) ───────────────────────
     const [products, total] = await Promise.all([
       this.productRepo.findPublic(query, skip, parsedLimit, mongoSort),
       this.productRepo.countAll(query),
@@ -388,24 +326,18 @@ export class ProductService {
 ) => {
   if (!mongoose.Types.ObjectId.isValid(productId))
     throw badRequest("Invalid product ID");
+
+  const cacheKey = `recommendation:${productId}:${limit}`;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hit = metadataCache.get<any>(cacheKey);
+  if (hit) return hit;
+
   const pId = new mongoose.Types.ObjectId(productId);
 
   const product = await this.productRepo.findById(productId);
   if (!product) throw notFound("Product not found");
 
-  const { default: Order } = await import("../../sales/order/models/order.schema.js");
-
-  // 1. Collaborative Filtering: "Customers who bought this also bought"
-  const ordersAggregation = await Order.aggregate([
-    { $match: { "items.productId": pId } },
-    { $unwind: "$items" },
-    { $match: { "items.productId": { $ne: pId } } },
-    { $group: { _id: "$items.productId", count: { $sum: 1 } } },
-    { $sort: { count: -1 } },
-    { $limit: limit }
-  ]);
-
-  const sortedIds = ordersAggregation.map((doc: any) => doc._id);
+  const sortedIds = await this.orderService.getCollaborativeProductIds(productId, limit);
 
   const recommendedProducts: any[] = [];
 
@@ -446,7 +378,9 @@ export class ProductService {
     recommendedProducts.push(...fallbackProducts);
   }
 
-  return recommendedProducts.map(mapProduct);
+  const result = recommendedProducts.map(mapProduct);
+  metadataCache.set(cacheKey, result);
+  return result;
 };
 
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
@@ -471,20 +405,10 @@ export class ProductService {
 
   if (search) {
     const cleanSearch = search.trim();
-    const matchingVariants = await mongoose
-      .model("Variant")
-      .find({
-        $or: [
-          { barcode: { $regex: cleanSearch, $options: "i" } },
-          { sku: { $regex: cleanSearch, $options: "i" } },
-        ],
-      })
-      .select("productId")
-      .lean();
-    const variantProductIds = matchingVariants.map((v: any) => v.productId);
+    const variantProductIds = await this.productRepo.findProductIdsByVariantSearch(cleanSearch);
 
     query.$or = [
-      { name: { $regex: cleanSearch, $options: "i" } },
+      { $text: { $search: cleanSearch } },
       { _id: { $in: variantProductIds } },
     ];
   }
@@ -492,12 +416,7 @@ export class ProductService {
   else if (status === "inactive") query.isActive = false;
 
   if (minStock !== undefined || maxStock !== undefined) {
-    const stockQuery: any = {};
-    if (minStock !== undefined) stockQuery.$gte = Number(minStock);
-    if (maxStock !== undefined) stockQuery.$lte = Number(maxStock);
-
-    const matchingVariants = await mongoose.model("Variant").find({ stock: stockQuery }).select("productId").lean();
-    const productIds = matchingVariants.map((v: any) => v.productId);
+    const productIds = await this.productRepo.findProductIdsByVariantStock(minStock, maxStock);
 
     if (query._id) {
       // If _id is already filtered (unlikely in this query, but safe)
@@ -558,9 +477,7 @@ export class ProductService {
   const category = await this.productRepo.findCategoryById(data.categoryId);
   if (!category) throw badRequest("Category does not exist");
 
-  const { default: Brand } =
-    await import("../brand/models/brand.schema.js");
-  const brandDoc = await Brand.findById(data.brandId);
+  const brandDoc = await this.brandRepo.findById(data.brandId);
   if (!brandDoc) throw badRequest("Brand does not exist");
 
   // Validate secondary categories if provided
@@ -598,16 +515,12 @@ export class ProductService {
         v.sku?.trim() ||
         `SKU-${slugify(brandDoc.name).slice(0, 3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}-${idx}`,
     }));
-    const insertedVariants = await Variant.insertMany(variantsToCreate);
+    const insertedVariants = await this.productRepo.createVariants(variantsToCreate);
 
     // ── Opening Balance Sync ──────────────────────────────────────────────
     // For each variant with initial stock > 0, create an opening balance
     // Batch (TONDAU) and a corresponding InventoryTransaction so FEFO and
     // Moving Average Cost calculations have a valid starting point.
-    const { default: Batch } = await import("../inventory/models/batch.schema.js");
-    const { default: InventoryTransaction } = await import(
-      "../inventory/models/inventory-transaction.schema.js"
-    );
     for (let idx = 0; idx < insertedVariants.length; idx++) {
       const insertedVariant = insertedVariants[idx];
       const sourceVariant = data.variants[idx];
@@ -615,7 +528,7 @@ export class ProductService {
       if (initialStock <= 0) continue;
 
       const estimatedPrice = Number(sourceVariant.price ?? 0) * 0.6;
-      await Batch.create({
+      await this.inventoryRepo.createBatch({
         variantId: insertedVariant._id,
         goodsReceiptId: null,
         batchCode: "TONDAU",
@@ -626,11 +539,11 @@ export class ProductService {
 
       const txCode = `TXIN-OB-${insertedVariant._id.toString().slice(-6).toUpperCase()}-${Date.now()}`;
       // Resolve a creatorId: prefer owner/manager, fallback to any user
-      const { default: User } = await import("../../identity/user/models/user.schema.js");
-      const systemUser = await User.findOne({ role: { $in: ["owner", "manager"] } }).select("_id").lean()
-        ?? await User.findOne({}).select("_id").lean();
+      let systemUser: any = await this.userService.getUserByRole("owner");
+      if (!systemUser) systemUser = await this.userService.getUserByRole("manager");
+      
       if (systemUser) {
-        await InventoryTransaction.create({
+        await this.inventoryRepo.createTransaction({
           code: txCode,
           productId: newProduct._id,
           variantId: insertedVariant._id,
@@ -645,6 +558,8 @@ export class ProductService {
   }
 
   const created = await this.productRepo.findById(newProduct._id.toString());
+  this.invalidatePublicCache();
+  await this.syncProductPrices(newProduct._id);
   return mapProduct(created!);
 };
 
@@ -689,9 +604,7 @@ export class ProductService {
   }
 
   if (data.brandId !== undefined) {
-    const { default: Brand } =
-      await import("../brand/models/brand.schema.js");
-    const brandDoc = await Brand.findById(data.brandId);
+    const brandDoc = await this.brandRepo.findById(data.brandId.toString());
     if (!brandDoc) throw badRequest("Brand does not exist");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     product.brandId = data.brandId as any;
@@ -706,17 +619,12 @@ export class ProductService {
   await this.productRepo.save(product);
 
   if (data.variants && data.variants.length > 0) {
-    const { default: Brand } =
-      await import("../brand/models/brand.schema.js");
-    const brandDoc = await Brand.findById(product.brandId);
+    const brandDoc = await this.brandRepo.findById(product.brandId.toString());
 
     const variantIdsToKeep = data.variants
       .filter((v: any) => v.id)
       .map((v: any) => v.id);
-    await Variant.deleteMany({
-      productId: product._id,
-      _id: { $nin: variantIdsToKeep },
-    });
+    await this.productRepo.deleteVariantsExcept(product._id.toString(), variantIdsToKeep);
 
     for (let idx = 0; idx < data.variants.length; idx++) {
       const v: any = data.variants[idx];
@@ -730,18 +638,14 @@ export class ProductService {
       delete variantPayload.id;
 
       if (v.id) {
-        await Variant.updateOne({ _id: v.id }, { $set: variantPayload });
+        await this.productRepo.updateVariant(v.id, variantPayload);
       } else {
         // New variant added during product update — sync opening balance
-        const newVariant = await Variant.create({ ...variantPayload, productId: product._id });
+        const newVariant = await this.productRepo.createVariant({ ...variantPayload, productId: product._id });
         const initialStock = Number(v.stock ?? 0);
         if (initialStock > 0) {
-          const { default: Batch } = await import("../inventory/models/batch.schema.js");
-          const { default: InventoryTransaction } = await import(
-            "../inventory/models/inventory-transaction.schema.js"
-          );
           const estimatedPrice = Number(v.price ?? 0) * 0.6;
-          await Batch.create({
+          await this.inventoryRepo.createBatch({
             variantId: newVariant._id,
             goodsReceiptId: null,
             batchCode: "TONDAU",
@@ -750,11 +654,11 @@ export class ProductService {
             remainingQty: initialStock,
           });
           const txCode = `TXIN-OB-${newVariant._id.toString().slice(-6).toUpperCase()}-${Date.now()}`;
-          const { default: User } = await import("../../identity/user/models/user.schema.js");
-          const systemUser = await User.findOne({ role: { $in: ["owner", "manager"] } }).select("_id").lean()
-            ?? await User.findOne({}).select("_id").lean();
+          let systemUser: any = await this.userService.getUserByRole("owner");
+          if (!systemUser) systemUser = await this.userService.getUserByRole("manager");
+          
           if (systemUser) {
-            await InventoryTransaction.create({
+            await this.inventoryRepo.createTransaction({
               code: txCode,
               productId: product._id,
               variantId: newVariant._id,
@@ -771,6 +675,7 @@ export class ProductService {
   }
 
   const updated = await this.productRepo.findById(product._id.toString());
+  this.invalidatePublicCache();
   return mapProduct(updated!);
 };
 
@@ -785,6 +690,7 @@ export class ProductService {
   product.isActive = isActive;
   await this.productRepo.save(product);
   const updated = await this.productRepo.findById(product._id.toString());
+  this.invalidatePublicCache();
   return mapProduct(updated!);
 };
 
@@ -797,26 +703,16 @@ export class ProductService {
   // ── Delete Guard ──────────────────────────────────────────────────────
   // Block hard-delete if the product has active inventory batches or
   // goods receipts. Use Discontinue (isActive = false) instead.
-  const { default: VariantCheck } = await import("./models/variant.schema.js");
-  const variantIds = await VariantCheck.find({ productId: id }).select("_id").lean();
+  const variantIds = await this.productRepo.findVariantIdsByProductId(id);
   if (variantIds.length > 0) {
-    const { default: Batch } = await import("../inventory/models/batch.schema.js");
-    const activeBatchCount = await Batch.countDocuments({
-      variantId: { $in: variantIds.map((v: any) => v._id) },
-      remainingQty: { $gt: 0 },
-    });
+    const activeBatchCount = await this.inventoryRepo.countActiveBatches(variantIds);
     if (activeBatchCount > 0) {
       throw conflict(
         `Cannot delete this product — it has ${activeBatchCount} active inventory batch(es) with remaining stock. Use "Discontinue" (set inactive) instead.`,
       );
     }
 
-    const { default: InventoryTransaction } = await import(
-      "../inventory/models/inventory-transaction.schema.js"
-    );
-    const txCount = await InventoryTransaction.countDocuments({
-      variantId: { $in: variantIds.map((v: any) => v._id) },
-    });
+    const txCount = await this.inventoryRepo.countTransactionsForVariants(variantIds);
     if (txCount > 0) {
       throw conflict(
         `Cannot delete this product — it has ${txCount} inventory transaction record(s). Use "Discontinue" (set inactive) to preserve audit history.`,
@@ -825,11 +721,11 @@ export class ProductService {
   }
 
   await this.productRepo.findByIdAndDelete(id);
-  const { default: Variant } = await import("./models/variant.schema.js");
-  await Variant.deleteMany({ productId: id });
+  await this.productRepo.deleteVariantsByProductId(id);
 
-  const { default: Review } = await import("../../engagement/review/models/review.schema.js");
-  await Review.deleteMany({ productId: id });
+  // TODO: Use event bus to trigger review deletion via ReviewService instead of direct schema dependency
+  // await eventBus.emitAsync("product.deleted", { productId: id });
+  this.invalidatePublicCache();
 };
 
   batchImportProducts = async (productsData: any[]) => {
@@ -852,9 +748,9 @@ export class ProductService {
     let brandId: mongoose.Types.ObjectId | undefined;
     const brandName = firstRow["Brand"];
     if (brandName) {
-      let brand = await Brand.findOne({ name: new RegExp(`^${brandName}$`, 'i') });
+      let brand: any = await this.brandRepo.findOneBy({ name: new RegExp(`^${brandName}$`, 'i') });
       if (!brand) {
-        brand = await Brand.create({ name: brandName, slug: slugify(brandName) });
+        brand = await this.brandRepo.create({ name: brandName, slug: slugify(brandName) });
       }
       brandId = brand._id;
     }
@@ -862,9 +758,9 @@ export class ProductService {
     let categoryId: mongoose.Types.ObjectId | undefined;
     const categoryName = firstRow["Category"];
     if (categoryName) {
-      let cat = await Category.findOne({ name: new RegExp(`^${categoryName}$`, 'i') });
+      let cat: any = await this.productRepo.findOneCategoryBy({ name: new RegExp(`^${categoryName}$`, 'i') });
       if (!cat) {
-        cat = await Category.create({ name: categoryName, slug: slugify(categoryName) });
+        cat = await this.productRepo.createCategory({ name: categoryName, slug: slugify(categoryName) });
       }
       categoryId = cat._id;
     }
@@ -885,16 +781,17 @@ export class ProductService {
       continue;
     }
 
-    let product = await Product.findOne({ slug });
+    let product = await this.productRepo.findDocumentBy({ slug });
     if (product) {
-      await Product.findByIdAndUpdate(product._id, productData);
+      await this.productRepo.updateById(product._id.toString(), productData);
     } else {
-      product = await Product.create(productData);
+      product = await this.productRepo.create(productData);
     }
 
-    const existingVariants = await Variant.find({ productId: product._id });
+    const variantIds = await this.productRepo.findVariantIdsByProductId(product._id.toString());
+    const existingVariants = await Promise.all(variantIds.map(id => this.productRepo.findVariantById(id)));
     const existingVariantsMap = new Map(
-      existingVariants.map(v => [v.barcode || v.sku || v.name, v])
+      existingVariants.filter(Boolean).map((v: any) => [v.barcode || v.sku || v.name, v])
     );
 
     for (const row of rows) {
@@ -921,18 +818,14 @@ export class ProductService {
       };
 
       if (existingVariantsMap.has(vKey)) {
-        await Variant.findByIdAndUpdate(existingVariantsMap.get(vKey)!._id, variantData);
+        await this.productRepo.updateVariant((existingVariantsMap.get(vKey) as any)._id.toString(), variantData);
       } else {
         // Brand new variant from Excel — sync opening balance
-        const newVariant = await Variant.create(variantData);
+        const newVariant = await this.productRepo.createVariant(variantData);
         const initialStock = Number(variantData.stock ?? 0);
         if (initialStock > 0) {
-          const { default: Batch } = await import("../inventory/models/batch.schema.js");
-          const { default: InventoryTransaction } = await import(
-            "../inventory/models/inventory-transaction.schema.js"
-          );
           const estimatedPrice = Number(variantData.price ?? 0) * 0.6;
-          await Batch.create({
+          await this.inventoryRepo.createBatch({
             variantId: newVariant._id,
             goodsReceiptId: null,
             batchCode: "TONDAU",
@@ -941,11 +834,11 @@ export class ProductService {
             remainingQty: initialStock,
           });
           const txCode = `TXIN-OB-${newVariant._id.toString().slice(-6).toUpperCase()}-${Date.now()}`;
-          const { default: User } = await import("../../identity/user/models/user.schema.js");
-          const systemUser = await User.findOne({ role: { $in: ["owner", "manager"] } }).select("_id").lean()
-            ?? await User.findOne({}).select("_id").lean();
+          let systemUser: any = await this.userService.getUserByRole("owner");
+          if (!systemUser) systemUser = await this.userService.getUserByRole("manager");
+          
           if (systemUser) {
-            await InventoryTransaction.create({
+            await this.inventoryRepo.createTransaction({
               code: txCode,
               productId: product._id,
               variantId: newVariant._id,
@@ -962,7 +855,21 @@ export class ProductService {
     }
   }
 
+  this.invalidatePublicCache();
   return { totalProcessed };
 };
+
+  async syncProductPrices(productId: mongoose.Types.ObjectId | string) {
+    const variantIds = await this.productRepo.findVariantIdsByProductId(productId.toString());
+    const variants = await Promise.all(variantIds.map(id => this.productRepo.findVariantById(id)));
+    const activeVariants = variants.filter((v: any) => v && v.isActive);
+    let minPrice = 0;
+    let maxPrice = 0;
+    if (activeVariants.length > 0) {
+      minPrice = Math.min(...activeVariants.map((v: any) => v.discountPrice && v.discountPrice > 0 ? v.discountPrice : v.price));
+      maxPrice = Math.max(...activeVariants.map((v: any) => v.price));
+    }
+    await this.productRepo.updateById(productId.toString(), { minPrice, maxPrice } as any);
+  }
 
 }

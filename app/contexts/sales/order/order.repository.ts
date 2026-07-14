@@ -13,10 +13,16 @@ type Query = Record<string, any>;
 export class OrderRepository {
   async findOrders(query: Query, page: number, limit: number) {
     const skip = (page - 1) * limit;
-    const [orders, total] = await Promise.all([
-      Order.find(query).sort({ _id: -1 }).skip(skip).limit(limit).lean(),
+    const [orderIds, total] = await Promise.all([
+      Order.find(query).select("_id").sort({ _id: -1 }).skip(skip).limit(limit).lean(),
       Order.countDocuments(query),
     ]);
+    
+    let orders: any[] = [];
+    if (orderIds.length > 0) {
+      const ids = orderIds.map((o: any) => o._id);
+      orders = await Order.find({ _id: { $in: ids } }).sort({ _id: -1 }).lean();
+    }
     
     const totalPages = Math.ceil(total / limit);
 
@@ -59,12 +65,52 @@ export class OrderRepository {
     return Order.findOneAndUpdate(query, update, options);
   }
 
+  async aggregateUserTotalSpent(userId: string | Types.ObjectId): Promise<number> {
+    const [result] = await Order.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId.toString()),
+          orderStatus: "completed",
+        },
+      },
+      { $group: { _id: null, totalSpent: { $sum: "$totalAmount" } } },
+    ]);
+    return result?.totalSpent ?? 0;
+  }
+
+  countOrdersToday(startOfDay: Date, endOfDay: Date): Promise<number> {
+    return Order.countDocuments({
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+    });
+  }
+
+  async getCollaborativeProductIds(productId: string | mongoose.Types.ObjectId, limit: number): Promise<string[]> {
+    const pId = new mongoose.Types.ObjectId(productId.toString());
+    const ordersAggregation = await Order.aggregate([
+      { $match: { "items.productId": pId } },
+      { $unwind: "$items" },
+      { $match: { "items.productId": { $ne: pId } } },
+      { $group: { _id: "$items.productId", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: limit }
+    ]);
+    return ordersAggregation.map((doc: any) => doc._id.toString());
+  }
+
   findProductById(id: string) {
     return Product.findById(id).populate("categoryId", "name slug imageUrl isActive");
   }
 
-  findProductsByIds(ids: string[]) {
+  async findProductsByIds(ids: string[]) {
     return Product.find({ _id: { $in: ids } }).populate("categoryId", "name slug imageUrl isActive");
+  }
+
+  async incrementProductSoldCount(productId: string, quantity: number, session?: mongoose.ClientSession) {
+    return Product.findByIdAndUpdate(
+      productId,
+      { $inc: { soldCount: quantity } },
+      { session }
+    );
   }
 
   async findVariantById(id: string) {

@@ -3,6 +3,10 @@ import { BrandRepository } from "./brand.repository.js";
 import { mapBrand } from "./dto/brand.response.dto.js";
 import { notFound, conflict } from "../../../shared/errors/httpErrors.js";
 import type { CreateBrandInput, UpdateBrandInput } from "./dto/brand.request.dto.js";
+import NodeCache from "node-cache";
+
+const brandCache = new NodeCache({ stdTTL: 3600 });
+const PUBLIC_CACHE_KEY = "PUBLIC_BRANDS";
 
 const slugify = (text: string): string =>
   text
@@ -16,46 +20,8 @@ const slugify = (text: string): string =>
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
 
-const getBrandProductCounts = async (
-  brandIds: string[],
-): Promise<Record<string, number>> => {
-  if (!brandIds.length) return {};
-  const { default: Product } = await import("../product/models/product.schema.js");
-  const { Types } = await import("mongoose");
-  const results = await Product.aggregate([
-    { $match: { brandId: { $in: brandIds.map((id) => new Types.ObjectId(id)) } } },
-    { $group: { _id: "$brandId", count: { $sum: 1 } } },
-  ]);
-  return Object.fromEntries(results.map((r: any) => [r._id.toString(), r.count]));
-};
-
-const ensureSupplierLinked = async (brandDoc: any) => {
-  if (!brandDoc) return brandDoc;
-  if (brandDoc.supplierId) return brandDoc;
-
-  if (brandDoc.supplierName && brandDoc.supplierName.trim()) {
-    const name = brandDoc.supplierName.trim();
-    const phone = brandDoc.contactPhone?.trim() || "0000000000";
-    const email = brandDoc.contactEmail?.trim() || "";
-
-    const { default: Supplier } = await import("../inventory/models/supplier.schema.js");
-
-    let supplier = await Supplier.findOne({ name: { $regex: `^${name}$`, $options: "i" } });
-    if (!supplier) {
-      supplier = await Supplier.create({ name, phone, email, address: "Migrated from Brand data" });
-    }
-
-    brandDoc.supplierId = supplier._id;
-    if (typeof brandDoc.save === "function") {
-      await brandDoc.save();
-    } else {
-      const { default: Brand } = await import("./models/brand.schema.js");
-      await Brand.findByIdAndUpdate(brandDoc._id, { supplierId: supplier._id });
-      brandDoc.supplierId = supplier; 
-    }
-  }
-  return brandDoc;
-};
+import { ProductRepository } from "../product/product.repository.js";
+import { InventoryRepository } from "../inventory/inventory.repository.js";
 
 interface AdminBrandQuery {
   search?: string;
@@ -68,19 +34,58 @@ interface AdminBrandQuery {
 @injectable()
 export class BrandService {
   constructor(
-    @inject(BrandRepository) private readonly brandRepo: BrandRepository
+    @inject(BrandRepository) private readonly brandRepo: BrandRepository,
+    @inject(ProductRepository) private readonly productRepo: ProductRepository,
+    @inject(InventoryRepository) private readonly inventoryRepo: InventoryRepository
   ) {}
 
+  private async getBrandProductCounts(brandIds: string[]): Promise<Record<string, number>> {
+    if (!brandIds.length) return {};
+    const results = await this.productRepo.countProductsByBrandIds(brandIds);
+    return Object.fromEntries(results.map((r: any) => [r._id.toString(), r.count]));
+  }
+
+  private async ensureSupplierLinked(brandDoc: any) {
+    if (!brandDoc) return brandDoc;
+    if (brandDoc.supplierId) return brandDoc;
+
+    if (brandDoc.supplierName && brandDoc.supplierName.trim()) {
+      const name = brandDoc.supplierName.trim();
+      const phone = brandDoc.contactPhone?.trim() || "0000000000";
+      const email = brandDoc.contactEmail?.trim() || "";
+
+      let supplier = await this.inventoryRepo.findSupplierByName(name);
+      if (!supplier) {
+        supplier = await this.inventoryRepo.createSupplier({ name, phone, email, address: "Migrated from Brand data" });
+      }
+
+      brandDoc.supplierId = supplier._id;
+      if (typeof brandDoc.save === "function") {
+        await this.brandRepo.save(brandDoc);
+      } else {
+        await this.brandRepo.updateById(brandDoc._id.toString(), { supplierId: supplier._id });
+        brandDoc.supplierId = supplier; 
+      }
+    }
+    return brandDoc;
+  }
+
   async getPublicBrands() {
+    const cached = brandCache.get(PUBLIC_CACHE_KEY);
+    if (cached) return cached;
+
     const result = await this.brandRepo.findAll({ isActive: true }, 1, 500);
     const brands = result.brands;
     const brandIds = brands.map((b: any) => b._id.toString());
-    const countMap = await getBrandProductCounts(brandIds);
+    const countMap = await this.getBrandProductCounts(brandIds);
 
-    return brands
+    const response = brands
       .map((b) => mapBrand(b, countMap[b._id.toString()] ?? 0))
       .filter((b) => b.productCount > 0)
       .sort((a, b) => b.productCount - a.productCount);
+
+    brandCache.set(PUBLIC_CACHE_KEY, response);
+    return response;
   }
 
   async getAdminBrands({ search, status, country, page = 1, limit = 50 }: AdminBrandQuery) {
@@ -100,11 +105,11 @@ export class BrandService {
     const brands = result.brands;
 
     const brandIds = brands.map((b: any) => b._id.toString());
-    const countMap = await getBrandProductCounts(brandIds);
+    const countMap = await this.getBrandProductCounts(brandIds);
 
     const migratedBrands = await Promise.all(
       brands.map(async (b) => {
-        const updated = await ensureSupplierLinked(b);
+        const updated = await this.ensureSupplierLinked(b);
         return updated;
       })
     );
@@ -123,8 +128,8 @@ export class BrandService {
   async getBrandDetail(id: string) {
     const brand = await this.brandRepo.findById(id);
     if (!brand) throw notFound("Brand not found");
-    const linkedBrand = await ensureSupplierLinked(brand);
-    const countMap = await getBrandProductCounts([id]);
+    const linkedBrand = await this.ensureSupplierLinked(brand);
+    const countMap = await this.getBrandProductCounts([id]);
     return mapBrand(linkedBrand, countMap[id] ?? 0);
   }
 
@@ -137,8 +142,7 @@ export class BrandService {
     let contactPhone = "";
     let contactEmail = "";
     if (data.supplierId) {
-      const { default: Supplier } = await import("../inventory/models/supplier.schema.js");
-      const supplierDoc = await Supplier.findById(data.supplierId);
+      const supplierDoc = await this.inventoryRepo.findSupplierById(data.supplierId);
       if (supplierDoc) {
         supplierName = supplierDoc.name;
         contactPhone = supplierDoc.contactPhone || supplierDoc.phone;
@@ -158,6 +162,7 @@ export class BrandService {
     if (newBrand.supplierId) {
       populatedBrand = await this.brandRepo.findById(newBrand._id.toString()) as any;
     }
+    brandCache.del(PUBLIC_CACHE_KEY);
     return mapBrand(populatedBrand, 0);
   }
 
@@ -192,8 +197,7 @@ export class BrandService {
       if (nextSupplierId?.toString() !== brand.supplierId?.toString()) {
         brand.supplierId = nextSupplierId;
         if (nextSupplierId) {
-          const { default: Supplier } = await import("../inventory/models/supplier.schema.js");
-          const supplierDoc = await Supplier.findById(nextSupplierId);
+          const supplierDoc = await this.inventoryRepo.findSupplierById(nextSupplierId);
           if (supplierDoc) {
             brand.supplierName = supplierDoc.name;
             brand.contactPhone = supplierDoc.contactPhone || supplierDoc.phone;
@@ -213,7 +217,8 @@ export class BrandService {
 
     await this.brandRepo.save(brand);
     const updatedBrand = await this.brandRepo.findById(id);
-    const countMap = await getBrandProductCounts([id]);
+    const countMap = await this.getBrandProductCounts([id]);
+    brandCache.del(PUBLIC_CACHE_KEY);
     return mapBrand(updatedBrand!, countMap[id] ?? 0);
   }
 
@@ -222,7 +227,8 @@ export class BrandService {
     if (!brand) throw notFound("Brand not found");
     brand.isActive = isActive;
     await this.brandRepo.save(brand);
-    const countMap = await getBrandProductCounts([id]);
+    const countMap = await this.getBrandProductCounts([id]);
+    brandCache.del(PUBLIC_CACHE_KEY);
     return mapBrand(brand, countMap[id] ?? 0);
   }
 
@@ -230,11 +236,11 @@ export class BrandService {
     const brand = await this.brandRepo.findById(id);
     if (!brand) throw notFound("Brand not found");
 
-    const { default: Product } = await import("../product/models/product.schema.js");
-    const productCount = await Product.countDocuments({ brandId: id });
+    const productCount = await this.productRepo.countProductsByBrandId(id);
     if (productCount > 0)
       throw conflict(`Cannot delete a brand that has ${productCount} products. Please delete or move the products to another brand first.`);
 
     await this.brandRepo.deleteById(id);
+    brandCache.del(PUBLIC_CACHE_KEY);
   }
 }

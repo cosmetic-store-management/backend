@@ -4,6 +4,7 @@ import { mapCategory } from "./dto/category.response.dto.js";
 import { badRequest, notFound, conflict } from "../../../shared/errors/httpErrors.js";
 import type { CreateCategoryInput, UpdateCategoryInput } from "./dto/category.request.dto.js";
 import mongoose from "mongoose";
+import NodeCache from "node-cache";
 
 const slugify = (text: string): string =>
   text
@@ -17,10 +18,8 @@ const slugify = (text: string): string =>
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const globalCache = (global as any).__catCache || { data: null, expiresAt: 0 };
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(global as any).__catCache = globalCache;
+const categoryCache = new NodeCache({ stdTTL: 3600 });
+const PUBLIC_CACHE_KEY = "PUBLIC_CATEGORIES";
 
 interface AdminCategoryQuery {
   search?: string;
@@ -86,10 +85,8 @@ export class CategoryService {
   }
 
   async getPublicCategories() {
-    const now = Date.now();
-    if (globalCache.data && globalCache.expiresAt > now) {
-      return globalCache.data;
-    }
+    const cached = categoryCache.get(PUBLIC_CACHE_KEY);
+    if (cached) return cached;
 
     const result = await this.categoryRepo.findAll({ isActive: true }, 1, 1000);
     const categories = result.categories;
@@ -124,6 +121,7 @@ export class CategoryService {
     };
     tree.forEach((root) => accumulateCounts(root));
 
+    categoryCache.set(PUBLIC_CACHE_KEY, tree);
     return tree;
   }
 
@@ -192,6 +190,7 @@ export class CategoryService {
       slug,
       sortOrder,
     });
+    categoryCache.del(PUBLIC_CACHE_KEY);
     return mapCategory(newCategory);
   }
 
@@ -227,6 +226,7 @@ export class CategoryService {
     }
 
     await this.categoryRepo.save(category);
+    categoryCache.del(PUBLIC_CACHE_KEY);
     return mapCategory(category);
   }
 
@@ -235,6 +235,7 @@ export class CategoryService {
     if (!category) throw notFound("Category not found");
     category.isActive = isActive;
     await this.categoryRepo.save(category);
+    categoryCache.del(PUBLIC_CACHE_KEY);
     return mapCategory(category);
   }
 
@@ -244,5 +245,6 @@ export class CategoryService {
     const hasProducts = await this.categoryRepo.hasProducts(category._id.toString());
     if (hasProducts) throw badRequest("Không thể xóa danh mục đang có sản phẩm");
     await this.categoryRepo.deleteById(id);
+    categoryCache.del(PUBLIC_CACHE_KEY);
   }
 }

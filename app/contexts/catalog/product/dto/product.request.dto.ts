@@ -53,3 +53,28 @@ export type UpdateProductInput = z.infer<typeof UpdateProductSchema>;
 export type UpdateProductStatusInput = z.infer<
   typeof UpdateProductStatusSchema
 >;
+
+export const PublicProductQuerySchema = z.object({
+  category: z.string().optional(),
+  brandId: z.string().optional(),
+  search: z.string().optional(),
+  onSale: z.string().optional(),
+  page: z.preprocess((val) => (val ? Number(val) : undefined), z.number().optional()),
+  limit: z.preprocess((val) => (val ? Number(val) : undefined), z.number().optional()),
+  minPrice: z.preprocess((val) => (val ? Number(val) : undefined), z.number().optional()),
+  maxPrice: z.preprocess((val) => (val ? Number(val) : undefined), z.number().optional()),
+  brands: z.string().optional(),
+  sort: z.string().optional(),
+});
+
+export const AdminProductQuerySchema = z.object({
+  search: z.string().optional(),
+  category: z.string().optional(),
+  brandId: z.string().optional(),
+  status: z.string().optional(),
+  minStock: z.preprocess((val) => (val ? Number(val) : undefined), z.number().optional()),
+  maxStock: z.preprocess((val) => (val ? Number(val) : undefined), z.number().optional()),
+  cursor: z.string().optional(),
+  limit: z.preprocess((val) => (val ? Number(val) : undefined), z.number().optional()),
+  page: z.preprocess((val) => (val ? Number(val) : undefined), z.number().optional()),
+});

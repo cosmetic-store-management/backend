@@ -1,6 +1,6 @@
 import { injectable, inject } from "tsyringe";
 import { CartRepository } from "./cart.repository.js";
-import Variant from "../../catalog/product/models/variant.schema.js";
+import { ProductRepository } from "../../catalog/product/product.repository.js";
 import { notFound, badRequest } from "../../../shared/errors/httpErrors.js";
 import type { AddItemInput, SyncCartInput, UpdateItemInput } from "./dto/cart.request.dto.js";
 import { Types } from "mongoose";
@@ -8,7 +8,8 @@ import { Types } from "mongoose";
 @injectable()
 export class CartService {
   constructor(
-    @inject(CartRepository) private readonly cartRepo: CartRepository
+    @inject(CartRepository) private readonly cartRepo: CartRepository,
+    @inject(ProductRepository) private readonly productRepo: ProductRepository
   ) {}
 
   async getCart(userId: string) {
@@ -26,8 +27,8 @@ export class CartService {
     }
 
     for (const localItem of data.items) {
-      const variant = await Variant.findOne({ _id: localItem.variantId, isActive: true });
-      if (!variant) continue;
+      const variant: any = await this.productRepo.findVariantById(localItem.variantId);
+      if (!variant || !variant.isActive) continue;
 
       const existingItem = cart.items.find(
         (item) => item.variantId?._id?.toString() === localItem.variantId || item.variantId?.toString() === localItem.variantId
@@ -53,8 +54,8 @@ export class CartService {
       cart = await this.cartRepo.create(userId);
     }
 
-    const variant = await Variant.findOne({ _id: data.variantId, isActive: true });
-    if (!variant) throw notFound("Product does not exist or has been discontinued");
+    const variant: any = await this.productRepo.findVariantById(data.variantId);
+    if (!variant || !variant.isActive) throw notFound("Product does not exist or has been discontinued");
 
     if (variant.stock < data.quantity) {
       throw badRequest("Insufficient product stock");
@@ -87,8 +88,8 @@ export class CartService {
 
     if (!existingItem) throw notFound("Sản phẩm không có trong giỏ hàng");
 
-    const variant = await Variant.findOne({ _id: data.variantId, isActive: true });
-    if (!variant) throw notFound("Product does not exist or has been discontinued");
+    const variant: any = await this.productRepo.findVariantById(data.variantId);
+    if (!variant || !variant.isActive) throw notFound("Product does not exist or has been discontinued");
 
     if (variant.stock < data.quantity) {
       throw badRequest("Insufficient product stock");

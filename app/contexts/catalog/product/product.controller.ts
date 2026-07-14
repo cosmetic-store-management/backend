@@ -4,6 +4,7 @@ import * as response from "../../../shared/helpers/response.js";
 import { ProductService } from "./product.service.js";
 import { AuditLogService } from "../../identity/audit-log/audit-log.service.js";
 import { RecommendationService } from "./recommendation.service.js";
+import { PublicProductQuerySchema, AdminProductQuerySchema } from "./dto/product.request.dto.js";
 
 @injectable()
 export class ProductController {
@@ -21,7 +22,8 @@ export class ProductController {
   });
 
   getRoot = catchAsync(async (req, res) => {
-    const result = await this.productService.getPublicProducts(req.query as any);
+    const query = PublicProductQuerySchema.parse(req.query);
+    const result = await this.productService.getPublicProducts(query);
     return response.success(res, result);
   });
 
@@ -42,9 +44,8 @@ export class ProductController {
   });
 
   getAdminList = catchAsync(async (req, res) => {
-    const result = await this.productService.getAdminProducts({
-      ...(req.query as any),
-    });
+    const query = AdminProductQuerySchema.parse(req.query);
+    const result = await this.productService.getAdminProducts(query);
     return response.success(res, result);
   });
 

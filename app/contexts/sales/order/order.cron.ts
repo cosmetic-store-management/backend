@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Order from "./models/order.schema.js";
 import { container } from "tsyringe";
 import { OrderService } from "./order.service.js";
+import { logger } from "../../../shared/logger/index.js";
 
 // Chạy mỗi phút 1 lần
 const CRON_INTERVAL = 60 * 1000;
@@ -15,7 +16,7 @@ export const startOrderCron = () => {
 
   setInterval(async () => {
     if (isRunning) {
-      console.log("[Order Cron] Bỏ qua vòng lặp do tiến trình trước chưa hoàn thành.");
+      logger.info("[Order Cron] Bỏ qua vòng lặp do tiến trình trước chưa hoàn thành.");
       return;
     }
 
@@ -34,18 +35,18 @@ export const startOrderCron = () => {
         for (const order of expiredOrders) {
           try {
             await orderService.cancelPendingOrder(order.code, "Hủy tự động do quá hạn thanh toán");
-            console.log(`[Order Cron] Đã hủy đơn hàng quá hạn (15p): ${order.code}`);
+            logger.info(`[Order Cron] Đã hủy đơn hàng quá hạn (15p): ${order.code}`);
           } catch (err: any) {
-            console.error(`[Order Cron] Lỗi khi hủy đơn hàng ${order.code}:`, err.message);
+            logger.error({ err: err.message }, `[Order Cron] Lỗi khi hủy đơn hàng ${order.code}:`);
           }
         }
       }
     } catch (error) {
-      console.error("[Order Cron] Lỗi khi quét QR hết hạn:", error);
+      logger.error({ err: error }, "[Order Cron] Lỗi khi quét QR hết hạn:");
     } finally {
       isRunning = false;
     }
   }, CRON_INTERVAL);
   
-  console.log(`[Order Cron] Đã khởi chạy cron hủy QR (chu kỳ: 1 phút, hạn: ${EXPIRE_MINUTES} phút)`);
+  logger.info(`[Order Cron] Đã khởi chạy cron hủy QR (chu kỳ: 1 phút, hạn: ${EXPIRE_MINUTES} phút)`);
 };

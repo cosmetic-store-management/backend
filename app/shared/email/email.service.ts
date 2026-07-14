@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { logger } from "../logger/index.js";
 
 // ── Lazy init ─────────────────────────────────────────────────────────────────
 let transporter: nodemailer.Transporter | null = null;
@@ -35,7 +36,7 @@ const FRONTEND_URL = () => process.env.FRONTEND_URL || "http://localhost:5173";
 // ── Shared layout ─────────────────────────────────────────────────────────────
 
 async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
-  console.log(`[MAIL DISABLED] To: ${payload.to} - Subject: ${payload.subject}`);
+  logger.info(`[MAIL DISABLED] To: ${payload.to} - Subject: ${payload.subject}`);
   return;
 
   const mailOptions = {
@@ -50,12 +51,12 @@ async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
       await transporter!.sendMail(mailOptions);
       return; // Success
     } catch (err: any) {
-      console.error(
+      logger.error(
         `❌ Email send error (attempt ${attempt}/${maxRetries}) [${payload.subject}]:`,
         err.message,
       );
       if (attempt === maxRetries) {
-        console.error(
+        logger.error(
           `❌ Email sending failed after ${maxRetries} attempts:`,
           payload.subject,
         );

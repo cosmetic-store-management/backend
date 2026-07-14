@@ -18,6 +18,10 @@ export class InventoryRepository {
     return Supplier.findById(id);
   }
 
+  findSupplierByName(name: string) {
+    return Supplier.findOne({ name: { $regex: `^${name}$`, $options: "i" } });
+  }
+
   createSupplier(data: any) {
     return Supplier.create(data);
   }
@@ -134,6 +138,12 @@ export class InventoryRepository {
     return InventoryTransaction.countDocuments(query);
   }
 
+  countTransactionsForVariants(variantIds: (string | mongoose.Types.ObjectId)[]) {
+    return InventoryTransaction.countDocuments({
+      variantId: { $in: variantIds },
+    });
+  }
+
   createTransaction(
     data: {
       code: string;
@@ -163,6 +173,10 @@ export class InventoryRepository {
     return GoodsReceipt.create([data], { session }).then((docs) => docs[0]);
   }
 
+  countGoodsReceiptsBySupplierId(supplierId: string) {
+    return GoodsReceipt.countDocuments({ supplierId });
+  }
+
   createBatch(data: any, session?: mongoose.ClientSession) {
     return Batch.create([data], { session }).then((docs) => docs[0]);
   }
@@ -178,6 +192,13 @@ export class InventoryRepository {
 
   findActiveBatchesByVariants(variantIds: (string | mongoose.Types.ObjectId)[]) {
     return Batch.find({ variantId: { $in: variantIds }, remainingQty: { $gt: 0 } }).lean();
+  }
+
+  countActiveBatches(variantIds: (string | mongoose.Types.ObjectId)[]) {
+    return Batch.countDocuments({
+      variantId: { $in: variantIds },
+      remainingQty: { $gt: 0 },
+    });
   }
 
   updateBatchQuantity(

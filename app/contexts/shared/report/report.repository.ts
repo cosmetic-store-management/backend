@@ -9,6 +9,7 @@
  */
 import { injectable } from "tsyringe";
 import mongoose from "mongoose";
+import NodeCache from "node-cache";
 import Order from "../../sales/order/models/order.schema.js";
 import Product from "../../catalog/product/models/product.schema.js";
 import User from "../../identity/user/models/user.schema.js";
@@ -21,36 +22,26 @@ type DateFilter = { createdAt?: { $gte?: Date; $lte?: Date } };
 
 // ── In-memory cache (TTL 5 phút) ─────────────────────────────────────────────
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 phút
+const CACHE_TTL_SECONDS = 5 * 60; // 5 phút
 
-interface CacheEntry<T> {
-  data: T;
-  expiresAt: number;
-}
-
-const cache = new Map<string, CacheEntry<unknown>>();
+const cache = new NodeCache({ stdTTL: CACHE_TTL_SECONDS, checkperiod: 60, useClones: false });
 
 function cacheKey(fn: string, ...args: unknown[]): string {
   return `${fn}:${JSON.stringify(args)}`;
 }
 
 function getCached<T>(key: string): T | null {
-  const entry = cache.get(key) as CacheEntry<T> | undefined;
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.data;
+  const entry = cache.get<T>(key);
+  return entry ?? null;
 }
 
 function setCached<T>(key: string, data: T): void {
-  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+  cache.set(key, data);
 }
 
 /** Xoá toàn bộ cache — gọi sau khi có đơn hàng mới / cập nhật */
 export function invalidateReportCache(): void {
-  cache.clear();
+  cache.flushAll();
 }
 
 /** Wrapper: nếu đã cache thì trả về, nếu chưa thì gọi fn và cache kết quả */

@@ -60,6 +60,7 @@ export class ProductRepository {
   ): Promise<ProductDocument[]> {
     if (ids.length === 0) return [];
     const products = await Product.find({ _id: { $in: ids } })
+      .select("-description -metaTitle -metaDescription -metaKeywords")
       .populate("categoryId", CATEGORY_FIELDS)
       .populate("categoryIds", CATEGORY_FIELDS)
       .populate("brandId", BRAND_FIELDS)
@@ -86,6 +87,7 @@ export class ProductRepository {
     }
 
     const products = await dbQuery
+      .select("-description")
       .populate("categoryId", "name slug imageUrl")
       .populate("categoryIds", "name slug imageUrl")
       .populate("brandId", BRAND_FIELDS)
@@ -201,6 +203,14 @@ export class ProductRepository {
     return Category.findOne({ slug, isActive: true }).select("_id").lean();
   }
 
+  findOneCategoryBy(query: Query) {
+    return Category.findOne(query).lean();
+  }
+
+  createCategory(data: any) {
+    return Category.create(data);
+  }
+
   async findCategoryIdsWithDescendants(identifier: string) {
     const isObjectId = mongoose.Types.ObjectId.isValid(identifier);
     const query = isObjectId ? { _id: identifier } : { slug: identifier, isActive: true };
@@ -225,5 +235,80 @@ export class ProductRepository {
     }
 
     return resultIds;
+  }
+
+  // ── Variant Methods (Part of Product Aggregate) ─────────────────────────
+  async findSaleProductIds(): Promise<string[]> {
+    const saleVariants = await Variant.find(
+      { discountPrice: { $gt: 0 } },
+      { productId: 1 }
+    ).lean();
+    return [...new Set(saleVariants.map((v: any) => v.productId.toString()))];
+  }
+
+  async findProductIdsByVariantSearch(search: string): Promise<string[]> {
+    const matchingVariants = await Variant.find({
+      $or: [
+        { barcode: { $regex: search, $options: "i" } },
+        { sku: { $regex: search, $options: "i" } },
+      ],
+    })
+      .select("productId")
+      .lean();
+    return matchingVariants.map((v: any) => v.productId.toString());
+  }
+
+  async findProductIdsByVariantStock(minStock?: number, maxStock?: number): Promise<string[]> {
+    const stockQuery: any = {};
+    if (minStock !== undefined) stockQuery.$gte = Number(minStock);
+    if (maxStock !== undefined) stockQuery.$lte = Number(maxStock);
+    const matchingVariants = await Variant.find({ stock: stockQuery })
+      .select("productId")
+      .lean();
+    return matchingVariants.map((v: any) => v.productId.toString());
+  }
+
+  async createVariants(variants: any[]) {
+    return Variant.insertMany(variants);
+  }
+
+  async deleteVariantsExcept(productId: string, variantIdsToKeep: string[]) {
+    return Variant.deleteMany({
+      productId,
+      _id: { $nin: variantIdsToKeep },
+    });
+  }
+
+  async updateVariant(id: string, payload: any) {
+    return Variant.updateOne({ _id: id }, { $set: payload });
+  }
+
+  async createVariant(payload: any) {
+    return Variant.create(payload);
+  }
+
+  async findVariantIdsByProductId(productId: string): Promise<string[]> {
+    const variants = await Variant.find({ productId }).select("_id").lean();
+    return variants.map((v: any) => v._id.toString());
+  }
+
+  async countProductsByBrandIds(brandIds: string[]): Promise<any[]> {
+    const { Types } = mongoose;
+    return Product.aggregate([
+      { $match: { brandId: { $in: brandIds.map((id) => new Types.ObjectId(id)) } } },
+      { $group: { _id: "$brandId", count: { $sum: 1 } } },
+    ]);
+  }
+
+  async countProductsByBrandId(brandId: string): Promise<number> {
+    return Product.countDocuments({ brandId });
+  }
+
+  async findVariantById(id: string) {
+    return Variant.findById(id).lean();
+  }
+
+  async deleteVariantsByProductId(productId: string) {
+    return Variant.deleteMany({ productId });
   }
 }

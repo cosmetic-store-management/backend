@@ -4,10 +4,7 @@ import { InventoryRepository } from "../../../catalog/inventory/inventory.reposi
 import { VoucherService } from "../../voucher/voucher.service.js";
 import { FlashSaleRepository } from "../../../engagement/marketing/flash-sale.repository.js";
 import mongoose from "mongoose";
-import Order from "../models/order.schema.js";
-import User, { UserDocument } from "../../../identity/user/models/user.schema.js";
-import Product from "../../../catalog/product/models/product.schema.js";
-
+import { CartRepository } from "../../cart/cart.repository.js";
 import { UserService } from "../../../identity/user/user.service.js";
 import { InventoryService } from "../../../catalog/inventory/inventory.service.js";
 import { eventBus } from "../../../shared/event-bus/index.js";
@@ -21,7 +18,7 @@ import {
   generateOrderCode,
   getOrderSettings,
 } from "./checkout.helper.js";
-import { logOrderActivity } from "../order-activity.service.js";
+import { OrderActivityService } from "../order-activity.service.js";
 import { calcShippingFeeFromSettings } from "../shipping/shipping.service.js";
 import { sendOrderSuccessEmail } from "../../../../shared/email/email.service.js";
 
@@ -39,21 +36,6 @@ const paymentMethodLabel: Record<string, string> = {
   transfer: "QR Transfer",
 };
 
-const getUserTotalSpent = async (
-  userId: mongoose.Types.ObjectId | string,
-): Promise<number> => {
-  const [result] = await Order.aggregate([
-    {
-      $match: {
-        userId: new mongoose.Types.ObjectId(userId.toString()),
-        orderStatus: "completed",
-      },
-    },
-    { $group: { _id: null, totalSpent: { $sum: "$totalAmount" } } },
-  ]);
-  return result?.totalSpent ?? 0;
-};
-
 @injectable()
 export class CheckoutService {
   constructor(
@@ -62,10 +44,16 @@ export class CheckoutService {
     @inject(VoucherService) private readonly voucherService: VoucherService,
     @inject(FlashSaleRepository) private readonly flashSaleRepo: FlashSaleRepository,
     @inject(UserService) private readonly userService: UserService,
-    @inject(InventoryService) private readonly inventoryService: InventoryService
+    @inject(InventoryService) private readonly inventoryService: InventoryService,
+    @inject(CartRepository) private readonly cartRepo: CartRepository,
+    @inject(OrderActivityService) private readonly orderActivityService: OrderActivityService
   ) {}
 
-  previewOrder = async (user: UserDocument | null, data: any) => {
+  private async getUserTotalSpent(userId: string | mongoose.Types.ObjectId): Promise<number> {
+    return this.orderRepo.aggregateUserTotalSpent(userId);
+  }
+
+  previewOrder = async (user: any | null, data: any) => {
   if (data.items && Array.isArray(data.items)) {
     data.items = data.items.reduce((acc: any[], item: any) => {
       const existing = acc.find((i) => i.variantId === item.variantId);
@@ -163,7 +151,7 @@ export class CheckoutService {
   // 1. Áp dụng giảm giá Hạng thành viên (dựa trên tổng chi tiêu lịch sử)
   const userTotalSpent =
     customerUser?.role === "customer" && customerUser._id
-      ? await getUserTotalSpent(customerUser._id)
+      ? await this.getUserTotalSpent(customerUser._id)
       : 0;
   const tierDiscountAmount =
     customerUser?.role === "customer"
@@ -246,8 +234,8 @@ export class CheckoutService {
 };
 
   createOrder = async (
-  user: UserDocument,
-  data: CreateOrderInput & { idempotencyKey?: string },
+  user: any,
+  data: any,
 ) => {
   if (!data.items || data.items.length === 0)
     throw badRequest("Giỏ hàng rỗng");
@@ -264,7 +252,7 @@ export class CheckoutService {
 
   // Ngăn chặn Double Submit (Double Charge) bằng Idempotency Key
   if (data.idempotencyKey) {
-    const existingOrder = await Order.findOne({
+    const existingOrder = await this.orderRepo.findOne({
       idempotencyKey: data.idempotencyKey,
       userId: user._id,
     });
@@ -376,7 +364,7 @@ export class CheckoutService {
 
   // 1. Áp dụng giảm giá Hạng thành viên (Spending-based)
   const userTotalSpent =
-    user.role === "customer" ? await getUserTotalSpent(user._id) : 0;
+    user.role === "customer" ? await this.orderRepo.aggregateUserTotalSpent(user._id.toString()) : 0;
   const tierDiscountAmount =
     user.role === "customer"
       ? calculateTierDiscount(userTotalSpent, subtotal)
@@ -506,7 +494,7 @@ export class CheckoutService {
       items: normalizedItems,
     }, session);
 
-    await logOrderActivity(
+    await this.orderActivityService.logOrderActivity(
       newOrder._id,
       "placed",
       {
@@ -552,8 +540,7 @@ export class CheckoutService {
     }
 
     // Clear cart within the session (ECOM-04)
-    const CartModel = (await import("../../cart/models/cart.schema.js")).default;
-    await CartModel.updateOne({ userId: user._id }, { $set: { items: [] } }, { session });
+    await this.cartRepo.clearCart(user._id.toString());
 
     await session.commitTransaction();
   } catch (error: any) {
@@ -561,7 +548,7 @@ export class CheckoutService {
 
     // Xử lý E11000 Duplicate Key (Race condition của Idempotency Key)
     if (error.code === 11000 && data.idempotencyKey) {
-      const existingOrder = await Order.findOne({
+      const existingOrder = await this.orderRepo.findOne({
         idempotencyKey: data.idempotencyKey,
         userId: user._id,
       });
@@ -587,16 +574,13 @@ export class CheckoutService {
   return mappedOrder;
 };
 
-  createPOSOrder = async (operator: UserDocument, data: any) => {
+  createPOSOrder = async (operator: any, data: any) => {
   // Generate POS Receipt Number
   const today = new Date();
   const dateStr = today.toISOString().slice(0, 10).replace(/-/g, ""); // e.g., 20260708
   const startOfDay = new Date(new Date().setHours(0, 0, 0, 0));
   const endOfDay = new Date(new Date().setHours(23, 59, 59, 999));
-  const countToday = await Order.countDocuments({
-    channel: "pos",
-    createdAt: { $gte: startOfDay, $lte: endOfDay },
-  });
+  const countToday = await this.orderRepo.countOrdersToday(startOfDay, endOfDay);
   const receiptNumber = `HD-POS-${dateStr}-${String(countToday + 1).padStart(4, "0")}`;
 
   if (data.items && Array.isArray(data.items)) {
@@ -680,7 +664,7 @@ export class CheckoutService {
   let tierDiscountAmount = 0;
   if (customerUser) {
     userPoints = customerUser.points || 0;
-    const customerTotalSpent = await getUserTotalSpent(
+    const customerTotalSpent = await this.getUserTotalSpent(
       customerUser._id.toString(),
     );
     tierDiscountAmount = calculateTierDiscount(customerTotalSpent, subtotal);
@@ -780,7 +764,7 @@ export class CheckoutService {
       items: normalizedItems,
     }, session);
 
-    await logOrderActivity(
+    await this.orderActivityService.logOrderActivity(
       newOrder._id,
       "placed",
       {
@@ -791,7 +775,7 @@ export class CheckoutService {
       session
     );
 
-    await logOrderActivity(
+    await this.orderActivityService.logOrderActivity(
       newOrder._id,
       "payment_received",
       {
@@ -841,9 +825,7 @@ export class CheckoutService {
         session,
       });
 
-      await Product.findByIdAndUpdate(item.productId, {
-        $inc: { soldCount: item.quantity },
-      }, { session });
+      await this.orderRepo.incrementProductSoldCount(item.productId.toString(), item.quantity, session);
     }
 
     await session.commitTransaction();
