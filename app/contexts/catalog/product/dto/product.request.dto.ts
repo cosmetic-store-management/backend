@@ -1,13 +1,13 @@
 import { z } from "zod";
 
 export const CreateProductSchema = z.object({
-  name: z.string().min(1, "Tên sản phẩm không được để trống").trim(),
+  name: z.string().min(1, "Product name cannot be empty").trim(),
   brand: z.string().trim().optional().default(""), // legacy — auto-filled from brandId
-  brandId: z.string().min(1, "Thương hiệu không được để trống"),
+  brandId: z.string().min(1, "Brand cannot be empty"),
   description: z.string().trim().optional().default(""),
   imageUrl: z.string().trim().optional().default(""),
   imageUrls: z.array(z.string()).optional().default([]),
-  categoryId: z.string().min(1, "Danh mục chính không được để trống"),
+  categoryId: z.string().min(1, "Main category cannot be empty"),
   categoryIds: z.array(z.string()).optional().default([]), // secondary N:M categories
   isActive: z.boolean().optional().default(true),
   variants: z
@@ -18,7 +18,7 @@ export const CreateProductSchema = z.object({
             name: z.string().min(1, "Variant name is required"),
           sku: z.string().optional(),
             price: z.number().min(0, "Invalid price"),
-          stock: z.number().int().min(0, "Số lượng không hợp lệ"),
+          stock: z.number().int().min(0, "Invalid quantity"),
             discountPrice: z.number().min(0).nullable().optional().default(null),
           minStock: z.number().int().optional().default(10),
           weight: z.number().int().optional().default(200),

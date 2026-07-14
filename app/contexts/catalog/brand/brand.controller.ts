@@ -58,11 +58,11 @@ export class BrandController {
       req.user!.name,
       "update",
       "catalog",
-      `Cập nhật trạng thái thương hiệu "${brand.name}" thành ${brand.isActive ? "Kích hoạt" : "Ngừng kích hoạt"}`,
+      `Cập nhật trạng thái thương hiệu "${brand.name}" thành ${brand.isActive ? "Activate" : "Deactivate"}`,
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
-      message: "Cập nhật trạng thái thương hiệu thành công",
+      message: "Successfully updated brand status",
       brand,
     });
   });
@@ -81,7 +81,7 @@ export class BrandController {
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
-      message: "Cập nhật thương hiệu thành công",
+      message: "Successful brand update",
       brand,
     });
   });
@@ -97,6 +97,6 @@ export class BrandController {
       `Xóa thương hiệu "${brand.name}"`,
       req.ip || "127.0.0.1"
     );
-    return response.success(res, { message: "Xóa thương hiệu thành công" });
+    return response.success(res, { message: "Brand removal successful" });
   });
 }

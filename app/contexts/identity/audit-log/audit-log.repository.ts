@@ -3,6 +3,18 @@ import AuditLog, { type AuditLogDocument } from "./models/audit-log.schema.js";
 
 @injectable()
 export class AuditLogRepository {
+  countLogsBefore(date: Date) {
+    return AuditLog.countDocuments({ createdAt: { $lt: date } });
+  }
+
+  findLogsBefore(date: Date) {
+    return AuditLog.find({ createdAt: { $lt: date } }).lean();
+  }
+
+  deleteLogsBefore(date: Date) {
+    return AuditLog.deleteMany({ createdAt: { $lt: date } });
+  }
+
   createLog(data: {
     userId?: string;
     userName: string;

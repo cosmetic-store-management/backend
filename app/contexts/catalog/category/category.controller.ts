@@ -46,7 +46,7 @@ export class CategoryController {
       req.ip || "127.0.0.1"
     );
     return response.created(res, {
-      message: "Tạo danh mục thành công",
+      message: "Created a successful portfolio",
       category,
     });
   });
@@ -61,11 +61,11 @@ export class CategoryController {
       req.user!.name,
       "update",
       "catalog",
-      `Cập nhật trạng thái danh mục "${category.name}" thành ${category.isActive ? "Hoạt động" : "Ngừng hoạt động"}`,
+      `Cập nhật trạng thái danh mục "${category.name}" thành ${category.isActive ? "Work" : "Stop working"}`,
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
-      message: "Cập nhật trạng thái danh mục thành công",
+      message: "Updated category status successfully",
       category,
     });
   });
@@ -84,7 +84,7 @@ export class CategoryController {
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
-      message: "Cập nhật danh mục thành công",
+      message: "Updated directory successfully",
       category,
     });
   });
@@ -104,6 +104,6 @@ export class CategoryController {
         req.ip || "127.0.0.1"
       );
     }
-    return response.success(res, { message: "Xóa danh mục thành công" });
+    return response.success(res, { message: "Delete directory successfully" });
   });
 }

@@ -21,6 +21,12 @@ export class ProductController {
     return response.success(res, { products });
   });
 
+  getPopularSearches = catchAsync(async (req, res) => {
+    const limit = parseInt(req.query.limit as string, 10) || 10;
+    const terms = await this.productService.getPopularSearches(limit);
+    return response.success(res, { terms });
+  });
+
   getRoot = catchAsync(async (req, res) => {
     const query = PublicProductQuerySchema.parse(req.query);
     const result = await this.productService.getPublicProducts(query);
@@ -84,7 +90,7 @@ export class ProductController {
       req.user!.name,
       "update",
       "catalog",
-      `Cập nhật trạng thái sản phẩm "${product.name}" thành ${product.isActive ? "Bán" : "Discontinued"}`,
+      `Cập nhật trạng thái sản phẩm "${product.name}" thành ${product.isActive ? "Sell" : "Discontinued"}`,
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
@@ -133,7 +139,7 @@ export class ProductController {
   postAdminBatchImport = catchAsync(async (req, res) => {
     const { products } = req.body;
     if (!products || !Array.isArray(products)) {
-      res.status(400).json({ message: "Dữ liệu không hợp lệ" });
+      res.status(400).json({ message: "Invalid data" });
       return;
     }
     const result = await this.productService.batchImportProducts(products);

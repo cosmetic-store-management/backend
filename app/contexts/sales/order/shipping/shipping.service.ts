@@ -30,7 +30,7 @@ export const calcShippingFeeFromSettings = async (
 
   const settings = (await container.resolve(SettingService).getSettings()) as any;
   const storeAddress = (
-    settings?.storeAddress || "Hà Nội, Việt Nam"
+    settings?.storeAddress || "Hanoi, Vietnam"
   ).toLowerCase();
 
   const normalizedStore = removeVietnameseTones(storeAddress);
@@ -64,9 +64,9 @@ export const calcShippingFeeFromSettings = async (
   }
 
   const hasHuyenKeyword =
-    rawDist.includes("huyện") ||
+    rawDist.includes("district") ||
     rawDist.includes("huyen") ||
-    rawDist.includes("thị xã") ||
+    rawDist.includes("town") ||
     rawDist.includes("thi xa");
 
   if (hasHuyenKeyword) {

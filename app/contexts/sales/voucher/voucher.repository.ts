@@ -2,7 +2,7 @@
  * voucher.repository.ts
  * Data access layer cho Voucher module.
  */
-import { injectable } from "tsyringe";
+import { injectable, inject } from "tsyringe";
 import mongoose from "mongoose";
 import Voucher from "./models/voucher.schema.js";
 import VoucherReservation from "./models/voucherReservation.schema.js";
@@ -12,7 +12,7 @@ import { UserRepository } from "../../identity/user/user.repository.js";
 
 @injectable()
 export class VoucherRepository {
-  constructor(private readonly userRepository: UserRepository) {}
+  constructor(@inject(UserRepository) private readonly userRepository: UserRepository) {}
 
   findAll = (query: Record<string, any> = {}, skip = 0, limit = 0) => {
   const q = Voucher.find(query).sort({ createdAt: -1 });

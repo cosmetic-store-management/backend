@@ -58,6 +58,10 @@ export class InventoryRepository {
     return Variant.findById(id);
   }
 
+  updateVariant(id: string | mongoose.Types.ObjectId, update: any, options?: any) {
+    return Variant.findByIdAndUpdate(id, update, options);
+  }
+
   findProductById(id: string) {
     return Product.findById(id);
   }
@@ -160,6 +164,14 @@ export class InventoryRepository {
     return new InventoryTransaction(data).save({ session });
   }
 
+  createTransactions(data: any[], session?: mongoose.ClientSession) {
+    return InventoryTransaction.create(data, { session });
+  }
+
+  findTransaction(query: any, session?: mongoose.ClientSession) {
+    return InventoryTransaction.findOne(query).session(session || null);
+  }
+
   createGoodsReceipt(
     data: {
       code: string;
@@ -194,11 +206,28 @@ export class InventoryRepository {
     return Batch.find({ variantId: { $in: variantIds }, remainingQty: { $gt: 0 } }).lean();
   }
 
+  findExpiringBatches(dateThreshold: Date) {
+    return Batch.find({
+      remainingQty: { $gt: 0 },
+      expiryDate: { $lte: dateThreshold },
+    })
+      .select("variantId")
+      .lean();
+  }
+
   countActiveBatches(variantIds: (string | mongoose.Types.ObjectId)[]) {
     return Batch.countDocuments({
       variantId: { $in: variantIds },
       remainingQty: { $gt: 0 },
     });
+  }
+
+  findBatchById(id: string | mongoose.Types.ObjectId, session?: mongoose.ClientSession) {
+    return Batch.findById(id).session(session || null);
+  }
+
+  updateBatch(id: string | mongoose.Types.ObjectId, update: any, session?: mongoose.ClientSession) {
+    return Batch.findByIdAndUpdate(id, update, { new: true, session });
   }
 
   updateBatchQuantity(
@@ -311,6 +340,30 @@ export class InventoryRepository {
       .populate("items.productId", "name imageUrl imageUrls")
       .populate("items.variantId", "barcode sku imageUrl")
       .lean();
+  }
+
+  async updateGoodsReceiptItem(
+    receiptId: string | mongoose.Types.ObjectId,
+    variantId: string | mongoose.Types.ObjectId,
+    updateData: { priceChanged: boolean; newImportPrice: number; qtyChanged: boolean; newOriginalQty: number },
+    session?: mongoose.ClientSession
+  ) {
+    const receipt = await GoodsReceipt.findById(receiptId).session(session || null);
+    if (!receipt) return null;
+
+    const item = receipt.items.find((i: any) => i.variantId.toString() === variantId.toString());
+    if (item) {
+      if (updateData.priceChanged) item.importPrice = updateData.newImportPrice;
+      if (updateData.qtyChanged) item.quantity = updateData.newOriginalQty;
+
+      // Recalculate total amount
+      receipt.totalAmount = receipt.items.reduce(
+        (sum: number, i: any) => sum + i.quantity * i.importPrice,
+        0
+      );
+      await receipt.save({ session });
+    }
+    return receipt;
   }
 
   createStocktake(data: any, session?: mongoose.ClientSession) {

@@ -3,15 +3,14 @@ import { badRequest, notFound } from "../../../shared/errors/httpErrors.js";
 import { FlashSaleRepository } from "./flash-sale.repository.js";
 import type { CreateFlashSaleInput } from "./dto/flash-sale.request.dto.js";
 import { mapFlashSale } from "./dto/flash-sale.response.dto.js";
-import Product from "../../catalog/product/models/product.schema.js";
-import Variant from "../../catalog/product/models/variant.schema.js";
-import FlashSale from "./models/flash-sale.schema.js";
+import { ProductRepository } from "../../catalog/product/product.repository.js";
 import { injectable, inject } from "tsyringe";
 
 @injectable()
 export class FlashSaleService {
   constructor(
-    @inject(FlashSaleRepository) private readonly flashSaleRepo: FlashSaleRepository
+    @inject(FlashSaleRepository) private readonly flashSaleRepo: FlashSaleRepository,
+    @inject(ProductRepository) private readonly productRepo: ProductRepository
   ) {}
 
   getActiveFlashSale = async () => {
@@ -91,8 +90,8 @@ export class FlashSaleService {
 
     const variantIds = items.map(i => i.variantId);
     const [variantsList, productsList] = await Promise.all([
-      Variant.find({ _id: { $in: variantIds } }),
-      Product.find({ _id: { $in: items.map(i => i.productId) } })
+      this.productRepo.findVariantsRaw({ _id: { $in: variantIds } }),
+      this.productRepo.findRaw({ _id: { $in: items.map(i => i.productId) } })
     ]);
 
     const variantMap = new Map(variantsList.map(v => [v._id.toString(), v]));
@@ -130,7 +129,7 @@ export class FlashSaleService {
       ]
     };
 
-    const overlappingEvents = await FlashSale.find(overlapQuery).lean();
+    const overlappingEvents = await this.flashSaleRepo.findRaw(overlapQuery).lean();
     if (overlappingEvents.length > 0) {
       const activeVariantIds = new Set(variantIds.map(id => id.toString()));
       for (const event of overlappingEvents) {

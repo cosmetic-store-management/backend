@@ -1,17 +1,18 @@
 // ReviewService removed — UserService now communicates via eventBus (user.deleted event)
 import mongoose from "mongoose";
-import Order from "../../sales/order/models/order.schema.js";
+
 import { getTierBySpending, getNextTier, TIERS, type TierKey } from "./tier.constants.js";
 import { UserRepository } from "./user.repository.js";
 import { AuthRepository } from "../auth/auth.repository.js";
 import { mapUser } from "./dto/user.response.dto.js";
 import { notFound, conflict, forbidden } from "../../../shared/errors/httpErrors.js";
 import { UpdateProfileInput, AddressInput } from "./dto/user.request.dto.js";
-import User, { UserDocument } from "./models/user.schema.js";
+import type { UserDocument } from "./models/user.schema.js";
 import bcrypt from "bcryptjs";
-import PointHistory from "./models/point-history.schema.js";
+
 import { mapProduct } from "../../catalog/product/dto/product.response.dto.js";
 import { ProductRepository } from "../../catalog/product/product.repository.js";
+import { OrderRepository } from "../../sales/order/order.repository.js";
 import { injectable, inject } from "tsyringe";
 import { eventBus } from "../../shared/event-bus/index.js";
 
@@ -45,22 +46,23 @@ export class UserService {
   constructor(
     @inject(ProductRepository) private readonly productRepo: ProductRepository,
     @inject(UserRepository) private readonly userRepo: UserRepository,
-    @inject(AuthRepository) private readonly authRepo: AuthRepository
+    @inject(AuthRepository) private readonly authRepo: AuthRepository,
+    @inject(OrderRepository) private readonly orderRepo: OrderRepository
   ) {
     eventBus.on("user.points.added", async (payload: any) => {
       try {
         const { userId, points, orderId, session } = payload;
-        await User.findOneAndUpdate(
+        await this.userRepo.findOneAndUpdate(
           { _id: userId },
           { $inc: { points: points } },
           { session }
         );
-        await PointHistory.create([{
+        await this.userRepo.createPointHistories([{
           userId,
           pointsChanged: points,
-          reason: orderId ? `Tích điểm từ đơn hàng ${orderId}` : "Tích điểm",
+          reason: orderId ? `Tích điểm từ đơn hàng ${orderId}` : "Earn points",
           performedBy: userId,
-        }], { session });
+        }], session);
       } catch (err) {
         console.error("Error handling user.points.added:", err);
       }
@@ -69,20 +71,20 @@ export class UserService {
     eventBus.on("user.points.deducted", async (payload: any) => {
       try {
         const { userId, points, orderId, session } = payload;
-        const updatedUser = await User.findOneAndUpdate(
+        const updatedUser = await this.userRepo.findOneAndUpdate(
           { _id: userId, points: { $gte: points } },
           { $inc: { points: -points } },
           { session, returnDocument: "after" }
         );
         if (!updatedUser) {
-           throw new Error("Điểm tích lũy không đủ hoặc đã thay đổi do giao dịch khác. Vui lòng thử lại.");
+           throw new Error("Points are insufficient or changed by another transaction. Please try again.");
         }
-        await PointHistory.create([{
+        await this.userRepo.createPointHistories([{
           userId,
           pointsChanged: -points,
-          reason: orderId ? `Sử dụng điểm cho đơn hàng ${orderId}` : "Thanh toán bằng điểm",
+          reason: orderId ? `Sử dụng điểm cho đơn hàng ${orderId}` : "Pay with points",
           performedBy: userId,
-        }], { session });
+        }], session);
       } catch (err) {
         console.error("Error handling user.points.deducted:", err);
         throw err;
@@ -95,12 +97,7 @@ export class UserService {
   }
 
   async getMyTierInfo(userId: string): Promise<TierInfoResponse> {
-    const [result] = await Order.aggregate([
-      { $match: { userId: new mongoose.Types.ObjectId(userId), orderStatus: "completed" } },
-      { $group: { _id: null, totalSpent: { $sum: "$totalAmount" }, orderCount: { $sum: 1 } } }
-    ]);
-    const totalSpent: number = result?.totalSpent ?? 0;
-    const orderCount: number = result?.orderCount ?? 0;
+    const { totalSpent, orderCount } = await this.orderRepo.calculateUserTotalSpent(userId);
     const current = getTierBySpending(totalSpent);
     const next = getNextTier(current.key);
     let progressPercent = 100;
@@ -125,13 +122,13 @@ export class UserService {
       if (!user) throw notFound("User not found");
       if (data.name !== undefined) user.name = data.name;
       if (data.phone !== undefined && data.phone !== user.phone) {
-        const phoneOwner = await User.findOne({ phone: data.phone, isDeleted: { $ne: true } }).session(session);
+        const phoneOwner = await this.userRepo.findByPhone(data.phone, session);
         if (phoneOwner && phoneOwner._id.toString() !== userId) throw conflict("This phone number is already used by another account");
         user.phone = data.phone;
       }
       if (data.email !== undefined && data.email !== user.email) {
         if (data.email) {
-          const emailOwner = await User.findOne({ email: data.email, isDeleted: { $ne: true } }).session(session);
+          const emailOwner = await this.userRepo.findByEmail(data.email, session);
           if (emailOwner && emailOwner._id.toString() !== userId) throw conflict("This email is already used by another account");
           const otpRecord = await this.authRepo.findOtpByEmail(data.email);
           if (!otpRecord || !otpRecord.isVerified) throw forbidden("You must verify your email with an OTP before updating");
@@ -313,7 +310,7 @@ export class UserService {
     if (user.role === "owner") throw conflict("Cannot delete the Owner account");
     this.checkHierarchy(requester, user);
     if (user.role === "customer") {
-      const activeOrder = await Order.findOne({
+      const activeOrder = await this.orderRepo.findOne({
         userId: id,
         orderStatus: { $in: ["pending", "processing", "shipping", "return_pending"] },
       });
@@ -322,7 +319,7 @@ export class UserService {
     user.isDeleted = true;
     user.deletedAt = new Date();
     user.deletedBy = requester._id as any;
-    user.name = "Người dùng ẩn danh";
+    user.name = "Anonymous user";
     user.email = undefined;
     user.phone = undefined;
     user.password = undefined;
@@ -346,7 +343,7 @@ export class UserService {
     let finalRole = data.role || "staff";
     if (requester.role === "manager") finalRole = "staff";
     const hashedPassword = await bcrypt.hash(data.password || "123456", 12);
-    const lastStaff = await User.findOne({ employeeId: { $regex: /^NV[0-9]{4}$/ } }).sort({ employeeId: -1 }).select("employeeId").lean();
+    const lastStaff = await this.userRepo.findLatestStaff();
     let nextNum = 1;
     if (lastStaff && lastStaff.employeeId) {
       const match = lastStaff.employeeId.match(/^NV([0-9]{4})$/);
@@ -364,7 +361,7 @@ export class UserService {
     const ninetyDaysAgo = new Date(); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     const oneEightyDaysAgo = new Date(); oneEightyDaysAgo.setDate(oneEightyDaysAgo.getDate() - 180);
     const threeSixtyFiveDaysAgo = new Date(); threeSixtyFiveDaysAgo.setDate(threeSixtyFiveDaysAgo.getDate() - 365);
-    const [overviewResult] = await User.aggregate([
+    const [overviewResult] = await this.userRepo.aggregate([
       { $match: { role: "customer" } },
       { $lookup: { from: "orders", localField: "_id", foreignField: "userId", as: "orders" } },
       { $project: { createdAt: 1, completedOrders: { $filter: { input: "$orders", as: "order", cond: { $eq: ["$$order.orderStatus", "completed"] } } } } },
@@ -423,7 +420,7 @@ export class UserService {
     pipeline.push({ $sort: sortStage });
     const skip = (page - 1) * limit;
     pipeline.push({ $facet: { data: [ { $skip: skip }, { $limit: limit }, { $project: { completedOrders: 0, password: 0 } } ], totalCount: [{ $count: "count" }] } });
-    const [result] = await User.aggregate(pipeline);
+    const [result] = await this.userRepo.aggregate(pipeline);
     const customers = result.data.map((u: any) => {
       const defaultAddress = (u.addresses || []).find((a: any) => a.isDefault) || (u.addresses || [])[0] || {};
       const currentTier = getTierBySpending(u.totalSpent || 0);
@@ -448,12 +445,12 @@ export class UserService {
     if (newPoints < 0) throw conflict("Points cannot be negative");
     user.points = newPoints;
     await this.userRepo.save(user);
-    await PointHistory.create({ userId: user._id, pointsChanged, reason, performedBy });
+    await this.userRepo.createPointHistories([{ userId: user._id, pointsChanged, reason, performedBy }]);
     return mapUser(user);
   }
 
   async getUserPointHistory(userId: string) {
-    return await PointHistory.find({ userId }).populate("performedBy", "name email").sort({ createdAt: -1 }).lean();
+    return this.userRepo.findPointHistories({ userId });
   }
 
   async getFavorites(userId: string) {
@@ -528,25 +525,25 @@ export class UserService {
     if (targetUser.role === "owner") throw forbidden("Cannot delete the store owner account");
     // Emit event — ReviewService handles cascading cleanup within its own context
     await eventBus.emitAsync("user.deleted", { userId: targetUserId });
-    await User.findByIdAndDelete(targetUserId);
+    await this.userRepo.deleteById(targetUserId as any);
     return { success: true };
   }
 
   async getOrCreateGuestUser(phone: string, name: string, session?: mongoose.ClientSession, role: string = "guest"): Promise<UserDocument> {
-    let customerUser = await User.findOne({ phone }).session(session ?? null);
+    let customerUser = await this.userRepo.findOneBy({ phone }, session ?? undefined);
     if (!customerUser) {
       const generatedPassword = `KH_${Math.random().toString(36).substring(2, 8)}`;
       const hashedPassword = await bcrypt.hash(generatedPassword, 10);
-      const created = await User.create(
+      const created = await this.userRepo.createWithSession(
         [
           {
             phone,
-            name: name || "Khách lẻ",
+            name: name || "Guest",
             password: hashedPassword,
             role,
           },
         ],
-        { session }
+        session
       );
       customerUser = created[0];
     }
@@ -554,16 +551,16 @@ export class UserService {
   }
 
   async getUserByPhone(phone: string): Promise<UserDocument | null> {
-    return User.findOne({ phone });
+    return this.userRepo.findOneBy({ phone });
   }
 
   async getUserEmail(userId: string): Promise<{ email: string | null }> {
-    const user = await User.findById(userId).select("email").lean();
+    const user = await this.userRepo.findById(userId as any, "email").lean();
     return { email: user?.email || null };
   }
 
   async getUserPoints(userId: string): Promise<number> {
-    const user = await User.findById(userId).select("points").lean();
+    const user = await this.userRepo.findById(userId as any, "points").lean();
     return user?.points || 0;
   }
 }

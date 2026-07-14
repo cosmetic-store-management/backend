@@ -67,14 +67,14 @@ export class AuthService {
     if (!otpRecord) throw notFound("No OTP request found for this email");
     if (otpRecord.attempts >= 5) {
       await this.authRepo.deleteOtp(data.email);
-      throw badRequest("Mã OTP đã bị hủy do nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.");
+      throw badRequest("OTP has been cancelled due to too many failed attempts. Please request a new one.");
     }
     if (otpRecord.otpCode !== data.otpCode) {
       const updatedRecord = await this.authRepo.incrementOtpAttempts(data.email);
       const currentAttempts = updatedRecord?.attempts ?? (otpRecord.attempts + 1);
       if (currentAttempts >= 5) {
         await this.authRepo.deleteOtp(data.email);
-        throw badRequest("Mã OTP đã bị hủy do nhập sai quá nhiều lần. Vui lòng yêu cầu mã mới.");
+        throw badRequest("OTP has been cancelled due to too many failed attempts. Please request a new one.");
       }
       throw badRequest(`Mã OTP không chính xác. Bạn còn ${5 - currentAttempts} lần thử.`);
     }

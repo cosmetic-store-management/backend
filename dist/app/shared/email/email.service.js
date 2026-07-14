@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { logger } from "../logger/index.js";
 // ── Lazy init ─────────────────────────────────────────────────────────────────
 let transporter = null;
 function getTransporter() {
@@ -25,11 +26,13 @@ const getFromEmail = () => process.env.EMAIL_FROM || "GlowUp Cosmetics <onboardi
 const FRONTEND_URL = () => process.env.FRONTEND_URL || "http://localhost:5173";
 // ── Shared layout ─────────────────────────────────────────────────────────────
 async function sendEmailWithRetry(payload, maxRetries = 3) {
-    const transporter = getTransporter();
-    if (process.env.NODE_ENV !== "test") {
-        console.log(`[MAIL MOCKED - DISABLED] To: ${payload.to} - Subject: ${payload.subject}`);
+    if (process.env.NODE_ENV !== "test" && process.env.NODE_ENV !== "production") {
+        logger.info(`[MAIL DISABLED] To: ${payload.to} - Subject: ${payload.subject}`);
         return;
     }
+    const t = getTransporter();
+    if (!t)
+        return;
     const mailOptions = {
         from: getFromEmail(),
         to: payload.to,
@@ -38,13 +41,13 @@ async function sendEmailWithRetry(payload, maxRetries = 3) {
     };
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            await transporter.sendMail(mailOptions);
+            await t.sendMail(mailOptions);
             return; // Success
         }
         catch (err) {
-            console.error(`❌ Email send error (attempt ${attempt}/${maxRetries}) [${payload.subject}]:`, err.message);
+            logger.error(`❌ Email send error (attempt ${attempt}/${maxRetries}) [${payload.subject}]:`, err.message);
             if (attempt === maxRetries) {
-                console.error(`❌ Email sending failed after ${maxRetries} attempts:`, payload.subject);
+                logger.error(`❌ Email sending failed after ${maxRetries} attempts:`, payload.subject);
             }
             // Exponential backoff: 1s, 2s, 4s...
             const delay = Math.pow(2, attempt - 1) * 1000;

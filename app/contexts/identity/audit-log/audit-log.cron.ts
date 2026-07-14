@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
-import AuditLog from "./models/audit-log.schema.js";
+import { container } from "tsyringe";
+import { AuditLogRepository } from "./audit-log.repository.js";
 import { logger } from "../../../shared/logger/index.js";
 
 // Chạy cronjob định kỳ 1 lần mỗi ngày (24 giờ)
@@ -13,7 +14,7 @@ export const startAuditLogArchiverCron = () => {
 
   setInterval(async () => {
     if (isRunning) {
-      logger.info("[AuditLog Cron] Đang chạy dở tiến trình trước, bỏ qua...");
+      logger.info("[AuditLog Cron] Previous process is running, skipping...");
       return;
     }
 
@@ -23,7 +24,8 @@ export const startAuditLogArchiverCron = () => {
       expirationDate.setMonth(expirationDate.getMonth() - RETENTION_MONTHS);
 
       // Kiểm tra có log cũ không
-      const oldLogsCount = await AuditLog.countDocuments({ createdAt: { $lt: expirationDate } });
+      const auditLogRepo = container.resolve(AuditLogRepository);
+      const oldLogsCount = await auditLogRepo.countLogsBefore(expirationDate);
       if (oldLogsCount === 0) {
         isRunning = false;
         return;
@@ -32,7 +34,7 @@ export const startAuditLogArchiverCron = () => {
       logger.info(`[AuditLog Cron] Tìm thấy ${oldLogsCount} logs quá hạn (> ${RETENTION_MONTHS} tháng). Tiến hành Archive...`);
 
       // Lấy toàn bộ log cũ theo từng chunk (tránh RAM overload nếu quá nhiều)
-      const logsToArchive = await AuditLog.find({ createdAt: { $lt: expirationDate } }).lean();
+      const logsToArchive = await auditLogRepo.findLogsBefore(expirationDate);
 
       // Tạo thư mục backup nếu chưa có
       const backupDir = path.resolve(process.cwd(), "backups", "audit_logs");
@@ -49,11 +51,11 @@ export const startAuditLogArchiverCron = () => {
       logger.info(`[AuditLog Cron] Đã lưu ${oldLogsCount} logs vào file backup: ${backupFilePath}`);
 
       // Xoá log cũ khỏi DB sau khi đã backup thành công
-      const deleteResult = await AuditLog.deleteMany({ createdAt: { $lt: expirationDate } });
+      const deleteResult = await auditLogRepo.deleteLogsBefore(expirationDate);
       logger.info(`[AuditLog Cron] Đã dọn dẹp thành công ${deleteResult.deletedCount} logs khỏi cơ sở dữ liệu.`);
 
     } catch (error) {
-      logger.error({ err: error }, "[AuditLog Cron] Lỗi trong quá trình Archive Audit Logs:");
+      logger.error({ err: error }, "[AuditLog Cron] Error while archiving Audit Logs:");
     } finally {
       isRunning = false;
     }

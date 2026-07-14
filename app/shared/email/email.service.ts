@@ -36,8 +36,13 @@ const FRONTEND_URL = () => process.env.FRONTEND_URL || "http://localhost:5173";
 // ── Shared layout ─────────────────────────────────────────────────────────────
 
 async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
-  logger.info(`[MAIL DISABLED] To: ${payload.to} - Subject: ${payload.subject}`);
-  return;
+  if (process.env.NODE_ENV !== "test" && process.env.NODE_ENV !== "production") {
+    logger.info(`[MAIL DISABLED] To: ${payload.to} - Subject: ${payload.subject}`);
+    return;
+  }
+
+  const t = getTransporter();
+  if (!t) return;
 
   const mailOptions = {
     from: getFromEmail(),
@@ -48,7 +53,7 @@ async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      await transporter!.sendMail(mailOptions);
+      await t.sendMail(mailOptions);
       return; // Success
     } catch (err: any) {
       logger.error(

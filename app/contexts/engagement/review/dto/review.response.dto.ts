@@ -42,7 +42,7 @@ export const mapReview = (r: any, currentUserId?: string): ReviewResponse => {
   return {
     id: r._id.toString(),
     userId: r.userId?._id?.toString() ?? r.userId?.toString() ?? null,
-    userName: r.userId?.name ?? "Người dùng Ẩn danh",
+    userName: r.userId?.name ?? "Anonymous user",
     userAvatar: r.userId?.avatarUrl ?? null,
     rating: r.rating,
     comment: r.comment,
@@ -66,7 +66,7 @@ export const mapReview = (r: any, currentUserId?: string): ReviewResponse => {
 export const mapAdminReview = (r: any, currentUserId?: string): AdminReviewResponse => ({
   ...mapReview(r, currentUserId),
   productId: r.productId?._id?.toString() ?? null,
-  productName: r.productId?.name ?? "Sản phẩm không xác định",
+  productName: r.productId?.name ?? "Unknown product",
   productSlug: r.productId?.slug ?? "",
   productImage: r.productId?.imageUrl ?? null,
 });

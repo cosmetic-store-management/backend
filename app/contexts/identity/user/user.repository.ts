@@ -1,5 +1,6 @@
 import { injectable } from "tsyringe";
 import User, { type UserDocument, type IUser } from "./models/user.schema.js";
+import PointHistory from "./models/point-history.schema.js";
 import mongoose from "mongoose";
 import Otp, { type IOtp } from "../auth/models/otp.schema.js";
 
@@ -72,28 +73,73 @@ export class UserRepository {
     return { users: sortedUsers, total, limit, page, totalPages };
   }
 
-  findById(id: string) {
-    return User.findById(id).select("-password");
+  findById(id: string | mongoose.Types.ObjectId, select?: string) {
+    if (select) {
+      return User.findById(id).select(select);
+    }
+    return User.findById(id);
   }
 
-  findByEmail(email: string) {
-    return User.findOne({ email, isDeleted: { $ne: true } });
+  findActiveManagers() {
+    return User.find({
+      role: { $in: ["owner", "manager"] },
+      isActive: true,
+      isDeleted: { $ne: true }
+    }).select("email").lean();
   }
 
-  findByPhone(phone: string) {
-    return User.findOne({ phone, isDeleted: { $ne: true } });
+  findByEmail(email: string, session?: mongoose.ClientSession) {
+    return User.findOne({ email, isDeleted: { $ne: true } }).session(session || null);
   }
 
-  findOneBy(query: any) {
-    return User.findOne(query);
+  findByPhone(phone: string, session?: mongoose.ClientSession) {
+    return User.findOne({ phone, isDeleted: { $ne: true } }).session(session || null);
+  }
+
+  findOneBy(query: any, session?: mongoose.ClientSession) {
+    return User.findOne(query).session(session || null);
   }
 
   create(data: Partial<IUser>) {
     return User.create(data);
   }
 
+  createPointHistories(data: any[], session?: mongoose.ClientSession) {
+    return PointHistory.create(data, { session });
+  }
+
+  findPointHistories(query: any, skip: number = 0, limit: number = 10) {
+    return PointHistory.find(query)
+      .populate("performedBy", "name email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+  }
+
+  countPointHistories(query: any) {
+    return PointHistory.countDocuments(query);
+  }
+
   save(user: UserDocument) {
     return user.save();
+  }
+
+  
+  findOneAndUpdate(query: any, update: any, options?: any) {
+    return User.findOneAndUpdate(query, update, options);
+  }
+
+  aggregate(pipeline: any[]) {
+    return User.aggregate(pipeline);
+  }
+
+  findLatestStaff() {
+    return User.findOne({ employeeId: { $regex: /^NV[0-9]{4}$/ } }).sort({ employeeId: -1 }).select("employeeId").lean();
+  }
+
+  createWithSession(data: any[], session?: mongoose.ClientSession) {
+    return User.create(data, { session });
   }
 
   deleteById(id: string) {

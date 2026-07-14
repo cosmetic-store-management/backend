@@ -222,7 +222,7 @@ export class CategoryService {
       category.parentId &&
       category.parentId.toString() === category._id.toString()
     ) {
-      throw badRequest("Danh mục không thể là cha của chính nó");
+      throw badRequest("A category cannot be its own parent");
     }
 
     await this.categoryRepo.save(category);
@@ -243,7 +243,7 @@ export class CategoryService {
     const category = await this.categoryRepo.findById(id);
     if (!category) throw notFound("Category not found");
     const hasProducts = await this.categoryRepo.hasProducts(category._id.toString());
-    if (hasProducts) throw badRequest("Không thể xóa danh mục đang có sản phẩm");
+    if (hasProducts) throw badRequest("Cannot delete a category that has products in it");
     await this.categoryRepo.deleteById(id);
     categoryCache.del(PUBLIC_CACHE_KEY);
   }

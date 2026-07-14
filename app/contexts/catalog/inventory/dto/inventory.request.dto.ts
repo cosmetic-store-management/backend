@@ -3,14 +3,14 @@ import { z } from "zod";
 // ── Supplier ──────────────────────────────────────────────────────────────────
 
 export const CreateSupplierSchema = z.object({
-  name: z.string().trim().min(1, "Tên nhà cung cấp là bắt buộc"),
-  phone: z.string().trim().min(1, "Số điện thoại là bắt buộc"),
-  email: z.string().trim().email("Email không hợp lệ").or(z.literal("")).optional(),
+  name: z.string().trim().min(1, "Supplier name is required"),
+  phone: z.string().trim().min(1, "Phone number is required"),
+  email: z.string().trim().email("Invalid email").or(z.literal("")).optional(),
   address: z.string().trim().optional(),
   taxCode: z.string().trim().optional(),
   contactPerson: z.string().trim().optional(),
   contactPhone: z.string().trim().optional(),
-  contactEmail: z.string().trim().email("Email không hợp lệ").or(z.literal("")).optional(),
+  contactEmail: z.string().trim().email("Invalid email").or(z.literal("")).optional(),
   contactPosition: z.string().trim().optional(),
   isActive: z.boolean().optional().default(true),
   notes: z.string().trim().optional(),
@@ -18,18 +18,18 @@ export const CreateSupplierSchema = z.object({
 
 export const UpdateSupplierSchema = CreateSupplierSchema.partial().refine(
   (data) => Object.keys(data).length > 0,
-  "Vui lòng cung cấp ít nhất một trường để cập nhật",
+  "Please provide at least one field to update",
 );
 
 // ── Goods Receipt ─────────────────────────────────────────────────────────────
 
 export const GoodsReceiptItemSchema = z.object({
   variantId: z.string().min(1, "variantId is required"),
-  quantity: z.number().int().positive("Số lượng phải lớn hơn 0"),
-  importPrice: z.number().positive("Giá nhập phải lớn hơn 0"),
-  batchCode: z.string().min(1, "Mã lô là bắt buộc"),
-  manufactureDate: z.coerce.date({ message: "Ngày sản xuất là bắt buộc" }),
-  expiryDate: z.coerce.date({ message: "Hạn sử dụng là bắt buộc" }),
+  quantity: z.number().int().positive("Quantity must be greater than 0"),
+  importPrice: z.number().positive("Import price must be greater than 0"),
+  batchCode: z.string().min(1, "Batch code is required"),
+  manufactureDate: z.coerce.date({ message: "Manufacture date is required" }),
+  expiryDate: z.coerce.date({ message: "Expiration date is required" }),
 });
 
 export const CreateGoodsReceiptSchema = z.object({
@@ -43,7 +43,7 @@ export const CreateGoodsReceiptSchema = z.object({
 
 export const AdjustStockSchema = z.object({
   variantId: z.string().min(1, "variantId is required"),
-  actualStock: z.number().int().min(0, "Tồn kho thực tế không được âm"),
+  actualStock: z.number().int().min(0, "Actual stock cannot be negative"),
   minStock: z.number().int().min(0, "Minimum limit cannot be negative"),
   reason: z.string().trim().optional(),
 });

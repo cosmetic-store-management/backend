@@ -58,7 +58,7 @@ export class ReviewController {
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
-      message: "Đã phản hồi đánh giá",
+      message: "Review replied",
       review: result,
     });
   });
@@ -66,7 +66,7 @@ export class ReviewController {
   patchId = catchAsync(async (req, res) => {
     const { rating, comment, images } = req.body;
     if (!rating) {
-      throw badRequest("Vui lòng cung cấp điểm đánh giá");
+      throw badRequest("Please provide a rating");
     }
     const result = await this.reviewService.updateReviewByUser(
       req.user!._id.toString(),
@@ -76,7 +76,7 @@ export class ReviewController {
       images
     );
     return response.success(res, {
-      message: "Cập nhật đánh giá thành công",
+      message: "Review updated successfully",
       review: result,
     });
   });
@@ -87,7 +87,7 @@ export class ReviewController {
       req.user!._id.toString(),
       id as string
     );
-    return response.success(res, { message: "Xóa đánh giá thành công" });
+    return response.success(res, { message: "Review deleted successfully" });
   });
 
   getProductProductId = catchAsync(async (req, res) => {
@@ -120,7 +120,7 @@ export class ReviewController {
       req.body
     );
     return response.created(res, {
-      message: "Đánh giá sản phẩm thành công",
+      message: "Product reviewed successfully",
       review,
     });
   });
@@ -139,7 +139,7 @@ export class ReviewController {
       req.params.id as string
     );
     return response.success(res, {
-      message: "Lượt thích đã được cập nhật",
+      message: "Likes updated",
       likesCount: result.likes?.length || 0,
       dislikesCount: result.dislikes?.length || 0,
     });
@@ -151,7 +151,7 @@ export class ReviewController {
       req.params.id as string
     );
     return response.success(res, {
-      message: "Lượt không thích đã được cập nhật",
+      message: "Dislikes updated",
       likesCount: result.likes?.length || 0,
       dislikesCount: result.dislikes?.length || 0,
     });

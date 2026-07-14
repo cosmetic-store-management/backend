@@ -23,13 +23,13 @@ const UpdateSettingsSchema = z
     logoUrl: z
       .string()
       .trim()
-      .url("logoUrl phải là URL hợp lệ")
+      .url("logoUrl must be a valid URL")
       .or(z.literal(""))
       .optional(),
     favicon: z
       .string()
       .trim()
-      .url("favicon phải là URL hợp lệ")
+      .url("favicon must be a valid URL")
       .or(z.literal(""))
       .optional(),
     seoTitle: z.string().trim().max(120).optional(),
@@ -154,11 +154,11 @@ export class SettingController {
       req.user!.name,
       "update",
       "settings",
-      "Cập nhật cấu hình cửa hàng",
+      "Update store configuration",
       req.ip || "127.0.0.1",
     );
     return response.success(res, {
-      message: "Cấu hình được lưu thành công",
+      message: "Configuration saved successfully",
       settings,
     });
   });

@@ -1,19 +1,19 @@
 import { z } from "zod";
 
 export const CreateReviewSchema = z.object({
-  productId: z.string().min(1, "Vui lòng chọn sản phẩm"),
+  productId: z.string().min(1, "Please select a product"),
   rating: z
     .number()
     .int()
-    .min(1, "Điểm đánh giá thấp nhất là 1")
-    .max(5, "Điểm đánh giá cao nhất là 5"),
+    .min(1, "Minimum rating is 1")
+    .max(5, "Maximum rating is 5"),
   comment: z.string().trim().optional().default(""),
   images: z
-    .array(z.string().url("Đường dẫn ảnh không hợp lệ"))
+    .array(z.string().url("Invalid image URL"))
     .optional()
     .default([]),
   videos: z
-    .array(z.string().url("Đường dẫn video không hợp lệ"))
+    .array(z.string().url("Invalid video URL"))
     .optional()
     .default([]),
 });

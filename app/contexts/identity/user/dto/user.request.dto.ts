@@ -75,10 +75,10 @@ export const UpdateStatusSchema = z.object({
 export type UpdateStatusInput = z.infer<typeof UpdateStatusSchema>;
 
 export const AddressSchema = z.object({
-  province: z.string().trim().min(1, "Vui lòng chọn Tỉnh/Thành"),
-  district: z.string().trim().min(1, "Vui lòng chọn Quận/Huyện"),
-  ward: z.string().trim().min(1, "Vui lòng chọn Phường/Xã"),
-  street: z.string().trim().min(1, "Vui lòng nhập Đường/Số nhà"),
+  province: z.string().trim().min(1, "Please select Province/City"),
+  district: z.string().trim().min(1, "Please select District"),
+  ward: z.string().trim().min(1, "Please select Ward/Commune"),
+  street: z.string().trim().min(1, "Please enter Street/House number"),
   isDefault: z.boolean().optional().default(false),
 });
 

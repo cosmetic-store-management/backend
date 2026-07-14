@@ -1,26 +1,26 @@
 import { z } from "zod";
 
 const OrderItemInputSchema = z.object({
-  productId: z.string().min(1, "productId không được để trống"),
-  variantId: z.string().min(1, "variantId không được để trống"),
-  quantity: z.number().int().min(1, "Số lượng phải là số nguyên dương"),
+  productId: z.string().min(1, "productId cannot be empty"),
+  variantId: z.string().min(1, "variantId cannot be empty"),
+  quantity: z.number().int().min(1, "Quantity must be a positive integer"),
 });
 
 export const CreateOrderSchema = z.object({
   paymentMethod: z.enum(
     ["cod", "stripe", "cash", "pos_card", "transfer", "bank"],
-    "Phương thức thanh toán không hợp lệ",
+    "Invalid payment method",
   ),
   items: z
     .array(OrderItemInputSchema)
-    .min(1, "Đơn hàng phải có ít nhất một sản phẩm"),
+    .min(1, "Order must have at least one product"),
   note: z.string().trim().optional().default(""),
-  receiverName: z.string().min(1, "Họ tên người nhận không được để trống"),
-  phone: z.string().min(1, "Số điện thoại nhận hàng không được để trống"),
+  receiverName: z.string().min(1, "Recipient name cannot be empty"),
+  phone: z.string().min(1, "Recipient phone number cannot be empty"),
   province: z.string().min(1, "Province/City cannot be empty"),
   district: z.string().min(1, "District cannot be empty"),
   ward: z.string().min(1, "Ward cannot be empty"),
-  street: z.string().min(1, "Số nhà, tên đường không được để trống"),
+  street: z.string().min(1, "House number, street name cannot be empty"),
   shippingMethod: z.enum(["standard", "express"]).default("standard"),
   voucherCode: z.string().trim().optional(),
   usedPoints: z.number().int().min(0).optional().default(0),
@@ -40,18 +40,18 @@ export const PreviewOrderSchema = z.object({
 export const UpdateOrderStatusSchema = z.object({
   orderStatus: z.enum(
     ["pending", "processing", "shipping", "completed", "cancelled", "returned"],
-    "Trạng thái đơn hàng không hợp lệ",
+    "Invalid order status",
   ),
   trackingCode: z.string().trim().optional(), // Mã vận đơn (giao hàng)
 });
 
 export const UpdateOrderDetailsSchema = z.object({
-  receiverName: z.string().min(1, "Họ tên không được để trống").optional(),
-  phone: z.string().min(1, "SĐT không được để trống").optional(),
+  receiverName: z.string().min(1, "Name cannot be empty").optional(),
+  phone: z.string().min(1, "Phone number cannot be empty").optional(),
   province: z.string().min(1, "Province/City cannot be empty").optional(),
   district: z.string().min(1, "District cannot be empty").optional(),
   ward: z.string().min(1, "Ward cannot be empty").optional(),
-  street: z.string().min(1, "Số nhà không được để trống").optional(),
+  street: z.string().min(1, "House number cannot be empty").optional(),
   note: z.string().optional(),
 });
 

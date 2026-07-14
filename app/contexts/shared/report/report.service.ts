@@ -117,14 +117,14 @@ export class ReportService {
     const diffMs = Date.now() - new Date((o as any).createdAt).getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
-    let dateStr = "Vừa xong";
+    let dateStr = "Just now";
     if (diffHours > 0) dateStr = `${diffHours} giờ trước`;
     else if (diffMins > 0) dateStr = `${diffMins} phút trước`;
 
     const statusMap: Record<string, string> = {
-      completed: "Hoàn thành",
-      shipping: "Đang giao",
-      cancelled: "Đã huỷ",
+      completed: "Completed",
+      shipping: "Delivering",
+      cancelled: "Cancelled",
     };
 
     return {
@@ -134,7 +134,7 @@ export class ReportService {
         .map((item: any) => `${item.productName} (x${item.quantity})`)
         .join(", "),
       total: `${o.totalAmount.toLocaleString("vi-VN")}₫`,
-      status: statusMap[o.orderStatus] ?? "Chờ xử lý",
+      status: statusMap[o.orderStatus] ?? "Pending",
       date: dateStr,
     };
   });
@@ -149,7 +149,7 @@ export class ReportService {
 
       topProducts.push({
         name: prod.name,
-        category: (prod.categoryId as any)?.name ?? "Mỹ phẩm",
+        category: (prod.categoryId as any)?.name ?? "Cosmetics",
         sold: agg.sold,
         stock: totalStock,
         // % real: sold / total_sold_in_period (không còn hardcode /500)
@@ -166,7 +166,7 @@ export class ReportService {
     lowStockRaw.map(async (v: any) => {
       const prod = await this.reportRepo.findProductById(v.productId as any);
       return {
-        productName: prod?.name || "Sản phẩm không rõ",
+        productName: prod?.name || "Unknown product",
         variantName: v.name,
         sku: v.sku,
         stock: v.stock,
@@ -322,7 +322,7 @@ export class ReportService {
       <div class="report-header">
         <h1>BÁO CÁO DOANH THU & BÁN HÀNG</h1>
         <p><strong>Cửa hàng:</strong> Cosmetic Shop</p>
-        <p><strong>Kỳ báo cáo:</strong> ${startDate ? new Date(startDate).toLocaleDateString("vi-VN") : "Từ đầu"} - ${endDate ? new Date(endDate).toLocaleDateString("vi-VN") : "Hiện tại"}</p>
+        <p><strong>Kỳ báo cáo:</strong> ${startDate ? new Date(startDate).toLocaleDateString("vi-VN") : "From the beginning"} - ${endDate ? new Date(endDate).toLocaleDateString("vi-VN") : "Current"}</p>
         <p><strong>Thời gian kết xuất:</strong> ${new Date().toLocaleString("vi-VN")}</p>
       </div>
 
@@ -393,7 +393,7 @@ export class ReportService {
               `,
                     )
                     .join("")
-                : '<tr><td colspan="5" class="text-center">Chưa có dữ liệu sản phẩm bán ra trong kỳ.</td></tr>'
+                : '<tr><td colspan="5" class="text-center">No products sold in this period.</td></tr>'
             }
           </tbody>
         </table>
@@ -428,7 +428,7 @@ export class ReportService {
               `,
                     )
                     .join("")
-                : '<tr><td colspan="5" class="text-center">Số lượng tồn kho của các sản phẩm đang ở mức an toàn.</td></tr>'
+                : '<tr><td colspan="5" class="text-center">Inventory levels for all products are safe.</td></tr>'
             }
           </tbody>
         </table>

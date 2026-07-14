@@ -1,7 +1,8 @@
 import passport, { Profile } from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as FacebookStrategy, Profile as FacebookProfile } from "passport-facebook";
-import User from "../../contexts/identity/user/models/user.schema.js";
+import { container } from "tsyringe";
+import { UserRepository } from "../../contexts/identity/user/user.repository.js";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID as string;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET as string;
@@ -25,11 +26,12 @@ const verifyCallback = async (
       query = { $or: [{ email }, query] };
     }
 
-    let user = await User.findOne(query);
+    const userRepo = container.resolve(UserRepository);
+    let user = await userRepo.findOneBy(query);
 
     if (!user) {
       // Create new user
-      user = await User.create({
+      user = await userRepo.create({
         name: profile.displayName || `${provider} User`,
         email: email || undefined,
         providers: [{ provider, providerId: profile.id }],
@@ -42,7 +44,7 @@ const verifyCallback = async (
       const isLinked = user.providers.some(p => p.provider === provider && p.providerId === profile.id);
       if (!isLinked) {
         user.providers.push({ provider, providerId: profile.id });
-        await user.save();
+        await userRepo.save(user);
       }
     }
 

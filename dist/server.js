@@ -1,3 +1,4 @@
+import "reflect-metadata";
 import "dotenv/config";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
@@ -10,28 +11,29 @@ import cors from "cors";
 import helmet from "helmet";
 import mongoSanitize from "express-mongo-sanitize";
 import morgan from "morgan";
+import compression from "compression";
 import { globalLimiter } from "./app/middlewares/rateLimit.middleware.js";
 import connectDB from "./app/config/db.js";
 import healthRouter from "./app/config/health.js";
-import authRoutes from "./app/modules/auth/auth.controller.js";
-import userRoutes from "./app/modules/user/user.controller.js";
-import productRoutes from "./app/modules/product/product.controller.js";
-import categoryRoutes from "./app/modules/category/category.controller.js";
-import orderRoutes from "./app/modules/order/order.controller.js";
-import brandRoutes from "./app/modules/brand/brand.controller.js";
-import inventoryRoutes from "./app/modules/inventory/inventory.controller.js";
-import reportRoutes from "./app/modules/report/report.controller.js";
-import auditLogRoutes from "./app/modules/audit-log/audit-log.controller.js";
-import settingRoutes from "./app/modules/setting/setting.controller.js";
-import uploadRoutes from "./app/modules/upload/upload.controller.js";
-import voucherRoutes from "./app/modules/voucher/voucher.controller.js";
-import reviewRoutes from "./app/modules/review/review.controller.js";
-import cartRoutes from "./app/modules/cart/cart.controller.js";
-import flashSaleRoutes from "./app/modules/marketing/flash-sale.controller.js";
-import checkoutRoutes from "./app/modules/order/checkout/checkout.controller.js";
-import paymentRoutes from "./app/modules/order/payment/payment.controller.js";
-import shippingRoutes from "./app/modules/order/shipping/shipping.controller.js";
-import transactionRoutes from "./app/modules/order/transaction/transaction.controller.js";
+import authRoutes from "./app/contexts/identity/auth/auth.route.js";
+import userRoutes from "./app/contexts/identity/user/user.route.js";
+import productRoutes from "./app/contexts/catalog/product/product.route.js";
+import categoryRoutes from "./app/contexts/catalog/category/category.route.js";
+import orderRoutes from "./app/contexts/sales/order/order.route.js";
+import brandRoutes from "./app/contexts/catalog/brand/brand.route.js";
+import inventoryRoutes from "./app/contexts/catalog/inventory/inventory.route.js";
+import reportRoutes from "./app/contexts/shared/report/report.route.js";
+import auditLogRoutes from "./app/contexts/identity/audit-log/audit-log.route.js";
+import settingRoutes from "./app/contexts/shared/setting/setting.route.js";
+import uploadRoutes from "./app/contexts/shared/upload/upload.route.js";
+import voucherRoutes from "./app/contexts/sales/voucher/voucher.route.js";
+import reviewRoutes from "./app/contexts/engagement/review/review.route.js";
+import cartRoutes from "./app/contexts/sales/cart/cart.route.js";
+import flashSaleRoutes from "./app/contexts/engagement/marketing/flash-sale.route.js";
+import checkoutRoutes from "./app/contexts/sales/order/checkout/checkout.route.js";
+import paymentRoutes from "./app/contexts/sales/order/payment/payment.route.js";
+import shippingRoutes from "./app/contexts/sales/order/shipping/shipping.route.js";
+import transactionRoutes from "./app/contexts/sales/order/transaction/transaction.route.js";
 import { errorHandler } from "./app/middlewares/errorHandler.middleware.js";
 import passport from "./app/shared/config/passport.js";
 const app = express();
@@ -72,14 +74,17 @@ app.use(cors({
     origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
     credentials: true,
 }));
-import { stripeWebhook } from "./app/modules/order/payment/payment.controller.js";
+import { container } from "tsyringe";
+import { PaymentController } from "./app/contexts/sales/order/payment/payment.controller.js";
 // ── [3] Stripe Webhook ──────────────────────────────
-app.post("/api/payments/webhook", express.raw({ type: "application/json" }), stripeWebhook);
+const paymentController = container.resolve(PaymentController);
+app.post("/api/payments/webhook", express.raw({ type: "application/json" }), paymentController.stripeWebhook.bind(paymentController));
 // ── [4] Global Rate Limiter ──────────────────────────────────────
 app.use(globalLimiter);
 // Body Parser
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(compression());
 // ── [5] NoSQL Injection Protection ───────────────────────────────────────────
 app.use((req, _res, next) => {
     ["body", "params"].forEach((key) => {
@@ -112,7 +117,6 @@ app.use("/api/checkout", checkoutRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/shipping", shippingRoutes);
 app.use("/api/transactions", transactionRoutes);
-app.use("/api/uploads", uploadRoutes);
 // ── [8] 404 Handler ───────────────────────────────────────────────────────────
 app.use((req, res) => {
     res
@@ -124,31 +128,34 @@ app.use((req, res) => {
 });
 // ── [9] Global Error Handler ──────────────────────────────────────────────────
 app.use(errorHandler);
-import { startOrderCron } from "./app/modules/order/order.cron.js";
-import "./app/modules/cart/cart.cron.js";
+import { startOrderCron } from "./app/contexts/sales/order/order.cron.js";
+import "./app/contexts/sales/cart/cart.cron.js";
+import { startAuditLogArchiverCron } from "./app/contexts/identity/audit-log/audit-log.cron.js";
+import { logger } from "./app/shared/logger/index.js";
 if (process.env.NODE_ENV !== "test") {
     const server = app.listen(PORT, () => {
-        console.log(`🚀 Server running at http://localhost:${PORT} [${NODE_ENV}]`);
+        logger.info(`🚀 Server running at http://localhost:${PORT} [${NODE_ENV}]`);
     });
     // Start cron jobs
     startOrderCron();
+    startAuditLogArchiverCron();
     // ── [11] Graceful Shutdown ────────────────────────────────────────────────────
     const gracefulShutdown = (signal) => {
-        console.log(`\n${signal} received. Shutting down gracefully...`);
+        logger.info(`\n${signal} received. Shutting down gracefully...`);
         server.close(async () => {
-            console.log("HTTP server closed");
+            logger.info("HTTP server closed");
             try {
                 const mongoose = (await import("mongoose")).default;
                 await mongoose.connection.close();
-                console.log("MongoDB connection closed");
+                logger.info("MongoDB connection closed");
             }
             catch (err) {
-                console.error("Error closing MongoDB connection:", err);
+                logger.error({ err: err }, "Error closing MongoDB connection:");
             }
             process.exit(0);
         });
         setTimeout(() => {
-            console.error("Forced shutdown after 10s");
+            logger.error("Forced shutdown after 10s");
             process.exit(1);
         }, 10000);
     };
@@ -158,9 +165,9 @@ if (process.env.NODE_ENV !== "test") {
 export { app };
 // ── [12] Process Error Handlers ───────────────────────────────────────────────
 process.on("unhandledRejection", (reason) => {
-    console.error("❌ Unhandled Promise Rejection:", reason);
+    logger.error({ err: reason }, "❌ Unhandled Promise Rejection:");
 });
 process.on("uncaughtException", (err) => {
-    console.error("❌ Uncaught Exception:", err);
+    logger.error({ err: err }, "❌ Uncaught Exception:");
     process.exit(1);
 });

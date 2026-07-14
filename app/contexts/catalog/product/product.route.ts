@@ -8,6 +8,7 @@ import { ProductController } from "./product.controller.js";
 const router = Router();
 const controller = container.resolve(ProductController);
 
+router.get("/popular-searches", controller.getPopularSearches);
 router.get("/recommendations", optionalAuthenticate, controller.getRecommendations);
 router.get("/", controller.getRoot);
 router.get("/:slug", controller.getSlug);

@@ -1,7 +1,8 @@
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Strategy as FacebookStrategy } from "passport-facebook";
-import User from "../../modules/user/models/user.schema.js";
+import { container } from "tsyringe";
+import { UserRepository } from "../../contexts/identity/user/user.repository.js";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID || "YOUR_FACEBOOK_APP_ID";
@@ -14,10 +15,11 @@ const verifyCallback = async (req, accessToken, refreshToken, profile, done) => 
         if (email) {
             query = { $or: [{ email }, query] };
         }
-        let user = await User.findOne(query);
+        const userRepo = container.resolve(UserRepository);
+        let user = await userRepo.findOneBy(query);
         if (!user) {
             // Create new user
-            user = await User.create({
+            user = await userRepo.create({
                 name: profile.displayName || `${provider} User`,
                 email: email || undefined,
                 providers: [{ provider, providerId: profile.id }],
@@ -31,7 +33,7 @@ const verifyCallback = async (req, accessToken, refreshToken, profile, done) => 
             const isLinked = user.providers.some(p => p.provider === provider && p.providerId === profile.id);
             if (!isLinked) {
                 user.providers.push({ provider, providerId: profile.id });
-                await user.save();
+                await userRepo.save(user);
             }
         }
         return done(null, user);

@@ -20,6 +20,10 @@ export class FlashSaleRepository {
       .lean();
   }
 
+  findRaw(query: any) {
+    return FlashSale.find(query);
+  }
+
   findTimelineFlashSales() {
     const now = new Date();
     return FlashSale.find({
@@ -95,13 +99,13 @@ export class FlashSaleRepository {
       session || null
     );
     if (!flashSale) {
-      throw new Error("Không tìm thấy chương trình Flash Sale");
+      throw new Error("Flash Sale not found");
     }
     const item = flashSale.items.find(
       (i: any) => i.variantId.toString() === variantId.toString()
     );
     if (!item) {
-      throw new Error("Sản phẩm không thuộc chương trình Flash Sale");
+      throw new Error("Product is not in a Flash Sale");
     }
     if (item.soldQuantity + quantity > item.quantityLimit) {
       throw new Error(

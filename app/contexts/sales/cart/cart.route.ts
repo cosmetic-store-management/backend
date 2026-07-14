@@ -1,9 +1,12 @@
 import { Router } from "express";
 import { container } from "tsyringe";
+import { authenticate, isAuthenticated } from "../../../middlewares/auth.middleware.js";
 import { CartController } from "./cart.controller.js";
 
 const router = Router();
 const controller = container.resolve(CartController);
+
+router.use(authenticate, isAuthenticated);
 
 router.get("/", controller.getRoot);
 router.post("/sync", controller.postSync);

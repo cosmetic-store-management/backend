@@ -32,6 +32,6 @@ export class CheckoutController {
   patchCodeCancel = catchAsync(async (req: Request, res: Response) => {
     const { code } = req.params;
     const result = await this.orderService.abandonPendingOrder(code as string);
-    res.json({ success: true, data: result, message: "Hủy mã QR thành công" });
+    res.json({ success: true, data: result, message: "QR code cancelled successfully" });
   });
 }

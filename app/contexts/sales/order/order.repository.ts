@@ -78,6 +78,17 @@ export class OrderRepository {
     return result?.totalSpent ?? 0;
   }
 
+  async calculateUserTotalSpent(userId: string): Promise<{ totalSpent: number; orderCount: number }> {
+    const [result] = await Order.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId), orderStatus: "completed" } },
+      { $group: { _id: null, totalSpent: { $sum: "$totalAmount" }, orderCount: { $sum: 1 } } }
+    ]);
+    return {
+      totalSpent: result?.totalSpent ?? 0,
+      orderCount: result?.orderCount ?? 0
+    };
+  }
+
   countOrdersToday(startOfDay: Date, endOfDay: Date): Promise<number> {
     return Order.countDocuments({
       createdAt: { $gte: startOfDay, $lte: endOfDay },
@@ -139,7 +150,7 @@ export class OrderRepository {
     );
     if (!updated) {
       throw new Error(
-        "Không đủ số lượng trong tồn kho hoặc biến thể không tồn tại",
+        "Insufficient stock or variant does not exist",
       );
     }
     

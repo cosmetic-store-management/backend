@@ -27,7 +27,7 @@ export class InventoryController {
       req.ip || "127.0.0.1"
     );
     return response.created(res, {
-      message: "Tạo nhà cung cấp thành công",
+      message: "Create a successful supplier",
       supplier,
     });
   });
@@ -44,7 +44,7 @@ export class InventoryController {
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
-      message: "Cập nhật nhà cung cấp thành công",
+      message: "Vendor update successful",
       supplier,
     });
   });
@@ -61,7 +61,7 @@ export class InventoryController {
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
-      message: "Xóa nhà cung cấp thành công",
+      message: "Deleted supplier successfully",
     });
   });
 
@@ -92,7 +92,7 @@ export class InventoryController {
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
-      message: "Cập nhật lô hàng thành công",
+      message: "Updated shipment successfully",
       batch,
     });
   });
@@ -122,7 +122,7 @@ export class InventoryController {
       req.ip || "127.0.0.1"
     );
     return response.created(res, {
-      message: "Nhập kho sản phẩm thành công",
+      message: "Product warehouse was successfully imported",
       receipt,
     });
   });
@@ -139,7 +139,7 @@ export class InventoryController {
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
-      message: "Cập nhật tồn kho thành công",
+      message: "Inventory update successful",
       variant,
     });
   });
@@ -155,7 +155,7 @@ export class InventoryController {
       req.ip || "127.0.0.1"
     );
     return response.success(res, {
-      message: "Cập nhật định mức tồn kho thành công",
+      message: "Updated inventory levels successfully",
       variant,
     });
   });
@@ -206,7 +206,7 @@ export class InventoryController {
       req.ip || "127.0.0.1"
     );
     return response.created(res, {
-      message: "Tạo phiếu kiểm kho thành công",
+      message: "Created inventory sheet successfully",
       stocktake,
     });
   });

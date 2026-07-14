@@ -5,6 +5,7 @@ import Product, {
 } from "./models/product.schema.js";
 import Variant from "./models/variant.schema.js";
 import Category from "../category/models/category.schema.js";
+import { SearchKeywordModel } from "./models/search-keyword.schema.js";
 import mongoose from "mongoose";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -36,6 +37,46 @@ export class ProductRepository {
       return products;
     }
     return products;
+  }
+
+  findRaw(query: Query) {
+    return Product.find(query);
+  }
+
+  findVariantsRaw(query: Query) {
+    return Variant.find(query);
+  }
+
+  async logSearchKeyword(term: string): Promise<void> {
+    const cleanTerm = term.trim().toLowerCase();
+    if (!cleanTerm) return;
+
+    try {
+      await SearchKeywordModel.findOneAndUpdate(
+        { term: cleanTerm },
+        {
+          $inc: { count: 1 },
+          $set: { lastSearchedAt: new Date() },
+        },
+        { upsert: true, new: true }
+      );
+    } catch (error) {
+      console.error("Failed to log search keyword:", error);
+    }
+  }
+
+  async getPopularSearches(limit: number = 10): Promise<string[]> {
+    try {
+      const popular = await SearchKeywordModel.find()
+        .sort({ count: -1, lastSearchedAt: -1 })
+        .limit(limit)
+        .select("term")
+        .lean();
+      return popular.map((p) => p.term);
+    } catch (error) {
+      console.error("Failed to fetch popular searches:", error);
+      return [];
+    }
   }
 
   async findPublic(

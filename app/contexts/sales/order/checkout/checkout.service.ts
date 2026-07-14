@@ -238,7 +238,7 @@ export class CheckoutService {
   data: any,
 ) => {
   if (!data.items || data.items.length === 0)
-    throw badRequest("Giỏ hàng rỗng");
+    throw badRequest("Cart is empty");
 
   data.items = data.items.reduce((acc: any[], item: any) => {
     const existing = acc.find((i) => i.variantId === item.variantId);
@@ -390,7 +390,7 @@ export class CheckoutService {
       }
       finalVoucherCode = voucherRes.voucherCode;
     } catch (error: any) {
-      throw badRequest(error.message || "Mã giảm giá không hợp lệ");
+      throw badRequest(error.message || "Invalid discount code");
     }
   }
 
@@ -558,7 +558,7 @@ export class CheckoutService {
     }
 
     throw badRequest(
-      error.message || "Lỗi trong quá trình tạo đơn hàng, vui lòng thử lại."
+      error.message || "Error creating order, please try again."
     );
   } finally {
     await session.endSession();
@@ -602,7 +602,7 @@ export class CheckoutService {
   if (customerPhone) {
     customerUser = await this.userService.getOrCreateGuestUser(
       customerPhone,
-      customerName || "Khách hàng",
+      customerName || "Customer",
       undefined,
       "customer"
     );
@@ -737,12 +737,12 @@ export class CheckoutService {
     // Tạo đơn hàng
     newOrder = await this.orderRepo.createOrder({
       code: orderCode,
-      receiverName: customerUser ? customerUser.name : "Khách lẻ tại quầy",
+      receiverName: customerUser ? customerUser.name : "Walk-in customer",
       phone: customerUser ? customerUser.phone : "0000000000",
       province: "N/A",
       district: "N/A",
       ward: "N/A",
-      street: "Bán tại quầy",
+      street: "Sell at counter",
       orderStatus: "completed",
       paymentMethod: data.paymentMethod,
       subtotal,
@@ -831,7 +831,7 @@ export class CheckoutService {
     await session.commitTransaction();
   } catch (error: any) {
     await session.abortTransaction();
-    throw badRequest(error.message || "Lỗi trong quá trình tạo đơn POS, vui lòng thử lại.");
+    throw badRequest(error.message || "Error creating POS order, please try again.");
   } finally {
     await session.endSession();
   }

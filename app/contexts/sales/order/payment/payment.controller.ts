@@ -34,7 +34,7 @@ export class PaymentController {
   lookupAccount = catchAsync(async (req: Request, res: Response) => {
     const { bin, accountNumber } = req.body;
     if (!bin || !accountNumber) {
-      return res.status(400).json({ success: false, message: "Thiếu bin hoặc accountNumber" });
+      return res.status(400).json({ success: false, message: "Missing bin or accountNumber" });
     }
     const result = await this.paymentService.lookupBankAccount(bin, accountNumber);
     res.json({ success: true, ...result });

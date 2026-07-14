@@ -10,7 +10,8 @@ import { injectable, inject, container } from "tsyringe";
 import { UserService } from "../../../identity/user/user.service.js";
 import { OrderRepository } from "../order.repository.js";
 import { TransactionRepository } from "../transaction/transaction.repository.js";
-import Setting from "../../../shared/setting/models/setting.schema.js";
+import { SettingRepository } from "../../../shared/setting/setting.repository.js";
+
 import { logger } from "../../../../shared/logger/index.js";
 
 // Lazy initialize Stripe so that dotenv has time to populate process.env
@@ -32,7 +33,8 @@ export class PaymentService {
   constructor(
     @inject(OrderRepository) private readonly orderRepo: OrderRepository,
     @inject(TransactionRepository) private readonly transactionRepo: TransactionRepository,
-    @inject(UserService) private readonly userService: UserService
+    @inject(UserService) private readonly userService: UserService,
+    @inject(SettingRepository) private readonly settingRepo: SettingRepository
   ) {}
 
   createStripePaymentIntent = async (orderId: string) => {
@@ -196,7 +198,7 @@ export class PaymentService {
 
   handleSepayWebhook = async (payload: any, authHeader: string) => {
   // 1. Check the security token to ensure the request comes from SePay
-  const webhookSetting = await Setting.findOne({ key: "global_settings" });
+  const webhookSetting = await this.settingRepo.findByKey("global_settings");
   const configuredToken = webhookSetting?.value?.sepayWebhookToken;
   
   if (!configuredToken) {
@@ -467,7 +469,7 @@ export class PaymentService {
   }
 
   // 1. Check signature if Checksum Key is configured
-  const webhookSetting = await Setting.findOne({ key: "global_settings" });
+  const webhookSetting = await this.settingRepo.findByKeyLean("general_settings");
   const checksumKey = process.env.PAYOS_CHECKSUM_KEY || webhookSetting?.value?.payosChecksumKey;
 
   if (checksumKey) {

@@ -1,4 +1,4 @@
-import Order, { OrderDocument } from "./models/order.schema.js";
+import type { OrderDocument } from "./models/order.schema.js";
 import { TransactionRepository } from "./transaction/transaction.repository.js";
 import { injectable, inject, container } from "tsyringe";
 import { OrderRepository } from "./order.repository.js";
@@ -439,7 +439,7 @@ export class OrderService {
     await session.commitTransaction();
   } catch (error: any) {
     await session.abortTransaction();
-    throw badRequest(error.message || "Lỗi khi cập nhật trạng thái đơn hàng");
+    throw badRequest(error.message || "Error updating order status");
   } finally {
     await session.endSession();
   }
@@ -728,7 +728,7 @@ export class OrderService {
 
   cancelPendingOrder = async (
   orderCode: string,
-  reason: string = "Khách hàng hủy thanh toán"
+  reason: string = "Customer cancelled payment"
 ) => {
   let order: any = await this.orderRepo.findOne({ code: orderCode.toUpperCase() });
   if (!order) throw notFound("Order not found");
@@ -820,7 +820,7 @@ export class OrderService {
 
     // Soft cancel the abandoned order instead of hard delete
     order.orderStatus = "cancelled";
-    order.note = order.note || "Khách hàng hủy thanh toán hoặc quá hạn";
+    order.note = order.note || "Customer cancelled payment or timeout";
     await this.orderRepo.saveOrder(order, session);
 
     await session.commitTransaction();

@@ -86,7 +86,7 @@ export class CartService {
       (item) => item.variantId?._id?.toString() === data.variantId || item.variantId?.toString() === data.variantId
     );
 
-    if (!existingItem) throw notFound("Sản phẩm không có trong giỏ hàng");
+    if (!existingItem) throw notFound("Product is not in the cart");
 
     const variant: any = await this.productRepo.findVariantById(data.variantId);
     if (!variant || !variant.isActive) throw notFound("Product does not exist or has been discontinued");

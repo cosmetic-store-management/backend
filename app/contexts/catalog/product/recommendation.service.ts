@@ -1,19 +1,19 @@
 import { injectable, inject } from "tsyringe";
 import mongoose from "mongoose";
-import User from "../../identity/user/models/user.schema.js";
-import Product from "./models/product.schema.js";
+import { UserRepository } from "../../identity/user/user.repository.js";
 import { ProductRepository } from "./product.repository.js";
 import { mapProduct } from "./dto/product.response.dto.js";
 
 @injectable()
 export class RecommendationService {
   constructor(
-    @inject(ProductRepository) private readonly productRepo: ProductRepository
+    @inject(ProductRepository) private readonly productRepo: ProductRepository,
+    @inject(UserRepository) private readonly userRepo: UserRepository
   ) {}
 
   getRecommendations = async (userId: string | null, limit = 10) => {
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-      const user = await User.findById(userId).lean();
+      const user = await this.userRepo.findById(userId).lean();
       if (user) {
         // 1. Get categories from recentlyViewed
         const recentProductIds = user.recentlyViewed || [];
@@ -22,7 +22,7 @@ export class RecommendationService {
         // But for simplicity, let's just use recentlyViewed first
         
         if (recentProductIds.length > 0) {
-          const recentProducts = await Product.find({
+          const recentProducts = await this.productRepo.findRaw({
             _id: { $in: recentProductIds },
             isActive: true
           }).lean();

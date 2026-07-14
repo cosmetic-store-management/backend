@@ -134,13 +134,13 @@ export class UserController {
 
   patchIdRole = catchAsync(async (req, res) => {
     const user = await this.userService.updateUserRole(req.params.id as string, req.body.role, req.body.permissions, req.user!);
-    await this.auditService.logAction(req.user!._id.toString(), req.user!.name, "update", "identity", `Cập nhật quyền tài khoản "${user.name}" thành ${req.body.role || "không đổi"}`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Cập nhật quyền thành công", user });
+    await this.auditService.logAction(req.user!._id.toString(), req.user!.name, "update", "identity", `Cập nhật quyền tài khoản "${user.name}" thành ${req.body.role || "unchanged"}`, req.ip || "127.0.0.1");
+    return response.success(res, { message: "Permissions updated successfully", user });
   });
 
   patchIdStatus = catchAsync(async (req, res) => {
     const user = await this.userService.updateUserStatus(req.params.id as string, req.body.isActive, req.user!);
-    const actionText = req.body.isActive ? "Mở khóa" : "Khóa";
+    const actionText = req.body.isActive ? "Unlock" : "Lock";
     await this.auditService.logAction(req.user!._id.toString(), req.user!.name, "update", "identity", `${actionText} tài khoản "${user.name}"`, req.ip || "127.0.0.1");
     return response.success(res, { message: `${actionText} tài khoản thành công`, user });
   });
@@ -148,24 +148,24 @@ export class UserController {
   patchIdResetPassword = catchAsync(async (req, res) => {
     const user = await this.userService.resetUserPassword(req.params.id as string, req.user!);
     await this.auditService.logAction(req.user!._id.toString(), req.user!.name, "update", "identity", `Đặt lại mật khẩu cho tài khoản "${user.name}"`, req.ip || "127.0.0.1");
-    return response.success(res, { message: "Đặt lại mật khẩu thành công (Mặc định: GlowUp@123456)", user });
+    return response.success(res, { message: "Password reset successfully (Default: GlowUp@123456)", user });
   });
 
   deleteId = catchAsync(async (req, res) => {
     const targetUser = await this.userService.getUserById(req.params.id as string);
-    if (!targetUser) throw { status: 404, message: "Không tìm thấy người dùng" };
+    if (!targetUser) throw { status: 404, message: "User not found" };
 
     if (targetUser.role === "customer") {
       await this.userService.deleteUserById(req.params.id as string, req.user!);
       await this.auditService.logAction(req.user!._id.toString(), req.user!.name, "delete", "identity", `Xóa tài khoản khách hàng "${targetUser.name}"`, req.ip || "127.0.0.1");
-      return response.success(res, { message: "Xóa tài khoản khách hàng thành công" });
+      return response.success(res, { message: "Customer account deleted successfully" });
     } else {
       if (req.user!.role !== "owner" && !req.user!.permissions.includes("users.delete" as any)) {
-        throw { status: 403, message: "Bạn không có quyền xóa tài khoản nhân viên" };
+        throw { status: 403, message: "You do not have permission to delete staff accounts" };
       }
       await this.userService.deleteUser(req.params.id as string, req.user!);
       await this.auditService.logAction(req.user!._id.toString(), req.user!.name, "delete", "identity", `Xóa tài khoản nhân viên "${targetUser.name}"`, req.ip || "127.0.0.1");
-      return response.success(res, { message: "Xóa tài khoản nhân viên thành công" });
+      return response.success(res, { message: "Staff account deleted successfully" });
     }
   });
 

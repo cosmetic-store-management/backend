@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import User from "../modules/user/models/user.schema.js";
+import User from "../contexts/identity/user/models/user.schema.js";
 import { unauthorized, forbidden } from "../shared/errors/httpErrors.js";
 /**
  * authenticate — Validate JWT and attach req.user when valid.
@@ -65,7 +65,7 @@ export const authorize = (...roles) => (req, _res, next) => {
 export const requirePermission = (permission) => (req, _res, next) => {
     if (!req.user)
         return next(unauthorized("You are not logged in"));
-    if (req.user.role === "owner")
+    if (req.user.role === "owner" || req.user.role === "manager")
         return next();
     if (req.user.role === "customer")
         return next(forbidden("Customers do not have access to the admin system"));

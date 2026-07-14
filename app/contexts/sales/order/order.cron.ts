@@ -16,7 +16,7 @@ export const startOrderCron = () => {
 
   setInterval(async () => {
     if (isRunning) {
-      logger.info("[Order Cron] Bỏ qua vòng lặp do tiến trình trước chưa hoàn thành.");
+      logger.info("[Order Cron] Skipped loop as previous process is incomplete.");
       return;
     }
 
@@ -34,7 +34,7 @@ export const startOrderCron = () => {
         const orderService = container.resolve(OrderService);
         for (const order of expiredOrders) {
           try {
-            await orderService.cancelPendingOrder(order.code, "Hủy tự động do quá hạn thanh toán");
+            await orderService.cancelPendingOrder(order.code, "Auto-cancelled due to payment timeout");
             logger.info(`[Order Cron] Đã hủy đơn hàng quá hạn (15p): ${order.code}`);
           } catch (err: any) {
             logger.error({ err: err.message }, `[Order Cron] Lỗi khi hủy đơn hàng ${order.code}:`);
@@ -42,7 +42,7 @@ export const startOrderCron = () => {
         }
       }
     } catch (error) {
-      logger.error({ err: error }, "[Order Cron] Lỗi khi quét QR hết hạn:");
+      logger.error({ err: error }, "[Order Cron] Error scanning expired QR:");
     } finally {
       isRunning = false;
     }

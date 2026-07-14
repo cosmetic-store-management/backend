@@ -1,8 +1,8 @@
 import { sendLowStockAlertEmail } from "../../../shared/email/email.service.js";
-import User from "../../identity/user/models/user.schema.js";
 import { badRequest, notFound } from "../../../shared/errors/httpErrors.js";
 import { injectable, inject } from "tsyringe";
 import { InventoryRepository } from "./inventory.repository.js";
+import { UserRepository } from "../../identity/user/user.repository.js";
 import {
   mapGoodsReceipt,
   mapStocktake,
@@ -13,7 +13,6 @@ import {
   type PaginationMeta,
 } from "./dto/inventory.response.dto.js";
 import mongoose from "mongoose";
-import Variant from "../product/models/variant.schema.js";
 
 /** Số ký tự cần lấy trong chuỗi ISO để được dạng "yyyy-MM-dd HH:mm" */
 const ISO_DATETIME_LENGTH = 16;
@@ -24,7 +23,6 @@ const TX_CODE_RANGE = 900000;
 // ── SUPPLIERS ─────────────────────────────────────────────────────────────────
 
 import { eventBus } from "../../shared/event-bus/index.js";
-import InventoryTransaction from "./models/inventory-transaction.schema.js";
 import { logger } from "../../../shared/logger/index.js";
 
 import { BrandRepository } from "../brand/brand.repository.js";
@@ -33,7 +31,8 @@ import { BrandRepository } from "../brand/brand.repository.js";
 export class InventoryService {
   constructor(
     @inject(InventoryRepository) private readonly inventoryRepo: InventoryRepository,
-    @inject(BrandRepository) private readonly brandRepo: BrandRepository
+    @inject(BrandRepository) private readonly brandRepo: BrandRepository,
+    @inject(UserRepository) private readonly userRepo: UserRepository
   ) {
     eventBus.on("inventory.stock.decremented", (variant: any) => {
       this.checkAndTriggerLowStockAlert(variant).catch(err => 
@@ -56,7 +55,7 @@ export class InventoryService {
           session
         );
 
-        await InventoryTransaction.create([{
+        await this.inventoryRepo.createTransactions([{
           code: `TXRET${Math.floor(100000 + Math.random() * 900000)}`,
           productId,
           variantId,
@@ -65,7 +64,7 @@ export class InventoryService {
           price: avgCostPrice || price || 0,
           creatorId: operatorId || "60c72b2f9b1d8b2c8c8b4567",
           date: new Date(),
-        }], { session });
+        }], session);
       } catch (error) {
         logger.error({ err: error }, "Error handling inventory.stock.restored:");
       }
@@ -75,16 +74,16 @@ export class InventoryService {
       try {
         const { variantId, productId, quantity, price, operatorId, session } = payload;
         
-        await InventoryTransaction.create([{
+        await this.inventoryRepo.createTransactions([{
           code: `TXOUT${Math.floor(100000 + Math.random() * 900000)}`,
           productId,
           variantId,
           type: "out",
           qty: quantity,
-          price: price,
+          price: price || 0,
           creatorId: operatorId || "60c72b2f9b1d8b2c8c8b4567",
           date: new Date(),
-        }], { session });
+        }], session);
       } catch (error) {
         logger.error({ err: error }, "Error handling inventory.stock.deducted:");
       }
@@ -99,7 +98,7 @@ export class InventoryService {
 
   createSupplier = async (data: any) => {
   if (!data.name?.trim() || !data.phone?.trim()) {
-    throw badRequest("Tên và số điện thoại nhà cung cấp là bắt buộc");
+    throw badRequest("Supplier name and phone number are required");
   }
   return this.inventoryRepo.createSupplier(data);
 };
@@ -109,11 +108,11 @@ export class InventoryService {
   if (!supplier) throw notFound("Supplier not found");
 
   if (data.name !== undefined) {
-    if (!data.name.trim()) throw badRequest("Tên nhà cung cấp không được để trống");
+    if (!data.name.trim()) throw badRequest("Supplier name cannot be empty");
     supplier.name = data.name.trim();
   }
   if (data.phone !== undefined) {
-    if (!data.phone.trim()) throw badRequest("Số điện thoại không được để trống");
+    if (!data.phone.trim()) throw badRequest("Phone number cannot be empty");
     supplier.phone = data.phone.trim();
   }
   if (data.email !== undefined) supplier.email = data.email.trim();
@@ -198,14 +197,8 @@ export class InventoryService {
   } else if (stockStatus === "in") {
     query.$expr = { $gt: ["$stock", "$minStock"] };
   } else if (stockStatus === "expiring") {
-    const { default: Batch } = await import("./models/batch.schema.js");
     const expiringDateThreshold = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-    const expiringBatches = await Batch.find({
-      remainingQty: { $gt: 0 },
-      expiryDate: { $lte: expiringDateThreshold },
-    })
-      .select("variantId")
-      .lean();
+    const expiringBatches = await this.inventoryRepo.findExpiringBatches(expiringDateThreshold);
     const variantIds = expiringBatches.map((b) => b.variantId);
     query._id = { $in: variantIds };
   }
@@ -369,17 +362,13 @@ export class InventoryService {
 };
 
   updateBatch = async (batchId: string, data: any) => {
-  const { default: Batch } = await import("./models/batch.schema.js");
-  const { default: GoodsReceipt } = await import("./models/goods-receipt.schema.js");
-  const { default: InventoryTransaction } = await import("./models/inventory-transaction.schema.js");
-
   const session = await mongoose.startSession();
   let updatedBatch: any = null;
 
   try {
     session.startTransaction();
 
-    const oldBatch = await Batch.findById(batchId).session(session);
+    const oldBatch = await this.inventoryRepo.findBatchById(batchId, session);
     if (!oldBatch) throw notFound("Batch not found");
 
     const newImportPrice = Number(data.importPrice);
@@ -407,33 +396,22 @@ export class InventoryService {
 
     // 1. Update GoodsReceipt if linked
     if (oldBatch.goodsReceiptId && (priceChanged || qtyChanged)) {
-      const receipt = await GoodsReceipt.findById(oldBatch.goodsReceiptId).session(session);
-      if (receipt) {
-        const item = receipt.items.find(
-          (i: any) => i.variantId.toString() === oldBatch.variantId.toString()
-        );
-        if (item) {
-          if (priceChanged) item.importPrice = newImportPrice;
-          if (qtyChanged) item.quantity = newOriginalQty;
-
-          // Recalculate total amount
-          receipt.totalAmount = receipt.items.reduce(
-            (sum: number, i: any) => sum + i.quantity * i.importPrice,
-            0
-          );
-          await receipt.save({ session });
-        }
-      }
+      await this.inventoryRepo.updateGoodsReceiptItem(
+        oldBatch.goodsReceiptId,
+        oldBatch.variantId,
+        { priceChanged, newImportPrice, qtyChanged, newOriginalQty },
+        session
+      );
     }
 
     // 2. Update corresponding InventoryTransaction
     if (priceChanged || qtyChanged) {
-      const transaction = await InventoryTransaction.findOne({
+      const transaction = await this.inventoryRepo.findTransaction({
         variantId: oldBatch.variantId,
         type: "in",
         qty: oldBatch.originalQty,
         price: oldBatch.importPrice,
-      }).session(session);
+      }, session);
 
       if (transaction) {
         if (priceChanged) transaction.price = newImportPrice;
@@ -443,11 +421,7 @@ export class InventoryService {
     }
 
     // 3. Update the batch itself
-    updatedBatch = await Batch.findByIdAndUpdate(
-      batchId,
-      { $set: data },
-      { new: true, session }
-    );
+    updatedBatch = await this.inventoryRepo.updateBatch(batchId, { $set: data }, session);
 
     await session.commitTransaction();
   } catch (error) {
@@ -475,7 +449,7 @@ export class InventoryService {
   const supplier = await this.inventoryRepo.findSupplierById(supplierId);
   if (!supplier) throw notFound("Supplier not found");
   if (!supplier.isActive) {
-    throw badRequest("Nhà cung cấp này đang tạm ngưng hoạt động, không thể nhập hàng.");
+    throw badRequest("This supplier is inactive, cannot import goods.");
   }
 
   let totalAmount = 0;
@@ -644,11 +618,7 @@ export class InventoryService {
     }
 
     if (isMinStockChanged) {
-      await Variant.updateOne(
-        { _id: variant._id },
-        { $set: { minStock } },
-        { session }
-      );
+      await this.inventoryRepo.updateVariant(variantId, { $set: { minStock } }, session);
       if (updatedVariant) {
         updatedVariant.minStock = minStock;
       }
@@ -870,7 +840,7 @@ export class InventoryService {
   updateMinStock = async (operator: any, data: any) => {
   const { variantId, minStock } = data;
 
-  const variant = await Variant.findById(variantId);
+  const variant = await this.inventoryRepo.findVariantById(variantId);
   if (!variant) throw new Error("Product not found");
 
   variant.minStock = minStock;
@@ -887,11 +857,7 @@ export class InventoryService {
 
   try {
     // Find active store owners and managers to notify
-    const managers = await User.find({
-      role: { $in: ["owner", "manager"] },
-      isActive: true,
-      isDeleted: { $ne: true }
-    }).select("email").lean();
+    const managers = await this.userRepo.findActiveManagers();
 
     const emails = managers.map(m => m.email).filter(Boolean) as string[];
     if (emails.length === 0) return;

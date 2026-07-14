@@ -115,7 +115,15 @@ export class ProductService {
     });
   };
 
+  getPopularSearches = async (limit: number = 10) => {
+    return this.productRepo.getPopularSearches(limit);
+  };
+
   getPublicProducts = async (params: PublicProductQuery) => {
+    if (params.search && params.search.trim() !== "") {
+       this.productRepo.logSearchKeyword(params.search).catch(err => console.error("Error logging search:", err));
+    }
+
     const cacheKey = "public_products:" + JSON.stringify(params);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hit = metadataCache.get<any>(cacheKey);
@@ -698,7 +706,7 @@ export class ProductService {
   const query: any = { _id: id };
   const product = await this.productRepo.findOneBy(query);
   if (!product)
-    throw notFound("Không tìm thấy sản phẩm hoặc bạn không có quyền xóa");
+    throw notFound("Product not found or you do not have permission to delete");
 
   // ── Delete Guard ──────────────────────────────────────────────────────
   // Block hard-delete if the product has active inventory batches or
@@ -765,15 +773,15 @@ export class ProductService {
       categoryId = cat._id;
     }
 
-    const pStatusRaw = firstRow["Product Status"] || firstRow["Trạng thái"];
-    const isProductActive = pStatusRaw === "Active" || pStatusRaw === "Đang bán" || pStatusRaw === true || pStatusRaw === "true";
+    const pStatusRaw = firstRow["Product Status"] || firstRow["Status"];
+    const isProductActive = pStatusRaw === "Active" || pStatusRaw === "Selling" || pStatusRaw === true || pStatusRaw === "true";
 
     const productData = {
       name: firstRow["Product Name"] || firstRow["Product name"],
       slug: slug,
       brandId: brandId,
       categoryId: categoryId,
-      description: firstRow["Description"] || firstRow["Mô tả"] || "",
+      description: firstRow["Description"] || firstRow["Description"] || "",
       isActive: isProductActive,
     };
 
@@ -795,11 +803,11 @@ export class ProductService {
     );
 
     for (const row of rows) {
-      const vName = row["Variant Name"] || row["Tên biến thể"] || "Default";
+      const vName = row["Variant Name"] || row["Variant name"] || "Default";
       const barcode = row["Barcode"] || row["SKU"] || "";
       const vKey = barcode || vName;
 
-      const vStatusRaw = row["Variant Status"] || row["Trạng thái (Biến thể)"];
+      const vStatusRaw = row["Variant Status"] || row["Status (Variant)"];
       const isVariantActive = vStatusRaw !== "Inactive" && vStatusRaw !== "Discontinued" && vStatusRaw !== false && vStatusRaw !== "false";
 
       const variantData = {
@@ -807,13 +815,13 @@ export class ProductService {
         name: vName,
         barcode: barcode,
         sku: barcode, // Sync SKU with barcode
-        price: Number(row["Price"] || row["Giá bán"]) || 0,
+        price: Number(row["Price"] || row["Selling price"]) || 0,
         discountPrice: row["Sale Price"] !== undefined && row["Sale Price"] !== ""
           ? Number(row["Sale Price"])
           : row["Discount price"] !== undefined && row["Discount price"] !== ""
             ? Number(row["Discount price"])
             : undefined,
-        stock: Number(row["Stock"] || row["Tồn kho"]) || 0,
+        stock: Number(row["Stock"] || row["Stock"]) || 0,
         isActive: isVariantActive,
       };
 
