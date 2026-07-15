@@ -118,8 +118,8 @@ export class ReportService {
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMins / 60);
     let dateStr = "Just now";
-    if (diffHours > 0) dateStr = `${diffHours} giờ trước`;
-    else if (diffMins > 0) dateStr = `${diffMins} phút trước`;
+    if (diffHours > 0) dateStr = `${diffHours} hours ago`;
+    else if (diffMins > 0) dateStr = `${diffMins} minutes ago`;
 
     const statusMap: Record<string, string> = {
       completed: "Completed",
@@ -320,45 +320,45 @@ export class ReportService {
     </head>
     <body>
       <div class="report-header">
-        <h1>BÁO CÁO DOANH THU & BÁN HÀNG</h1>
-        <p><strong>Cửa hàng:</strong> Cosmetic Shop</p>
-        <p><strong>Kỳ báo cáo:</strong> ${startDate ? new Date(startDate).toLocaleDateString("vi-VN") : "From the beginning"} - ${endDate ? new Date(endDate).toLocaleDateString("vi-VN") : "Current"}</p>
-        <p><strong>Thời gian kết xuất:</strong> ${new Date().toLocaleString("vi-VN")}</p>
+        <h1>SALES & REVENUE REPORT</h1>
+        <p><strong>Store:</strong> Cosmetic Shop</p>
+        <p><strong>Period:</strong> ${startDate ? new Date(startDate).toLocaleDateString("en-US") : "From the beginning"} - ${endDate ? new Date(endDate).toLocaleDateString("en-US") : "Current"}</p>
+        <p><strong>Generated at:</strong> ${new Date().toLocaleString("en-US")}</p>
       </div>
 
       <!-- TỔNG QUAN TÀI CHÍNH VÀ HIỆU SUẤT -->
       <div class="section">
-        <div class="section-title">1. Tổng Quan Hiệu Suất Bán Hàng</div>
+        <div class="section-title">1. Sales Performance Overview</div>
         <div class="metrics-grid">
           <div class="metric-card">
-            <div class="metric-title">Tổng Doanh Thu (Gross)</div>
-            <div class="metric-value">${stats.stats.totalRevenue.toLocaleString("vi-VN")} ₫</div>
+            <div class="metric-title">Gross Revenue</div>
+            <div class="metric-value">${stats.stats.totalRevenue.toLocaleString("en-US")} ₫</div>
             <div class="metric-change ${stats.stats.revenueChange >= 0 ? "positive" : "negative"}">
-              ${stats.stats.revenueChange >= 0 ? "▲" : "▼"} ${Math.abs(stats.stats.revenueChange)}% so với kỳ trước
+              ${stats.stats.revenueChange >= 0 ? "▲" : "▼"} ${Math.abs(stats.stats.revenueChange)}% vs last period
             </div>
           </div>
           <div class="metric-card">
-            <div class="metric-title">Số Lượng Đơn Hàng</div>
+            <div class="metric-title">Number of Orders</div>
             <div class="metric-value">${stats.stats.ordersCount}</div>
             <div class="metric-change ${stats.stats.ordersChange >= 0 ? "positive" : "negative"}">
-              ${stats.stats.ordersChange >= 0 ? "▲" : "▼"} ${Math.abs(stats.stats.ordersChange)}% so với kỳ trước
+              ${stats.stats.ordersChange >= 0 ? "▲" : "▼"} ${Math.abs(stats.stats.ordersChange)}% vs last period
             </div>
           </div>
           <div class="metric-card">
-            <div class="metric-title">Giá Trị Đơn Trung Bình (AOV)</div>
-            <div class="metric-value">${stats.stats.averageOrderValue.toLocaleString("vi-VN")} ₫</div>
-            <div class="metric-change" style="color: #6b7280;">Doanh thu / Đơn hàng</div>
+            <div class="metric-title">Average Order Value (AOV)</div>
+            <div class="metric-value">${stats.stats.averageOrderValue.toLocaleString("en-US")} ₫</div>
+            <div class="metric-change" style="color: #6b7280;">Revenue / Orders</div>
           </div>
           <div class="metric-card">
-            <div class="metric-title">Sản Phẩm Bán Ra</div>
+            <div class="metric-title">Sold Products</div>
             <div class="metric-value">${stats.stats.soldProducts}</div>
-            <div class="metric-change" style="color: #6b7280;">Tổng Items</div>
+            <div class="metric-change" style="color: #6b7280;">Total Items</div>
           </div>
           <div class="metric-card">
-            <div class="metric-title">Khách Hàng Mới</div>
+            <div class="metric-title">New Customers</div>
             <div class="metric-value">${stats.stats.newCustomers}</div>
             <div class="metric-change ${stats.stats.customersChange >= 0 ? "positive" : "negative"}">
-              ${stats.stats.customersChange >= 0 ? "▲" : "▼"} ${Math.abs(stats.stats.customersChange)}% so với kỳ trước
+              ${stats.stats.customersChange >= 0 ? "▲" : "▼"} ${Math.abs(stats.stats.customersChange)}% vs last period
             </div>
           </div>
         </div>
@@ -366,15 +366,15 @@ export class ReportService {
 
       <!-- SẢN PHẨM BÁN CHẠY -->
       <div class="section">
-        <div class="section-title">2. Top 5 Sản Phẩm Bán Chạy Nhất</div>
+        <div class="section-title">2. Top 5 Best Selling Products</div>
         <table>
           <thead>
             <tr>
-              <th width="5%">STT</th>
-              <th width="45%">Tên Sản Phẩm</th>
-              <th width="20%">Danh Mục</th>
-              <th width="15%" class="text-right">SL Bán Ra</th>
-              <th width="15%" class="text-right">Tồn Kho Hiện Tại</th>
+              <th width="5%">No.</th>
+              <th width="45%">Product Name</th>
+              <th width="20%">Category</th>
+              <th width="15%" class="text-right">Sold Qty</th>
+              <th width="15%" class="text-right">Current Stock</th>
             </tr>
           </thead>
           <tbody>
@@ -401,15 +401,15 @@ export class ReportService {
 
       <!-- CẢNH BÁO TỒN KHO -->
       <div class="section" style="page-break-inside: avoid;">
-        <div class="section-title">3. Cảnh Báo Sản Phẩm Sắp Hết Hàng (Low Stock)</div>
+        <div class="section-title">3. Low Stock Alerts</div>
         <table>
           <thead>
             <tr>
-              <th width="5%">STT</th>
-              <th width="35%">Mã (SKU)</th>
-              <th width="35%">Sản Phẩm - Biến Thể</th>
-              <th width="15%" class="text-right">Tồn Thực Tế</th>
-              <th width="10%" class="text-right">Mức Tối Thiểu</th>
+              <th width="5%">No.</th>
+              <th width="35%">SKU Code</th>
+              <th width="35%">Product - Variant</th>
+              <th width="15%" class="text-right">Actual Stock</th>
+              <th width="10%" class="text-right">Min Level</th>
             </tr>
           </thead>
           <tbody>
@@ -435,8 +435,8 @@ export class ReportService {
       </div>
 
       <div class="footer">
-        <p>Báo cáo Doanh thu - Cửa hàng Cosmetic Shop</p>
-        <p>Được tạo tự động theo chuẩn báo cáo nội bộ Hệ thống Quản trị (Dựa trên khung mẫu từ KiotViet/Sapo).</p>
+        <p>Revenue Report - Cosmetic Shop</p>
+        <p>Automatically generated according to the internal reporting standards of the Management System.</p>
       </div>
     </body>
     </html>

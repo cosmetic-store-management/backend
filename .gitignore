@@ -31,5 +31,24 @@ node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+.env*
 
+# IDEs and Editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ESLint
+.eslintcache
+
+# TypeScript
+*.tsbuildinfo
+
+# Scripts (One-off/Migrations)
 /scripts/

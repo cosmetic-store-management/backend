@@ -145,7 +145,7 @@ export class SettingController {
       const msg = parsed.error.issues
         .map((e) => `${e.path.join(".")}: ${e.message}`)
         .join("; ");
-      throw badRequest(`Dữ liệu cấu hình không hợp lệ: ${msg}`);
+      throw badRequest(`Invalid configuration data: ${msg}`);
     }
 
     const settings = await this.settingService.updateSettings(parsed.data);

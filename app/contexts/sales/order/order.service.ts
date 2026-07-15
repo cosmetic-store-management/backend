@@ -357,7 +357,7 @@ export class OrderService {
             const currentPoints = await container.resolve(UserService).getUserPoints(order.userId.toString());
             const pointsLeak = Math.max(0, order.earnedPoints - (currentPoints + (incQuery.points || 0)));
             if (pointsLeak > 0) {
-              order.note = (order.note ? order.note + "\n" : "") + `[Hệ thống] Trừ ${pointsLeak.toLocaleString("vi-VN")}đ khỏi số tiền hoàn do khách đã tiêu điểm của đơn này.`;
+              order.note = (order.note ? order.note + "\n" : "") + `[System] Deduct ${pointsLeak.toLocaleString("en-US")}₫ from the refund amount because the customer has already spent the points from this order.`;
             }
 
             incQuery.points = (incQuery.points || 0) - order.earnedPoints;
@@ -567,7 +567,7 @@ export class OrderService {
           const currentPoints = await container.resolve(UserService).getUserPoints(order.userId.toString());
           const pointsLeak = Math.max(0, earnedPoints - (currentPoints + (incQuery.points || 0)));
           if (pointsLeak > 0) {
-            order.note = (order.note ? order.note + "\n" : "") + `[Hệ thống] Trừ ${pointsLeak.toLocaleString("vi-VN")}đ khỏi số tiền hoàn do khách đã tiêu điểm của đơn này.`;
+            order.note = (order.note ? order.note + "\n" : "") + `[System] Deduct ${pointsLeak.toLocaleString("en-US")}₫ from the refund amount because the customer has already spent the points from this order.`;
           }
 
           incQuery.points = (incQuery.points || 0) - earnedPoints;

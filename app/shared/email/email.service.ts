@@ -36,7 +36,7 @@ const FRONTEND_URL = () => process.env.FRONTEND_URL || "http://localhost:5173";
 // ── Shared layout ─────────────────────────────────────────────────────────────
 
 async function sendEmailWithRetry(payload: any, maxRetries = 3): Promise<void> {
-  if (process.env.NODE_ENV !== "test" && process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV === "test") {
     logger.info(`[MAIL DISABLED] To: ${payload.to} - Subject: ${payload.subject}`);
     return;
   }
@@ -448,22 +448,22 @@ export const sendLowStockAlertEmail = async (
 ): Promise<void> => {
   const body = `
     <div style="background:#fff7ed;border-left:4px solid #f97316;border-radius:4px;padding:14px 18px;margin-bottom:24px;">
-      <p style="margin:0;font-size:14px;color:#c2410c;font-weight:600;">⚠️ CẢNH BÁO TỒN KHO THẤP (LOW-STOCK ALERT)</p>
+      <p style="margin:0;font-size:14px;color:#c2410c;font-weight:600;">⚠️ LOW-STOCK ALERT</p>
     </div>
-    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Hàng hóa sắp hết trong kho</h2>
+    <h2 style="margin:0 0 8px;font-size:20px;color:#111827;font-weight:700;">Items are running out of stock</h2>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Biến thể sản phẩm <strong style="color:#db2777;">${variantName}</strong> hiện tại chỉ còn lại <strong style="color:#e11d48;">${currentStock}</strong> sản phẩm trong kho.<br/>
-      Ngưỡng báo động tồn kho tối thiểu được thiết lập là: <strong>${minStock}</strong> sản phẩm.
+      Product variant <strong style="color:#db2777;">${variantName}</strong> currently has only <strong style="color:#e11d48;">${currentStock}</strong> items left in stock.<br/>
+      The minimum stock threshold is set to: <strong>${minStock}</strong> items.
     </p>
     <p style="margin:0 0 20px;color:#4b5563;font-size:14px;line-height:1.7;">
-      Vui lòng liên hệ nhà cung cấp hoặc lập phiếu nhập kho (Goods Receipt) để bổ sung nguồn hàng kịp thời, tránh gián đoạn kinh doanh.
+      Please contact the supplier or create a Goods Receipt to replenish the stock promptly, avoiding business interruption.
     </p>
   `;
 
   await sendEmailWithRetry({
     from: getFromEmail(),
     to,
-    subject: `⚠️ Cảnh báo tồn kho thấp: [${variantName}] — GlowUp Cosmetics`,
+    subject: `⚠️ Low stock alert: [${variantName}] — GlowUp Cosmetics`,
     html: emailLayout(body),
   });
 };
